@@ -139,7 +139,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:defa
 .isd-viewed.on{border-color:color-mix(in oklch,var(--add) 50%,transparent);color:var(--add)}
 .isd-vbox{display:grid;place-items:center;width:13px;height:13px;border-radius:3.5px;border:1.5px solid currentColor}
 .isd-viewed.on .isd-vbox{background:var(--add);border-color:var(--add);color:var(--isd-code)}
-.isd-dbody{flex:1;min-height:0;overflow:auto}
+.isd-dbody{flex:1;min-height:0;overflow:auto;container-type:inline-size}
+/* unified: every line is as wide as the file's widest line, so the pinned numbers never leave a short line's box */
+.isd-dcontent.is-wide{width:max-content;min-width:100%}
+.isd-dcontent.is-wide .isd-hhd{width:100cqw}
 .isd-folded{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:22px;font-size:12.5px;color:var(--add);background:color-mix(in oklch,var(--add) 8%,transparent)}
 .isd-binary{padding:22px;font-size:12.5px;color:var(--text-dim)}
 .isd-hunk+.isd-hunk{border-top:1px solid var(--fl-border)}
@@ -148,7 +151,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:defa
 .isd-hctx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11px var(--font-mono);color:var(--text-muted)}
 .isd-hhd .isd-stat{margin-left:auto}
 .isd-hunk.is-sel .isd-hhd{background:linear-gradient(color-mix(in oklch,var(--accent) 24%,transparent),color-mix(in oklch,var(--accent) 24%,transparent)),var(--isd-code);color:var(--text)}
-.isd-line{display:flex;width:max-content;min-width:100%;font:11.5px/20px var(--font-mono)}
+.isd-line{display:flex;font:11.5px/20px var(--font-mono)}
 .isd-nums{display:flex;flex-shrink:0;color:var(--text-faint);background:var(--isd-code);user-select:none}
 .isd-nums span{width:34px;padding-right:6px;text-align:right;box-sizing:border-box}
 .is-pinned .isd-nums{position:sticky;left:0;z-index:1;box-shadow:1px 0 0 var(--fl-border)}
@@ -173,7 +176,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:defa
 .isd-wstag{flex-shrink:0;align-self:center;margin-right:12px;padding:0 6px;border-radius:999px;font:10.5px/16px var(--font-sans);color:var(--text-dim);background:var(--fl-hover);white-space:nowrap}
 button.isd-wstag:hover{color:var(--text);background:var(--fl-on)}
 /* a part made only of whitespace changes, folded to one row */
-.isd-foldrow{display:flex;align-items:center;width:max-content;min-width:100%;font:11.5px/22px var(--font-mono);background:repeating-linear-gradient(135deg,transparent 0 5px,var(--fl-hover) 5px 6px)}
+.isd-foldrow{display:flex;align-items:center;font:11.5px/22px var(--font-mono);background:repeating-linear-gradient(135deg,transparent 0 5px,var(--fl-hover) 5px 6px)}
 .isd-foldrow .isd-nums{background:var(--isd-code)}
 .isd-foldrow.is-side .isd-nums span:not(.isd-gut){display:none}
 .isd-foldtxt{padding:0 12px 0 18px;font:11.5px var(--font-sans);color:var(--text-dim);white-space:nowrap;text-align:left}

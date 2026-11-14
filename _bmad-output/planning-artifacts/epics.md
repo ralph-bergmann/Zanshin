@@ -12840,7 +12840,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Motivation.** With many files the file list sits above the diff, so Ralph scrolls up and down all the time. The inspector stops at 720 points, the pinned panel at 440. Arrow keys only move a highlight; ↩ then loads the diff.
 
-**Design round: done.** Ralph approved the mock-up on 2026-11-14: `_bmad-output/implementation-artifacts/design/Inspector Study.html` (preview `design-preview`), described in `design/DESIGN-SYSTEM-SYNC.md` #25 — threshold 780 / 740, divider look and minimums, defaults 0.38 / 0.34, 3-line clamp, and the unified diff's line numbers **pinned** while the text scrolls sideways (settles the open item in deferred-work.md, "Surfaced after the story loop 5.10"). The DS parts listed in #25 for 10.38 are this story's, through the `design-artifacts` skill.
+**Design round: done.** Ralph approved the mock-up on 2026-11-14: `_bmad-output/implementation-artifacts/design/Inspector Study.html` (preview `design-preview`), described in `design/DESIGN-SYSTEM-SYNC.md` #25 — threshold 780 / 740, divider look and minimums, defaults 0.38 / 0.34, 3-line clamp, and the unified diff's line numbers **pinned** while the text scrolls sideways (settles the open item in deferred-work.md, "Surfaced after the story loop 5.10"). Pinned line numbers: every line of a file is as wide as its widest line (the hunk header as wide as the visible area), so the number column and the part checkboxes stay at the left edge of short lines too when the diff is scrolled fully to the right (Ralph found this in the study, 2026-11-14). Today each hunk scrolls sideways on its own (`inspector_diff.dart`); the rule holds for whatever scroll unit this story builds. The DS parts listed in #25 for 10.38 are this story's, through the `design-artifacts` skill.
 
 **Scope.**
 1. **The layout follows the inspector's width.** Narrow: files above, diff below. Wide: files left, diff right. One threshold with hysteresis, so dragging around it does not flicker (proposal: ~760 points). The top part (header, title, meta, chips, actions) keeps its natural height; the split fills the rest, each side scrolls on its own; the composer stays at the bottom. Today the whole body is one scroll view (`graph_inspector.dart:1043`).
@@ -12862,6 +12862,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 - The inspector can be dragged until 320 points of graph remain, also past 720.
 - Space and `V` change the pick and the Viewed mark of the selected file.
 - A hunk with three parts: picking the second commits only its lines (a real repo through the composer); the hunk's checkbox shows mixed.
+- Scrolled fully right, a line shorter than its neighbours keeps its numbers and part checkbox at the left edge.
 - Marionette screenshots of both layouts in the catalogue, compared with the mock-up.
 
 **Related:** 10.8, 10.24, 10.39, 11.3.

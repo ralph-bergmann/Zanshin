@@ -320,6 +320,7 @@ function DiffPane({ change, file, mode, setMode, viewed, setViewed, picks, toggl
         </button>
       </div>
       <div className="isd-dbody">
+        <div className={"isd-dcontent" + (mode !== "side" ? " is-wide" : "")}>
         {viewed ? <button className="isd-folded" onClick={() => setViewed(false)}><Ic n="check" s={11}/>Viewed — diff folded away. Click to show it again.</button>
         : !hunks.length ? <div className="isd-binary">Binary file — no text diff.</div>
         : hunks.map(h => {
@@ -357,6 +358,7 @@ function DiffPane({ change, file, mode, setMode, viewed, setViewed, picks, toggl
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
