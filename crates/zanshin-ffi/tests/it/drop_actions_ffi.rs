@@ -476,6 +476,7 @@ fn card_rows(bytes: &[u8]) -> Vec<Outcome> {
         actions.describe(),
         actions.squash_into_parent(),
         actions.abandon(),
+        actions.absorb(),
     ]
     .into_iter()
     .map(|o| outcome_parts(&o.expect("every outcome is present")))
@@ -483,7 +484,7 @@ fn card_rows(bytes: &[u8]) -> Vec<Outcome> {
 }
 
 #[test]
-fn change_actions_round_trips_the_seven_rows() {
+fn change_actions_round_trips_the_eight_rows() {
     let fx = base();
     let before = head_op(&fx.root);
     let available = (S::Available, None, None, false, false);
@@ -497,6 +498,8 @@ fn change_actions_round_trips_the_seven_rows() {
             available.clone(),
             (S::Available, None, None, true, false),
             available,
+            // B only adds a file: nothing to absorb.
+            (S::NoOp, None, None, false, false),
         ]
     );
     let root = "z".repeat(32);

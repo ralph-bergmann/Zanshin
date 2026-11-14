@@ -66,7 +66,7 @@ export 'src/ffi/log_defaults.dart' show LogDefaults;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/metaedit_duplicate_fix.dart' show FixResult, FixToolStderr;
 export 'src/ffi/movement.dart' show MovementDirection, MovementTarget, MovementTargets;
-export 'src/ffi/mutate.dart' show MutationResult;
+export 'src/ffi/mutate.dart' show AbsorbResult, MutationResult, SkippedPath;
 export 'src/ffi/op_log.dart'
     show
         OpAbandonResult,

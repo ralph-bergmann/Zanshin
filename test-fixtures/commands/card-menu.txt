@@ -4,6 +4,7 @@ jj new -B kmnvxoqp
 jj edit kmnvxoqp
 jj describe kmnvxoqp
 jj squash -r kmnvxoqp
+jj absorb --from kmnvxoqp
 jj revert -r kmnvxoqp -B @
 jj abandon kmnvxoqp
 jj bookmark delete b-mark

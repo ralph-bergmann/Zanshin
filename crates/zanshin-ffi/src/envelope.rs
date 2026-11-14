@@ -1233,12 +1233,13 @@ impl From<zanshin_jj::DropActions> for DropActionsObj {
     }
 }
 
-/// `zanshin_change_actions`' answer in wire form (Story 9.31): the seven card-menu outcomes in
+/// `zanshin_change_actions`' answer in wire form (Story 9.31): the eight card-menu outcomes in
 /// `zanshin_jj::ChangeActions`' field order.
 #[derive(Debug)]
 pub struct ChangeActionsObj {
-    /// `new X`, `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X`, `abandon X`.
-    pub outcomes: [ActionOutcomeObj; 7],
+    /// `new X`, `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X`, `abandon X`,
+    /// `absorb --from X`.
+    pub outcomes: [ActionOutcomeObj; 8],
 }
 
 impl From<zanshin_jj::ChangeActions> for ChangeActionsObj {
@@ -1252,6 +1253,7 @@ impl From<zanshin_jj::ChangeActions> for ChangeActionsObj {
                 actions.describe.into(),
                 actions.squash_into_parent.into(),
                 actions.abandon.into(),
+                actions.absorb.into(),
             ],
         }
     }
@@ -1303,11 +1305,11 @@ pub fn ok_drop_actions(rows: &DropActionsObj, report: &CallReport) -> Vec<u8> {
 }
 
 /// Build a success `Envelope` with a `ChangeActions` payload and return the finished buffer
-/// (Story 9.31); every one of the seven outcomes is written.
+/// (Story 9.31); every one of the eight outcomes is written.
 #[must_use]
 pub fn ok_change_actions(actions: &ChangeActionsObj, report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(512);
-    let [new_onto, new_insert_after, new_insert_before, edit, describe, squash_into_parent, abandon] = actions
+    let [new_onto, new_insert_after, new_insert_before, edit, describe, squash_into_parent, abandon, absorb] = actions
         .outcomes
         .each_ref()
         .map(|outcome| build_action_outcome(&mut b, outcome));
@@ -1321,6 +1323,7 @@ pub fn ok_change_actions(actions: &ChangeActionsObj, report: &CallReport) -> Vec
             describe: Some(describe),
             squash_into_parent: Some(squash_into_parent),
             abandon: Some(abandon),
+            absorb: Some(absorb),
         },
     );
     finish_envelope(b, fbs::Payload::ChangeActions, Some(payload.as_union_value()), report)
@@ -2186,9 +2189,9 @@ mod tests {
         assert!(refusal.hints().is_none(), "a hint-less refusal writes no field");
     }
 
-    /// Story 9.31: all seven card-menu outcomes are written, in field order.
+    /// Story 9.31: all eight card-menu outcomes are written, in field order (absorb, Story 10.36).
     #[test]
-    fn ok_change_actions_writes_all_seven_outcomes() {
+    fn ok_change_actions_writes_all_eight_outcomes() {
         use zanshin_jj::ActionStatus as S;
         let actions = zanshin_jj::ChangeActions {
             new_onto: outcome(S::Available, None),
@@ -2207,6 +2210,7 @@ mod tests {
                 ..outcome(S::Available, None)
             },
             abandon: outcome(S::Refused, Some(zanshin_jj::MutateError::invalid("r".to_owned()))),
+            absorb: outcome(S::NoOp, None),
         };
         let buf = ok_change_actions(&ChangeActionsObj::from(actions), &CallReport::default());
         let env = verified_envelope(&buf);
@@ -2220,6 +2224,7 @@ mod tests {
             card.describe(),
             card.squash_into_parent(),
             card.abandon(),
+            card.absorb(),
         ]
         .map(|o| o.expect("present"));
         let statuses = all.map(|o| o.status());
@@ -2233,6 +2238,7 @@ mod tests {
                 fbs::ActionStatus::Refused,
                 fbs::ActionStatus::Available,
                 fbs::ActionStatus::Refused,
+                fbs::ActionStatus::NoOp,
             ]
         );
         let codes = all.map(|o| o.refusal().and_then(|e| e.code()));
@@ -2245,7 +2251,8 @@ mod tests {
                 None,
                 Some(JJ_CONFIG_ERROR),
                 None,
-                Some(JJ_INVALID_INPUT)
+                Some(JJ_INVALID_INPUT),
+                None
             ]
         );
         assert!(all[5].combined_description_needed());

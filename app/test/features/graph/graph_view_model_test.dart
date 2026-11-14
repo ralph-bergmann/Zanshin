@@ -738,6 +738,53 @@ void main() {
       });
     });
 
+    test('absorb (Story 10.36): anchored on the first shown parent; the changes it went into flash; Undo offered', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions.absorbedInto = <String>['c', 'd'];
+        final GraphActionResult? result = run(async, model, const GraphAbsorb('b'));
+        expect(result, isA<GraphActionDone>());
+        expect(actions.ran.single.command, 'jj absorb --from b');
+        expect(model.outcome.value?.anchor, 'c');
+        expect(model.outcome.value?.flash, <String>['c', 'd']);
+        expect(model.selected, 'b', reason: 'the source kept its other hunks');
+        expect(model.undoable, same(model.outcome.value));
+        model.dispose();
+      });
+    });
+
+    test('absorb that empties the source: jj abandons it and the selection clears, as after Abandon', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions
+          ..absorbedInto = <String>['c']
+          ..sourceAbandoned = true;
+        run(async, model, const GraphAbsorb('b'));
+        expect(model.selected, isNull);
+
+        // Another change selected stays selected.
+        model.select('a');
+        run(async, model, const GraphAbsorb('b'));
+        expect(model.selected, 'a');
+        model.dispose();
+      });
+    });
+
+    test('absorb with nothing absorbable writes no operation: no flash, no Undo, the selection stays', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions
+          ..noOp = true
+          ..sourceAbandoned = true;
+        run(async, model, const GraphAbsorb('b'));
+        expect(model.outcome.value?.undoable, isFalse);
+        expect(model.outcome.value?.flash, isEmpty);
+        expect(model.undoable, isNull);
+        expect(model.selected, 'b');
+        model.dispose();
+      });
+    });
+
     test('new -A after the selected change selects the new change', () {
       fakeAsync((async) {
         source.respond = (_) => keysLayout(<String>['a', 'n', 'b', 'c'], at: 'n');
@@ -1628,6 +1675,24 @@ class _Actions implements GraphActions {
       head = 'op${ran.length}';
     }
     return _result(head, born: born, abandoned: abandoned, warnings: warnings);
+  }
+
+  /// The changes an absorb's hunks went into (none when [noOp]); whether jj abandoned the emptied source.
+  var absorbedInto = const <String>[];
+  var sourceAbandoned = false;
+
+  @override
+  Future<AbsorbResult> absorb(String from) async {
+    final MutationResult mutation = await run(GraphAbsorb(from));
+    final List<String> into = noOp ? const <String>[] : absorbedInto;
+    return AbsorbResult(
+      mutation: _result(mutation.newOpId),
+      rewrittenChangeIds: into,
+      sourceChangeId: into.isNotEmpty && sourceAbandoned ? null : from,
+      numRebased: 0,
+      skippedPaths: const <SkippedPath>[],
+      warnings: mutation.warnings,
+    );
   }
 }
 

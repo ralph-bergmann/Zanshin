@@ -61,6 +61,29 @@ class _Actions implements GraphActions {
       warnings: warnings,
     );
   }
+
+  /// The changes an absorb's hunks went into (none when [noOp]).
+  var absorbedInto = const <String>[];
+
+  /// The run's warnings arrive as the absorb's own only: its nested mutation carries none, as in jj's answer.
+  @override
+  Future<AbsorbResult> absorb(String from) async {
+    final MutationResult mutation = await run(GraphAbsorb(from));
+    return AbsorbResult(
+      mutation: MutationResult(
+        newOpId: mutation.newOpId,
+        newChangeIds: mutation.newChangeIds,
+        abandonedChangeIds: mutation.abandonedChangeIds,
+        workingCopyChangeId: mutation.workingCopyChangeId,
+        finish: mutation.finish,
+      ),
+      rewrittenChangeIds: noOp ? const <String>[] : absorbedInto,
+      sourceChangeId: from,
+      numRebased: 0,
+      skippedPaths: const <SkippedPath>[],
+      warnings: mutation.warnings,
+    );
+  }
 }
 
 const _warning = ZanshinWarning(code: ZanshinWarningCode.identityMissing, message: 'Name and email not configured.');
@@ -199,6 +222,24 @@ void main() {
     actions.abandoned = const <String>[_a];
     await run(tester, const GraphSquash());
     expect(text(tester), 'Squashed ovknlmro into vruxwmqvz');
+  });
+
+  toastTest('Story 10.36 absorb: "Absorbed ‹x› into N change(s)" with Undo; nothing absorbable is "Nothing changed."', (
+    tester,
+  ) async {
+    actions.absorbedInto = const <String>[_c];
+    await run(tester, const GraphAbsorb(_b));
+    expect(text(tester), 'Absorbed vruxwmqvz into 1 change');
+    expect(buttons(tester), <String>['Undo']);
+    actions.absorbedInto = const <String>[_a, _c];
+    await run(tester, const GraphAbsorb(_b));
+    expect(text(tester), 'Absorbed vruxwmqvz into 2 changes');
+    actions
+      ..noOp = true
+      ..warnings = const <ZanshinWarning>[_warning];
+    await run(tester, const GraphAbsorb(_b));
+    expect(text(tester), 'Nothing changed. · Name and email not configured.');
+    expect(buttons(tester), isEmpty);
   });
 
   toastTest('Story 10.10: the drop verbs — moved onto, inserted after / before, merged, duplicated', (tester) async {

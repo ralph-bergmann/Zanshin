@@ -2305,7 +2305,8 @@ table DropActions {
 
 /// `zanshin_change_actions`' answer: the card menu's verbs for one change `X` — `new X`,
 /// `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X` (with the combined-description
-/// flag) and `abandon X`. Every field is always present.
+/// flag), `abandon X` and `absorb --from X` (into `mutable()`, all paths; Story 10.36). Every
+/// field is always present. Fields are APPEND only.
 table ChangeActions {
   new_onto: ActionOutcome;
   new_insert_after: ActionOutcome;
@@ -2314,6 +2315,7 @@ table ChangeActions {
   describe: ActionOutcome;
   squash_into_parent: ActionOutcome;
   abandon: ActionOutcome;
+  absorb: ActionOutcome;
 }
 
 // ── git push (Story 9.20) ───────────────────────────────────────────────────────

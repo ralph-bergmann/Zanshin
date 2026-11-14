@@ -232,6 +232,20 @@ void main() {
       expect((await repo.handle.status()).parentChangeId, born);
     });
 
+    test('Story 10.36: absorb moves @\'s hunk into the change that last changed the line, which flashes', () async {
+      final (ProjectRepo repo, GraphViewModel model, String first, String second) = await setUpRepo('absorb');
+      File('${pathOf('absorb')}/a.txt').writeAsStringSync('changed\n');
+      final GraphActionResult result = await model.run(GraphAbsorb(second));
+      final GraphOutcome outcome = (result as GraphActionDone).outcome;
+      expect(outcome.undoable, isTrue);
+      expect(outcome.flash, <String>[first]);
+      expect(
+        () => RepoGraphActions(repo).run(GraphAbsorb(second)),
+        throwsArgumentError,
+        reason: 'absorb runs through absorb()',
+      );
+    });
+
     Future<String> descriptionOf(ProjectRepo repo, String id) async =>
         (await repo.handle.show(revset: id)).single.change.description.trim();
 

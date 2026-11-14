@@ -3731,9 +3731,11 @@ impl Repo {
     }
 
     /// The card menu's verbs for `change` (Story 9.31): `new` onto it, `new -A` / `new -B` it,
-    /// `edit`, `describe`, `squash -r` (into its parent, with `combined_description_needed`) and
-    /// `abandon` — each answered by the verb's own plan fn, as in [`Repo::drop_actions`]. Only the
-    /// squash and, for the current `@`, the edit row report [`crate::ActionStatus::NoOp`]. An id
+    /// `edit`, `describe`, `squash -r` (into its parent, with `combined_description_needed`),
+    /// `abandon` and `absorb --from` (into the `mutable()` alias, all paths — [`Repo::absorb`]'s
+    /// defaults, Story 10.36) — each answered by the verb's own plan fn, as in
+    /// [`Repo::drop_actions`]. Only the squash, the absorb (nothing absorbable) and, for the
+    /// current `@`, the edit row report [`crate::ActionStatus::NoOp`]. An id
     /// that does not resolve refuses every row with the verb's own refusal
     /// ([`crate::MutateError::ChangeNotFound`], or [`crate::MutateError::RevsetResolutionError`]
     /// for an ambiguous prefix or a divergent change).

@@ -1050,6 +1050,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorSquash => 'Squash into parent';
 
   @override
+  String get inspectorSquashMenu => 'Squash';
+
+  @override
+  String get inspectorSquashMenuTooltip => 'Squash or absorb into earlier changes';
+
+  @override
+  String get inspectorAbsorb => 'Absorb into ancestors';
+
+  @override
+  String get inspectorAbsorbNothing => 'Nothing to absorb: no hunk belongs to an earlier change.';
+
+  @override
   String get inspectorDescriptionChangedMeanwhile => 'The description changed meanwhile.';
 
   @override
@@ -1232,6 +1244,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String toastSquashed(String source, String destination) {
     return 'Squashed $source into $destination';
+  }
+
+  @override
+  String toastAbsorbed(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Absorbed $source into $count changes',
+      one: 'Absorbed $source into 1 change',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -1505,6 +1528,19 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String menuSquashTarget(String target) {
     return 'Squash $target into Parent';
+  }
+
+  @override
+  String get menuAbsorb => 'Absorb into Ancestors';
+
+  @override
+  String menuAbsorbTarget(String target) {
+    return 'Absorb $target into Ancestors';
+  }
+
+  @override
+  String menuAbsorbName(String target) {
+    return 'Absorb $target';
   }
 
   @override
@@ -1785,6 +1821,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cardMenuSquash => 'Squash into parent';
+
+  @override
+  String get cardMenuAbsorb => 'Absorb into ancestors';
 
   @override
   String get cardMenuSquashMerge => 'A merge has more than one parent';

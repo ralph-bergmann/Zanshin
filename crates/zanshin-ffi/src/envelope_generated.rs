@@ -30866,7 +30866,8 @@ pub mod zanshin {
 
         /// `zanshin_change_actions`' answer: the card menu's verbs for one change `X` — `new X`,
         /// `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X` (with the combined-description
-        /// flag) and `abandon X`. Every field is always present.
+        /// flag), `abandon X` and `absorb --from X` (into `mutable()`, all paths; Story 10.36). Every
+        /// field is always present. Fields are APPEND only.
         pub struct ChangeActions<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -30889,6 +30890,7 @@ pub mod zanshin {
             pub const VT_DESCRIBE: ::flatbuffers::VOffsetT = 12;
             pub const VT_SQUASH_INTO_PARENT: ::flatbuffers::VOffsetT = 14;
             pub const VT_ABANDON: ::flatbuffers::VOffsetT = 16;
+            pub const VT_ABSORB: ::flatbuffers::VOffsetT = 18;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -30900,6 +30902,9 @@ pub mod zanshin {
                 args: &'args ChangeActionsArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<ChangeActions<'bldr>> {
                 let mut builder = ChangeActionsBuilder::new(_fbb);
+                if let Some(x) = args.absorb {
+                    builder.add_absorb(x);
+                }
                 if let Some(x) = args.abandon {
                     builder.add_abandon(x);
                 }
@@ -30996,6 +31001,16 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(ChangeActions::VT_ABANDON, None)
                 }
             }
+            #[inline]
+            pub fn absorb(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(ChangeActions::VT_ABSORB, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for ChangeActions<'_> {
@@ -31024,6 +31039,7 @@ pub mod zanshin {
                         false,
                     )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>("abandon", Self::VT_ABANDON, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>("absorb", Self::VT_ABSORB, false)?
                     .finish();
                 Ok(())
             }
@@ -31036,6 +31052,7 @@ pub mod zanshin {
             pub describe: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
             pub squash_into_parent: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
             pub abandon: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+            pub absorb: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
         }
         impl<'a> Default for ChangeActionsArgs<'a> {
             #[inline]
@@ -31048,6 +31065,7 @@ pub mod zanshin {
                     describe: None,
                     squash_into_parent: None,
                     abandon: None,
+                    absorb: None,
                 }
             }
         }
@@ -31099,6 +31117,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(ChangeActions::VT_ABANDON, abandon);
             }
             #[inline]
+            pub fn add_absorb(&mut self, absorb: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(ChangeActions::VT_ABSORB, absorb);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ChangeActionsBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 ChangeActionsBuilder {
@@ -31123,6 +31146,7 @@ pub mod zanshin {
                 ds.field("describe", &self.describe());
                 ds.field("squash_into_parent", &self.squash_into_parent());
                 ds.field("abandon", &self.abandon());
+                ds.field("absorb", &self.absorb());
                 ds.finish()
             }
         }

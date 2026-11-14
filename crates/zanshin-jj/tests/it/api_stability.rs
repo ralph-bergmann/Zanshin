@@ -1679,7 +1679,9 @@ fn drop_actions_surface_resolves() {
         describe: outcome(zanshin_jj::ActionStatus::Available),
         squash_into_parent: outcome(zanshin_jj::ActionStatus::NoOp),
         abandon: outcome(zanshin_jj::ActionStatus::Available),
+        absorb: outcome(zanshin_jj::ActionStatus::NoOp),
     };
+    assert_eq!(card.absorb.status, zanshin_jj::ActionStatus::NoOp);
     assert_eq!(card.squash_into_parent.status, zanshin_jj::ActionStatus::NoOp);
 
     _ = zanshin_jj::Repo::drop_actions

@@ -10,7 +10,8 @@ library;
 
 export 'l10n/zs_localizations.dart' show ZsLocalizations;
 export 'src/controls/zs_badge.dart' show ZsBadge, ZsBadgeTone;
-export 'src/controls/zs_button.dart' show ZsButton, ZsButtonSize, ZsButtonVariant, ZsIconButton, ZsIconButtonSize;
+export 'src/controls/zs_button.dart'
+    show ZsButton, ZsButtonSize, ZsButtonVariant, ZsIconButton, ZsIconButtonSize, ZsMenuButton;
 export 'src/controls/zs_checkbox.dart' show ZsCheckbox, ZsCheckboxSize, ZsCheckboxTone;
 export 'src/controls/zs_chip.dart' show ZsChip, ZsChipKind, ZsChipSize;
 export 'src/controls/zs_confirm_dialog.dart' show ZsConfirmDialog, ZsConfirmTone;

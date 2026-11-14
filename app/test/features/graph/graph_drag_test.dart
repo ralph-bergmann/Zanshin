@@ -1190,4 +1190,13 @@ class _Actions implements GraphActions {
       finish: null,
     );
   }
+
+  @override
+  Future<AbsorbResult> absorb(String from) async => AbsorbResult(
+    mutation: await run(GraphAbsorb(from)),
+    rewrittenChangeIds: const <String>[],
+    sourceChangeId: from,
+    numRebased: 0,
+    skippedPaths: const <SkippedPath>[],
+  );
 }

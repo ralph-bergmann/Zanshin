@@ -23,6 +23,7 @@ final controlsFolder = WidgetbookFolder(
     _family('SearchField', _searchFieldMatrix, _searchFieldInteractive),
     _family('Select', _selectMatrix, _selectInteractive),
     _family('Menu', _menuMatrix, _menuInteractive),
+    _family('MenuButton', _menuButtonMatrix, _menuButtonInteractive),
     _family('Field list', _fieldListMatrix, _fieldListInteractive),
     _family('Tooltip', _tooltipMatrix, _tooltipInteractive),
     _family('Popover', _popoverMatrix, _popoverInteractive),
@@ -975,6 +976,57 @@ Widget _menuInteractive(BuildContext context) {
       blink: blink,
       identifier: 'menu',
       builder: (context, controller) => ZsButton(label: 'Actions', icon: ZI.more, onPressed: controller.open),
+    ),
+  );
+}
+
+// ---- MenuButton ----
+
+/// The inspector's Squash menu (Story 10.36): Absorb off when nothing is absorbable.
+const _squashMenu = <ZsMenuEntry>[
+  ZsMenuItem(label: 'Squash into parent', cmd: 'jj squash -r kmnvxoqp', tooltip: 'jj squash -r kmnvxoqp'),
+  ZsMenuItem(
+    label: 'Absorb into ancestors',
+    cmd: 'jj absorb --from kmnvxoqp',
+    enabled: false,
+    tooltip: 'Nothing to absorb: no hunk belongs to an earlier change.',
+  ),
+];
+
+Widget _menuButtonMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
+  for (final (String spec, ZsButtonVariant variant) in const <(String, ZsButtonVariant)>[
+    ('default', ZsButtonVariant.quiet),
+    ('ghost', ZsButtonVariant.ghost),
+  ])
+    MatrixRow(
+      'MenuButton',
+      spec,
+      const <MatrixState>[..._interaction, MatrixState.disabled],
+      (cell) => ZsMenuButton(
+        label: 'Squash',
+        variant: variant,
+        entries: _squashMenu,
+        disabledReason: cell.state == MatrixState.disabled ? 'Another action is running' : null,
+        statesController: cell.states,
+      ),
+    ),
+]);
+
+Widget _menuButtonInteractive(BuildContext context) {
+  final String label = context.knobs.string(label: 'label', initialValue: 'Squash');
+  final ZsButtonVariant variant = context.knobs.object.dropdown(
+    label: 'variant',
+    options: ZsButtonVariant.values,
+    labelBuilder: (value) => value.name,
+  );
+  final String? reason = context.knobs.stringOrNull(label: 'disabled reason');
+  return _live(
+    ZsMenuButton(
+      label: label,
+      variant: variant,
+      entries: _squashMenu,
+      disabledReason: reason,
+      identifier: 'menu-button',
     ),
   );
 }

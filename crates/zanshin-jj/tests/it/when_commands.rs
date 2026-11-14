@@ -683,6 +683,7 @@ fn start_up_faults(repo: &mut Repo, s: &ChangeId, t: &ChangeId) -> Vec<(String, 
         ("describe", &card.describe),
         ("squash", &card.squash_into_parent),
         ("abandon", &card.abandon),
+        ("absorb", &card.absorb),
     ] {
         rows.push((command.to_owned(), faulted(outcome)));
     }

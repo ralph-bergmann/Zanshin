@@ -97,7 +97,8 @@ bool _childImmutable(GraphLayout layout, int node) {
 }
 
 /// The card menu's rows for [node] (Story 10.15), a pure function of the layout: on a mutable change New change on
-/// top, Insert after, Insert before · Edit, Describe…, Squash into parent, Copy › · Revert, Abandon; on an immutable
+/// top, Insert after, Insert before · Edit, Describe…, Squash into parent, Absorb into ancestors, Copy › · Revert,
+/// Abandon; on an immutable
 /// one New change on top, Insert after (not when a child is immutable), Revert · the "Immutable" note, Immutable
 /// commits… (Settings' page, [onImmutableCommits]; disabled without it); on the root New change on top. Each row's
 /// command is its action's with the short id; [run] gets the action with the node key. While [blocked] names a reason
@@ -225,6 +226,8 @@ List<ZsMenuEntry> graphCardMenuEntries(
           ? strings.cardMenuSquashParentImmutable
           : null,
     ),
+    // No preview here: jj answers "Nothing changed." when no hunk belongs to an earlier change.
+    verb(strings.cardMenuAbsorb, ZI.squashInto, GraphAbsorb.new, identifier: 'card-menu-absorb'),
     ZsMenuItem(
       label: strings.cardMenuCopy,
       icon: ZI.copy,

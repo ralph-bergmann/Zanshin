@@ -235,4 +235,7 @@ class _DemoActions implements GraphActions {
 
   @override
   Future<MutationResult> run(GraphAction action) async => throw const ZanshinFfiException('jj.demo', 'a demo');
+
+  @override
+  Future<AbsorbResult> absorb(String from) async => throw const ZanshinFfiException('jj.demo', 'a demo');
 }

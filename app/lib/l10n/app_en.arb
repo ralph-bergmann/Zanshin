@@ -617,6 +617,14 @@
   "@inspectorEdit": {"description": "Inspector action: jj edit, moving the working copy to the change."},
   "inspectorSquash": "Squash into parent",
   "@inspectorSquash": {"description": "Inspector action: jj squash -r, folding the change into its parent."},
+  "inspectorSquashMenu": "Squash",
+  "@inspectorSquashMenu": {"description": "Inspector menu button that opens Squash into parent and Absorb into ancestors."},
+  "inspectorSquashMenuTooltip": "Squash or absorb into earlier changes",
+  "@inspectorSquashMenuTooltip": {"description": "Tooltip of the inspector's Squash menu button."},
+  "inspectorAbsorb": "Absorb into ancestors",
+  "@inspectorAbsorb": {"description": "Inspector Squash menu row: jj absorb --from, each hunk moved into the earlier change that last changed its lines."},
+  "inspectorAbsorbNothing": "Nothing to absorb: no hunk belongs to an earlier change.",
+  "@inspectorAbsorbNothing": {"description": "Why the inspector's Absorb into ancestors is disabled: jj would change nothing."},
   "inspectorDescriptionChangedMeanwhile": "The description changed meanwhile.",
   "@inspectorDescriptionChangedMeanwhile": {"description": "The describe form under a kept draft: the change's description changed since the draft was started."},
   "inspectorSquashConfirm": "Squash",
@@ -754,6 +762,11 @@
   "@toastSquashed": {
     "description": "Operation toast after jj squash; both are change ids.",
     "placeholders": {"source": {"type": "String", "example": "ovknlmro"}, "destination": {"type": "String", "example": "vruxwmqv"}}
+  },
+  "toastAbsorbed": "{count, plural, =1{Absorbed {source} into 1 change} other{Absorbed {source} into {count} changes}}",
+  "@toastAbsorbed": {
+    "description": "Operation toast after jj absorb; source is the change id the hunks came from, count the number of changes they went into.",
+    "placeholders": {"count": {"type": "int"}, "source": {"type": "String", "example": "ovknlmro"}}
   },
   "toastCommitted": "Committed {change} · “{subject}”",
   "@toastCommitted": {
@@ -981,6 +994,18 @@
   "@menuSquashTarget": {
     "description": "Change menu: jj squash -r on the target; target is @ or the change id.",
     "placeholders": {"target": {"type": "String", "example": "@"}}
+  },
+  "menuAbsorb": "Absorb into Ancestors",
+  "@menuAbsorb": {"description": "Change menu: jj absorb --from, without a target to name."},
+  "menuAbsorbTarget": "Absorb {target} into Ancestors",
+  "@menuAbsorbTarget": {
+    "description": "Change menu: jj absorb --from the target; target is @ or the change id.",
+    "placeholders": {"target": {"type": "String", "example": "@"}}
+  },
+  "menuAbsorbName": "Absorb {target}",
+  "@menuAbsorbName": {
+    "description": "Undo/Redo menu name of a jj absorb --from; target is the change id.",
+    "placeholders": {"target": {"type": "String", "example": "kmnvxoqp"}}
   },
   "menuRebaseOnto": "Move {source} onto {target}",
   "@menuRebaseOnto": {
@@ -1225,6 +1250,8 @@
   "@cardMenuDescribe": {"description": "Card menu row: opens the inspector's describe form for the change."},
   "cardMenuSquash": "Squash into parent",
   "@cardMenuSquash": {"description": "Card menu row: jj squash -r, the change folded into its parent."},
+  "cardMenuAbsorb": "Absorb into ancestors",
+  "@cardMenuAbsorb": {"description": "Card menu row: jj absorb --from, each hunk moved into the earlier change that last changed its lines."},
   "cardMenuSquashMerge": "A merge has more than one parent",
   "@cardMenuSquashMerge": {"description": "Why the card menu's Squash into parent is disabled on a merge."},
   "cardMenuSquashParentImmutable": "The parent is immutable",

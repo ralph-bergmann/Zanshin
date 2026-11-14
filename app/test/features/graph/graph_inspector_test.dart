@@ -144,6 +144,7 @@ class _Details implements GraphDetails {
   final held = <(String, Completer<ShowEntry>)>[];
   ZanshinFfiException? refuse;
   ActionOutcome squash = _available;
+  ActionOutcome absorb = _available;
   void Function()? onShow;
 
   static const _available = ActionOutcome(
@@ -213,6 +214,7 @@ class _Details implements GraphDetails {
       describe: _available,
       squashIntoParent: squash,
       abandon: _available,
+      absorb: absorb,
     );
   }
 
@@ -352,6 +354,15 @@ class _Actions implements GraphActions {
       finish: null,
     );
   }
+
+  @override
+  Future<AbsorbResult> absorb(String from) async => AbsorbResult(
+    mutation: await run(GraphAbsorb(from)),
+    rewrittenChangeIds: const <String>['a'],
+    sourceChangeId: from,
+    numRebased: 0,
+    skippedPaths: const <SkippedPath>[],
+  );
 }
 
 Finder _id(String identifier) => find.byWidgetPredicate(
@@ -367,6 +378,28 @@ Finder _button(String identifier) =>
 
 String _tooltipOf(WidgetTester tester, String identifier) =>
     tester.widget<ZsTooltip>(find.ancestor(of: _button(identifier), matching: find.byType(ZsTooltip)).first).message;
+
+/// The Squash menu button (Story 10.36).
+Finder get _squashMenu =>
+    find.byWidgetPredicate((widget) => widget is ZsMenuButton && widget.identifier == 'inspector-squash-menu');
+
+/// The Squash menu's row [identifier] (`inspector-squash`, `inspector-absorb`).
+ZsMenuItem _squashRow(WidgetTester tester, String identifier) => tester
+    .widget<ZsMenuButton>(_squashMenu)
+    .entries
+    .whereType<ZsMenuItem>()
+    .singleWhere((item) => item.identifier == identifier);
+
+/// Opens the Squash menu and chooses the row labelled [label]; its command runs after the row's blink.
+Future<void> _chooseFromSquashMenu(WidgetTester tester, String label) async {
+  await tester.tap(_button('inspector-squash-menu'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.tap(find.text(label));
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+  await tester.pump(const Duration(seconds: 1));
+}
 
 void main() {
   setUpIconRegistry();
@@ -678,7 +711,7 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('the id tooltip goes when the pointer leaves the id for Squash into parent', (tester) async {
+    testWidgets('the id tooltip goes when the pointer leaves the id for the Squash menu', (tester) async {
       await pump(tester);
       final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       addTearDown(mouse.removePointer);
@@ -687,7 +720,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 300));
       expect(copyBubble, findsOneWidget);
-      await mouse.moveTo(tester.getCenter(_button('inspector-squash')));
+      await mouse.moveTo(tester.getCenter(_button('inspector-squash-menu')));
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 300));
       expect(copyBubble, findsNothing);
@@ -695,13 +728,34 @@ void main() {
     });
   });
 
-  testWidgets('a mutable change: Edit, Squash into parent, Abandon; tooltips are the commands', (tester) async {
+  testWidgets('a mutable change: Edit, the Squash menu, Abandon; tooltips are the commands', (tester) async {
     await pump(tester);
     expect(_tooltipOf(tester, 'inspector-edit'), 'jj edit mmmmmmmm');
     expect(tester.widget<ZsButton>(_button('inspector-edit')).variant, ZsButtonVariant.primary);
     expect(tester.widget<ZsButton>(_button('inspector-edit')).icon, ZI.workingCopyAt);
-    expect(_tooltipOf(tester, 'inspector-squash'), 'jj squash -r mmmmmmmm');
-    expect(tester.widget<ZsButton>(_button('inspector-squash')).onPressed, isNotNull);
+    expect(_tooltipOf(tester, 'inspector-squash-menu'), 'Squash or absorb into earlier changes');
+    expect(tester.widget<ZsButton>(_button('inspector-squash-menu')).onPressed, isNotNull);
+    expect(find.descendant(of: _squashMenu, matching: find.text('Squash')), findsOneWidget);
+    final ZsMenuItem squash = _squashRow(tester, 'inspector-squash');
+    expect(
+      (squash.label, squash.cmd, squash.tooltip, squash.enabled),
+      (
+        'Squash into parent',
+        'jj squash -r mmmmmmmm',
+        'jj squash -r mmmmmmmm',
+        true,
+      ),
+    );
+    final ZsMenuItem absorb = _squashRow(tester, 'inspector-absorb');
+    expect(
+      (absorb.label, absorb.cmd, absorb.tooltip, absorb.enabled),
+      (
+        'Absorb into ancestors',
+        'jj absorb --from mmmmmmmm',
+        'jj absorb --from mmmmmmmm',
+        true,
+      ),
+    );
     expect(_tooltipOf(tester, 'inspector-abandon'), 'jj abandon mmmmmmmm');
     expect(_button('inspector-new'), findsNothing);
     await tester.tap(_button('inspector-edit'));
@@ -724,9 +778,83 @@ void main() {
       allowBackwardsNeeded: false,
     );
     await pump(tester);
-    expect(_tooltipOf(tester, 'inspector-squash'), 'Commit gggggggg is immutable');
-    expect(tester.widget<ZsButton>(_button('inspector-squash')).disabledReason, 'Commit gggggggg is immutable');
+    final ZsMenuItem squash = _squashRow(tester, 'inspector-squash');
+    expect((squash.enabled, squash.tooltip), (false, 'Commit gggggggg is immutable'));
+    expect(_squashRow(tester, 'inspector-absorb').enabled, isTrue, reason: 'each row has its own preview');
     await unmount(tester);
+  });
+
+  group('Absorb into ancestors (Story 10.36)', () {
+    testWidgets('nothing absorbable: disabled with the reason, the command still its hint', (tester) async {
+      details.absorb = const ActionOutcome(
+        status: ActionStatus.noOp,
+        refusal: null,
+        combinedDescriptionNeeded: false,
+        allowBackwardsNeeded: false,
+      );
+      await pump(tester);
+      final ZsMenuItem absorb = _squashRow(tester, 'inspector-absorb');
+      expect(
+        (absorb.enabled, absorb.tooltip, absorb.cmd),
+        (
+          false,
+          'Nothing to absorb: no hunk belongs to an earlier change.',
+          'jj absorb --from mmmmmmmm',
+        ),
+      );
+      expect(_squashRow(tester, 'inspector-squash').enabled, isTrue);
+      await unmount(tester);
+    });
+
+    testWidgets("refused: disabled with jj's text", (tester) async {
+      details.absorb = const ActionOutcome(
+        status: ActionStatus.refused,
+        refusal: ActionRefusal('jj.change_not_found', 'Revision `mmmmmmmm` doesn\'t exist'),
+        combinedDescriptionNeeded: false,
+        allowBackwardsNeeded: false,
+      );
+      await pump(tester);
+      final ZsMenuItem absorb = _squashRow(tester, 'inspector-absorb');
+      expect((absorb.enabled, absorb.tooltip), (false, "Revision `mmmmmmmm` doesn't exist"));
+      await unmount(tester);
+    });
+
+    testWidgets('the menu opens under the button; choosing Absorb runs jj absorb --from through the runner', (
+      tester,
+    ) async {
+      await pump(tester);
+      await tester.tap(_button('inspector-squash-menu'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      final Rect button = tester.getRect(_squashMenu);
+      // The exact placement (4 below the left edge) is ZsMenuButton's own test.
+      final Rect row = tester.getRect(find.text('Squash into parent'));
+      expect(row.top, greaterThan(button.bottom));
+      expect(row.left, greaterThan(button.left));
+      expect(find.text('jj squash -r mmmmmmmm'), findsOneWidget);
+      expect(find.text('jj absorb --from mmmmmmmm'), findsOneWidget);
+      await tester.tap(find.text('Absorb into ancestors'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(actions.ran.single, isA<GraphAbsorb>().having((a) => a.id, 'id', _mutable));
+      expect(details.plans, isEmpty, reason: 'absorb asks no squash plan');
+      await unmount(tester);
+    });
+
+    testWidgets('busy: the menu button is disabled with the reason', (tester) async {
+      await pump(tester);
+      actions.hold = Completer<void>();
+      unawaited(graph.run(const GraphEdit(_mutable)));
+      await tester.pump();
+      final ZsButton menu = tester.widget<ZsButton>(_button('inspector-squash-menu'));
+      expect(menu.onPressed, isNull);
+      expect(menu.disabledReason, isNotNull);
+      actions.hold!.complete();
+      await tester.pump();
+      await tester.pump();
+      await unmount(tester);
+    });
   });
 
   testWidgets('@ with no files: the flag, the empty text, New change / Squash / Abandon', (tester) async {
@@ -736,7 +864,7 @@ void main() {
     expect(find.text('No changes yet — whatever you edit in your editor lands here.'), findsOneWidget);
     expect(find.descendant(of: _button('inspector-new'), matching: find.text('New change')), findsOneWidget);
     expect(_tooltipOf(tester, 'inspector-new'), 'jj new wwwwwwww');
-    expect(_button('inspector-squash'), findsOneWidget);
+    expect(_button('inspector-squash-menu'), findsOneWidget);
     expect(_button('inspector-abandon'), findsOneWidget);
     expect(_button('inspector-edit'), findsNothing);
     await tester.tap(_button('inspector-new'));
@@ -2573,7 +2701,7 @@ void main() {
     ) async {
       details.combined = 'A\n\nB\n';
       await pump(tester);
-      await tester.tap(_button('inspector-squash'));
+      await _chooseFromSquashMenu(tester, 'Squash into parent');
       await tester.pump();
       await tester.pump();
       await tester.pump();
@@ -2609,7 +2737,7 @@ void main() {
     testWidgets('a new operation closes the squash form: its combined description may be gone', (tester) async {
       details.combined = 'A\n\nB\n';
       await pump(tester);
-      await tester.tap(_button('inspector-squash'));
+      await _chooseFromSquashMenu(tester, 'Squash into parent');
       await tester.pump();
       await tester.pump();
       await tester.pump();
@@ -2624,7 +2752,7 @@ void main() {
     testWidgets('Esc and Cancel close the squash form with no call', (tester) async {
       details.combined = 'A\n\nB\n';
       await pump(tester);
-      await tester.tap(_button('inspector-squash'));
+      await _chooseFromSquashMenu(tester, 'Squash into parent');
       await tester.pump();
       await tester.pump();
       await tester.pump();
@@ -2632,7 +2760,7 @@ void main() {
       await esc(tester);
       expect(_id('inspector-summary'), findsNothing);
       expect(graph.selected, _mutable);
-      await tester.tap(_button('inspector-squash'));
+      await _chooseFromSquashMenu(tester, 'Squash into parent');
       await tester.pump();
       await tester.pump();
       await tester.pump();

@@ -17706,7 +17706,8 @@ class DropActionsObjectBuilder extends fb.ObjectBuilder {
 
 ///  `zanshin_change_actions`' answer: the card menu's verbs for one change `X` — `new X`,
 ///  `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X` (with the combined-description
-///  flag) and `abandon X`. Every field is always present.
+///  flag), `abandon X` and `absorb --from X` (into `mutable()`, all paths; Story 10.36). Every
+///  field is always present. Fields are APPEND only.
 class ChangeActions {
   ChangeActions._(this._bc, this._bcOffset);
   factory ChangeActions(List<int> bytes) {
@@ -17726,10 +17727,11 @@ class ChangeActions {
   ActionOutcome? get describe => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 12);
   ActionOutcome? get squashIntoParent => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 14);
   ActionOutcome? get abandon => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 16);
+  ActionOutcome? get absorb => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 18);
 
   @override
   String toString() {
-    return 'ChangeActions{newOnto: ${newOnto}, newInsertAfter: ${newInsertAfter}, newInsertBefore: ${newInsertBefore}, edit: ${edit}, describe: ${describe}, squashIntoParent: ${squashIntoParent}, abandon: ${abandon}}';
+    return 'ChangeActions{newOnto: ${newOnto}, newInsertAfter: ${newInsertAfter}, newInsertBefore: ${newInsertBefore}, edit: ${edit}, describe: ${describe}, squashIntoParent: ${squashIntoParent}, abandon: ${abandon}, absorb: ${absorb}}';
   }
 }
 
@@ -17746,7 +17748,7 @@ class ChangeActionsBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(7);
+    fbBuilder.startTable(8);
   }
 
   int addNewOntoOffset(int? offset) {
@@ -17784,6 +17786,11 @@ class ChangeActionsBuilder {
     return fbBuilder.offset;
   }
 
+  int addAbsorbOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -17797,6 +17804,7 @@ class ChangeActionsObjectBuilder extends fb.ObjectBuilder {
   final ActionOutcomeObjectBuilder? _describe;
   final ActionOutcomeObjectBuilder? _squashIntoParent;
   final ActionOutcomeObjectBuilder? _abandon;
+  final ActionOutcomeObjectBuilder? _absorb;
 
   ChangeActionsObjectBuilder({
     ActionOutcomeObjectBuilder? newOnto,
@@ -17806,13 +17814,15 @@ class ChangeActionsObjectBuilder extends fb.ObjectBuilder {
     ActionOutcomeObjectBuilder? describe,
     ActionOutcomeObjectBuilder? squashIntoParent,
     ActionOutcomeObjectBuilder? abandon,
+    ActionOutcomeObjectBuilder? absorb,
   }) : _newOnto = newOnto,
        _newInsertAfter = newInsertAfter,
        _newInsertBefore = newInsertBefore,
        _edit = edit,
        _describe = describe,
        _squashIntoParent = squashIntoParent,
-       _abandon = abandon;
+       _abandon = abandon,
+       _absorb = absorb;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -17824,7 +17834,8 @@ class ChangeActionsObjectBuilder extends fb.ObjectBuilder {
     final int? describeOffset = _describe?.getOrCreateOffset(fbBuilder);
     final int? squashIntoParentOffset = _squashIntoParent?.getOrCreateOffset(fbBuilder);
     final int? abandonOffset = _abandon?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(7);
+    final int? absorbOffset = _absorb?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(8);
     fbBuilder.addOffset(0, newOntoOffset);
     fbBuilder.addOffset(1, newInsertAfterOffset);
     fbBuilder.addOffset(2, newInsertBeforeOffset);
@@ -17832,6 +17843,7 @@ class ChangeActionsObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(4, describeOffset);
     fbBuilder.addOffset(5, squashIntoParentOffset);
     fbBuilder.addOffset(6, abandonOffset);
+    fbBuilder.addOffset(7, absorbOffset);
     return fbBuilder.endTable();
   }
 

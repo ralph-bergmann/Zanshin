@@ -172,7 +172,7 @@ void main() {
       );
     });
 
-    test('change_actions_answers_the_seven_card_rows', () async {
+    test('change_actions_answers_the_eight_card_rows', () async {
       final ChangeActions card = await repo.changeActions(ids[1]);
       final List<ActionOutcome> all = [
         card.newOnto,
@@ -185,6 +185,7 @@ void main() {
       ];
       expect(all.map((o) => o.status), everyElement(ActionStatus.available));
       expect(all.map((o) => o.combinedDescriptionNeeded), [false, false, false, false, false, true, false]);
+      expect(card.absorb.status, ActionStatus.noOp, reason: 'the change only adds a file');
       expect(card.warnings, isEmpty);
 
       final ChangeActions missing = await repo.changeActions(unknown);

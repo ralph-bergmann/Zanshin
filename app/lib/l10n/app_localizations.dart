@@ -1586,6 +1586,30 @@ abstract class AppLocalizations {
   /// **'Squash into parent'**
   String get inspectorSquash;
 
+  /// Inspector menu button that opens Squash into parent and Absorb into ancestors.
+  ///
+  /// In en, this message translates to:
+  /// **'Squash'**
+  String get inspectorSquashMenu;
+
+  /// Tooltip of the inspector's Squash menu button.
+  ///
+  /// In en, this message translates to:
+  /// **'Squash or absorb into earlier changes'**
+  String get inspectorSquashMenuTooltip;
+
+  /// Inspector Squash menu row: jj absorb --from, each hunk moved into the earlier change that last changed its lines.
+  ///
+  /// In en, this message translates to:
+  /// **'Absorb into ancestors'**
+  String get inspectorAbsorb;
+
+  /// Why the inspector's Absorb into ancestors is disabled: jj would change nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to absorb: no hunk belongs to an earlier change.'**
+  String get inspectorAbsorbNothing;
+
   /// The describe form under a kept draft: the change's description changed since the draft was started.
   ///
   /// In en, this message translates to:
@@ -1897,6 +1921,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Squashed {source} into {destination}'**
   String toastSquashed(String source, String destination);
+
+  /// Operation toast after jj absorb; source is the change id the hunks came from, count the number of changes they went into.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Absorbed {source} into 1 change} other{Absorbed {source} into {count} changes}}'**
+  String toastAbsorbed(int count, String source);
 
   /// Operation toast after jj commit: change is the committed change id, subject its first line.
   ///
@@ -2336,6 +2366,24 @@ abstract class AppLocalizations {
   /// **'Squash {target} into Parent'**
   String menuSquashTarget(String target);
 
+  /// Change menu: jj absorb --from, without a target to name.
+  ///
+  /// In en, this message translates to:
+  /// **'Absorb into Ancestors'**
+  String get menuAbsorb;
+
+  /// Change menu: jj absorb --from the target; target is @ or the change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Absorb {target} into Ancestors'**
+  String menuAbsorbTarget(String target);
+
+  /// Undo/Redo menu name of a jj absorb --from; target is the change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Absorb {target}'**
+  String menuAbsorbName(String target);
+
   /// Undo/Redo menu name of a jj rebase … -o; both are change ids.
   ///
   /// In en, this message translates to:
@@ -2773,6 +2821,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Squash into parent'**
   String get cardMenuSquash;
+
+  /// Card menu row: jj absorb --from, each hunk moved into the earlier change that last changed its lines.
+  ///
+  /// In en, this message translates to:
+  /// **'Absorb into ancestors'**
+  String get cardMenuAbsorb;
 
   /// Why the card menu's Squash into parent is disabled on a merge.
   ///

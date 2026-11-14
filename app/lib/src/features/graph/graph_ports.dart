@@ -394,6 +394,22 @@ final class GraphSquash extends GraphAction {
   Set<String> get pendingKeys => <String>{?revision, ...from, ?into};
 }
 
+/// `jj absorb --from <id>` with the CLI's defaults: into `mutable()`, all paths (Story 10.36). It runs through
+/// [GraphActions.absorb], whose result names the changes the hunks went into.
+final class GraphAbsorb extends GraphAction {
+  /// Absorbs [id]'s hunks into its mutable ancestors.
+  const GraphAbsorb(this.id);
+
+  /// The change to absorb from.
+  final String id;
+
+  @override
+  String get command => _jj(<String>['absorb', '--from', id]); // l10n-ignore: jj command
+
+  @override
+  Set<String> get pendingKeys => <String>{id};
+}
+
 /// A hunk selection for a verb's tree arm (Story 10.26): what `RepoHandle.selectTree` takes — the revision's parent
 /// tree as the selection saw it ([left], `ShowEntry.parentTreeIds`) and the selected [files].
 final class HunkChoice {
@@ -830,6 +846,10 @@ abstract interface class GraphActions {
   /// Runs [action].
   Future<MutationResult> run(GraphAction action);
 
+  /// `jj absorb --from <from>` with the CLI's defaults (Story 10.36): [GraphAbsorb]'s verb, whose result names the
+  /// changes the hunks went into.
+  Future<AbsorbResult> absorb(String from);
+
   /// The op-log head's id (`jj op log -n 1`, which snapshots first).
   Future<String> headOpId();
 }
@@ -925,8 +945,12 @@ class RepoGraphActions implements GraphActions {
       GraphRedo() => handle.redo(),
       GraphOpRestore(:final String operation) => handle.opRestore(operation),
       GraphLoggedOperation() => throw ArgumentError.value(action, 'action', 'an op-log entry is not a verb'),
+      GraphAbsorb() => throw ArgumentError.value(action, 'action', 'absorb runs through absorb()'),
     };
   }
+
+  @override
+  Future<AbsorbResult> absorb(String from) => _repo.handle.absorb(from: from);
 
   /// `-B @`: the handle takes change ids only, so @ is read when the verb runs (none: jj refuses the empty location).
   static Future<MutationResult> _revertBeforeAt(RepoHandle handle, String id) async {

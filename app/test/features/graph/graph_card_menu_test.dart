@@ -186,6 +186,15 @@ class _Actions implements GraphActions {
       finish: null,
     );
   }
+
+  @override
+  Future<AbsorbResult> absorb(String from) async => AbsorbResult(
+    mutation: await run(GraphAbsorb(from)),
+    rewrittenChangeIds: const <String>[],
+    sourceChangeId: from,
+    numRebased: 0,
+    skippedPaths: const <SkippedPath>[],
+  );
 }
 
 /// Reads that never answer: the inspector's fetch stays pending.
@@ -223,12 +232,15 @@ void main() {
         'Edit',
         'Describe…',
         'Squash into parent',
+        'Absorb into ancestors',
         'Copy',
         '—',
         'Revert',
         'Abandon',
       ]);
       expect(_items(entries).every((i) => i.enabled), isTrue);
+      expect(_row(entries, 'Absorb into ancestors').cmd, 'jj absorb --from kmnvxoqp');
+      expect(_row(entries, 'Absorb into ancestors').icon, ZI.squashInto);
       expect(_row(entries, 'Revert').cmd, 'jj revert -r kmnvxoqp -B @', reason: 'B is an ancestor of @');
       expect(_row(entries, 'Abandon').danger, isTrue);
       expect(_row(entries, 'Copy').submenu!.map((e) => (e as ZsMenuItem).label), <String>['Change id', 'Description']);
@@ -251,6 +263,7 @@ void main() {
         'jj new -B $_b',
         'jj edit $_b',
         'jj squash -r $_b',
+        'jj absorb --from $_b',
         'jj revert -r $_b -B @',
         'jj abandon $_b',
       ]);
@@ -285,6 +298,12 @@ void main() {
       expect(_row(_menu(_merge), 'Squash into parent').tooltip, 'A merge has more than one parent');
       expect(_row(_menu(_onImm), 'Squash into parent').tooltip, 'The parent is immutable');
       expect(_row(_menu(_b), 'Squash into parent').tooltip, isNull);
+    });
+
+    test('Absorb into ancestors carries no preview: on where Squash is off (Story 10.36)', () {
+      for (final key in <String>[_merge, _onImm, _at]) {
+        expect(_row(_menu(key), 'Absorb into ancestors').enabled, isTrue, reason: key);
+      }
     });
 
     test('an immutable change: the locked menu; Insert after only without an immutable child', () {

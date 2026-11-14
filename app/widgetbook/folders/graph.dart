@@ -41,6 +41,7 @@ import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin/src/features/sync/sync_island.dart';
 import 'package:zanshin_core/zanshin_core.dart'
     show
+        AbsorbResult,
         ActionOutcome,
         ActionStatus,
         Change,
@@ -59,6 +60,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         SegmentKind,
         ShowEntry,
         Signature,
+        SkippedPath,
         SquashPlan,
         ZanshinWarning;
 import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, SettingsStore;
@@ -929,6 +931,22 @@ class _DemoActions implements GraphActions {
       finish: null,
     );
   }
+
+  /// An absorb that moves nothing: the demo has no line history (jj's "Nothing changed.").
+  @override
+  Future<AbsorbResult> absorb(String from) async => AbsorbResult(
+    mutation: MutationResult(
+      newOpId: 'op$_ops',
+      newChangeIds: const <String>[],
+      abandonedChangeIds: const <String>[],
+      workingCopyChangeId: null,
+      finish: null,
+    ),
+    rewrittenChangeIds: const <String>[],
+    sourceChangeId: null,
+    numRebased: 0,
+    skippedPaths: const <SkippedPath>[],
+  );
 }
 
 /// One color-words line (Story 5.10) as the backend sends it, in `hunks.rs`' test notation: a kind (` ` context, `-`
@@ -1049,6 +1067,13 @@ class _DemoDetails implements GraphDetails {
     describe: _available,
     squashIntoParent: _available,
     abandon: _available,
+    // The demo's absorb moves nothing, as [_DemoActions.absorb].
+    absorb: ActionOutcome(
+      status: ActionStatus.noOp,
+      refusal: null,
+      combinedDescriptionNeeded: false,
+      allowBackwardsNeeded: false,
+    ),
   );
 
   /// Story 10.24: a modified file gets four hunks (in Rust under `fn main()`), the first three with word marks (Story

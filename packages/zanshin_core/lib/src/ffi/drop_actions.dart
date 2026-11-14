@@ -287,6 +287,7 @@ final class ChangeActions {
     required this.describe,
     required this.squashIntoParent,
     required this.abandon,
+    required this.absorb,
     this.warnings = const [],
   });
 
@@ -310,6 +311,10 @@ final class ChangeActions {
 
   /// `jj abandon X`.
   final ActionOutcome abandon;
+
+  /// `jj absorb --from X` with the CLI's defaults (into `mutable()`, all
+  /// paths); [ActionStatus.noOp] when no hunk is absorbable.
+  final ActionOutcome absorb;
 
   /// The call's warnings — the pre-verb snapshot's only.
   final List<ZanshinWarning> warnings;
@@ -362,6 +367,7 @@ ChangeActions decodeChangeActionsEnvelopeInternal(Uint8List bytes) {
     describe: _outcome(payload.describe),
     squashIntoParent: _outcome(payload.squashIntoParent),
     abandon: _outcome(payload.abandon),
+    absorb: _outcome(payload.absorb),
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

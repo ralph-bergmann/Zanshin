@@ -31,6 +31,16 @@
 /* busy — the spinner takes the icon slot, the label stays, width holds, clicks are ignored */
 .zs-btn[aria-busy="true"]{pointer-events:none}
 
+/* MenuButton — a Button whose label is followed by chevron-down (12px, .75): 5px after the label, 8px before the right edge
+   (the Button's gap 7 − 2, padding 12 − 4). Open shows no state of its own: the menu is the signal. The menu hangs 4px below the left edge. */
+.zs-menubtn-wrap{position:relative;display:inline-flex}
+.zs-btn.zs-menubtn{padding-right:8px}
+.zs-btn--lg.zs-menubtn{padding-right:12px}
+.zs-menubtn>span{display:inline-flex;align-items:center;gap:5px}
+.zs-menubtn .zs-menubtn-chev{opacity:.75}
+.zs-menubtn-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--z-menu)}
+.zs-menubtn-pop>.zs-menu{width:max-content}
+
 /* IconButton — 30 (sm, --control-md: panel close, the height of the row it sits in) · 36 (md, --control-lg: inside islands) · 40 (lg, rail: 52 − 2 × 6). on = toggled/open. Badge sits on the top-right corner. */
 .zs-ib{position:relative;display:grid;place-items:center;width:var(--control-lg);height:var(--control-lg);padding:0;border:0;border-radius:var(--radius-card);background:transparent;color:var(--text-muted);cursor:default;flex-shrink:0;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
 .zs-ib:hover,.zs-ib.st-hover{background:var(--fl-hover);color:var(--text)}

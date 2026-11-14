@@ -1277,6 +1277,37 @@ pub fn scenarios() -> Vec<Scenario> {
                 |_| args(&["absorb"]),
             )
         },
+        // ── Story 10.36: the card's absorb row, `jj absorb --from X` with the defaults ──
+        Scenario {
+            // D rewrites lines A and B last changed; E on top keeps D off `@`.
+            setup: &[
+                Step::Jj(&["new", "-m", "D"]),
+                Step::Write("a.txt", "a changed\n"),
+                Step::Write("b.txt", "b changed\n"),
+                Step::Jj(&["new", "-m", "E"]),
+            ],
+            ..simple(
+                "absorb_from_two_ancestors",
+                |repo, _, s| {
+                    let result = repo.absorb(Some(s.change("D")), None, &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["absorb".to_owned(), "--from".to_owned(), s.change_arg("D")],
+            )
+        },
+        Scenario {
+            // An undescribed `@` whose every hunk belongs to A or B: jj abandons it.
+            setup: &[Step::Jj(&["new"])],
+            files: &[("a.txt", "a changed\n"), ("b.txt", "b changed\n")],
+            ..simple(
+                "absorb_from_undescribed_at",
+                |repo, _, s| {
+                    let result = repo.absorb(Some(s.change("@")), None, &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["absorb".to_owned(), "--from".to_owned(), s.change_arg("@")],
+            )
+        },
         Scenario {
             // jj 0.46 refuses this without --allow-cross-workspace (`cli/src/commands/undo.rs`
             // @ v0.46.0); Zanshin ported that in Story 9.39. Non-colocated, so `workspace add`

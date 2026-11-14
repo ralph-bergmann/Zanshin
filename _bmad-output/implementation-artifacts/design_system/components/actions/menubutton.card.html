@@ -1,0 +1,50 @@
+<!-- @dsCard group="Components" viewport="700x300" name="MenuButton" subtitle="The inspector's Squash: a Button with a chevron that opens a Menu 4px below its left edge — every state, and open" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:18px}.st{display:flex;flex-direction:column;align-items:flex-start;gap:6px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}.open{position:relative;height:118px}.open .zs-menubtn-pop{position:absolute}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { MenuButton, Menu, Button, Icon } = window.ZanshinDesignSystem_a33847;
+  const ITEMS = [
+    { id: "squash", label: "Squash into parent", cmd: "jj squash -r kmnvxoqp", title: "jj squash -r kmnvxoqp" },
+    { id: "absorb", label: "Absorb into ancestors", cmd: "jj absorb --from kmnvxoqp", disabled: true, title: "Nothing to absorb: no hunk belongs to an earlier change." },
+  ];
+  const TIP = "Squash or absorb into earlier changes";
+  const STATES = [["Rest", ""], ["Hover", "st-hover"], ["Pressed", "st-press"], ["Focus", "st-focus"]];
+  const Demo = () => (
+    <div className="col">
+      <div className="row">
+        {STATES.map(([l, cls]) => (
+          <div key={l} className="st"><span className="lbl">{l}</span><MenuButton items={ITEMS} title={TIP} className={cls}>Squash</MenuButton></div>
+        ))}
+        <div className="st"><span className="lbl">Disabled</span><MenuButton items={ITEMS} disabled title="Another action is running">Squash</MenuButton></div>
+      </div>
+      <div className="row">
+        <div className="st"><span className="lbl">Open — the inspector's action row</span>
+          <div className="row" style={{ gap: 6 }}>
+            <Button variant="primary" title="jj edit kmnvxoqp">Edit</Button>
+            <span className="zs-menubtn-wrap open">
+              <Button className="zs-menubtn" aria-haspopup="menu" aria-expanded="true">Squash<Icon className="zs-menubtn-chev" name="chevron-down" size="sm" /></Button>
+              <div className="zs-menubtn-pop" style={{ top: 34 }}><Menu still items={ITEMS} highlight={0} style={{ maxWidth: 360 }} /></div>
+            </span>
+            <Button variant="danger" title="jj abandon kmnvxoqp">Abandon</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

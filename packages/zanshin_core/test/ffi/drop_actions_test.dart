@@ -201,6 +201,7 @@ void main() {
             describe: outcome(fbs.ActionStatus.Available),
             squashIntoParent: outcome(fbs.ActionStatus.NoOp, combined: true),
             abandon: outcome(fbs.ActionStatus.Available),
+            absorb: outcome(fbs.ActionStatus.NoOp),
           ),
         ).toBytes(),
       );
@@ -214,6 +215,7 @@ void main() {
           card.describe,
           card.squashIntoParent,
           card.abandon,
+          card.absorb,
         ].map((o) => o.status),
         [
           ActionStatus.available,
@@ -223,6 +225,7 @@ void main() {
           ActionStatus.available,
           ActionStatus.noOp,
           ActionStatus.available,
+          ActionStatus.noOp,
         ],
       );
       expect(card.newInsertBefore.refusal?.context, 'abc');
@@ -250,6 +253,7 @@ void main() {
             ),
             squashIntoParent: outcome(fbs.ActionStatus.Available),
             abandon: outcome(fbs.ActionStatus.Available),
+            absorb: outcome(fbs.ActionStatus.Available),
           ),
         ).toBytes(),
       );

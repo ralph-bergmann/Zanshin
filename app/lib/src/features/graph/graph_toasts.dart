@@ -273,6 +273,10 @@ InlineSpan _text(AppLocalizations strings, ZsColors colors, GraphOutcome outcome
           target(result?.abandonedChangeIds.firstOrNull),
         target(outcome.flash.firstOrNull),
       ];
+    case GraphAbsorb(id: final String source):
+      // The flash is the changes the hunks went into.
+      message = strings.toastAbsorbed(outcome.flash.length, s0);
+      parts = <InlineSpan>[id(source)];
     case GraphRebase(
       :final List<String> source,
       :final List<String> revisions,

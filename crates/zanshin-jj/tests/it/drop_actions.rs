@@ -920,8 +920,8 @@ fn a_conflicted_bookmark_with_a_deleted_side_counts_only_the_present_side() {
     );
 }
 
-/// The seven card-menu rows in field order.
-fn card(fx: &mut Fx, id: &ChangeId) -> [Row; 7] {
+/// The eight card-menu rows in field order.
+fn card(fx: &mut Fx, id: &ChangeId) -> [Row; 8] {
     let before = head_op(&fx.root);
     let actions = fx.repo.change_actions(id).expect("change_actions");
     assert_eq!(head_op(&fx.root), before, "the query writes no operation");
@@ -934,9 +934,11 @@ fn card(fx: &mut Fx, id: &ChangeId) -> [Row; 7] {
         row(&actions.describe),
         row(&actions.squash_into_parent),
         row(&actions.abandon),
+        row(&actions.absorb),
     ]
 }
 
+/// B only adds files, so no hunk belongs to an earlier change: the absorb row is `NoOp`.
 #[test]
 fn change_actions_of_a_described_change_are_all_available() {
     let mut fx = base(None);
@@ -950,9 +952,26 @@ fn change_actions_of_a_described_change_are_all_available() {
             available(),
             available(),
             combined(),
-            available()
+            available(),
+            no_op()
         ]
     );
+}
+
+/// Story 10.36: E rewrites a line B last changed, so `jj absorb --from E` moves it into B.
+#[test]
+fn change_actions_of_an_absorbable_change_offer_absorb() {
+    let mut fx = base(None);
+    let e = absorbable(&mut fx);
+    assert_eq!(card(&mut fx, &e)[7], available());
+}
+
+/// With B immutable, `mutable()` holds no change that last changed E's line.
+#[test]
+fn change_actions_absorb_nothing_into_immutable_ancestors() {
+    let mut fx = base(Some(|fx| &fx.b));
+    let e = absorbable(&mut fx);
+    assert_eq!(card(&mut fx, &e)[7], no_op());
 }
 
 /// Story 9.38: `edit` of the current `@` is the CLI's "Already editing that commit." — `NoOp`.
@@ -970,7 +989,8 @@ fn change_actions_of_the_working_copy_report_edit_as_a_no_op() {
             no_op(),
             available(),
             combined(),
-            available()
+            available(),
+            no_op()
         ]
     );
 }
@@ -990,6 +1010,8 @@ fn change_actions_of_the_root_refuse_with_each_verbs_text() {
             refused(&invalid("cannot describe the root commit")),
             refused(&invalid("Cannot squash merge commits without a specified destination")),
             refused(&invalid("cannot abandon the root commit")),
+            // The root has no hunk to absorb: the CLI's "Nothing changed.".
+            no_op(),
         ]
     );
 }
@@ -1009,6 +1031,8 @@ fn change_actions_of_an_immutable_change_refuse_the_rewrites() {
             refused(&b_imm),
             refused(&b_imm),
             refused(&b_imm),
+            // Absorb guards only its targets, and `mutable()` excludes B's ancestors.
+            no_op(),
         ]
     );
 }
@@ -1184,7 +1208,7 @@ fn split_rows_agree_with_split() {
 #[test]
 fn change_actions_rows_agree_with_their_verbs() {
     type Verb = fn(&mut Repo, ChangeId) -> Result<(), MutateError>;
-    let verbs: [Verb; 7] = [
+    let verbs: [Verb; 8] = [
         |repo, x| repo.new_change(&[x], &[], &[]).map(drop),
         |repo, x| repo.new_change(&[], &[x], &[]).map(drop),
         |repo, x| repo.new_change(&[], &[], &[x]).map(drop),
@@ -1198,15 +1222,16 @@ fn change_actions_rows_agree_with_their_verbs() {
             .map(drop)
         },
         |repo, x| repo.abandon(&[x]).map(drop),
+        |repo, x| repo.absorb(Some(x), None, &[]).map(drop),
     ];
-    let pick_b: fn(&Fx) -> ChangeId = |fx| fx.b.clone();
-    let pick_root: fn(&Fx) -> ChangeId = |fx| fx.zero.clone();
-    let pick_unknown: fn(&Fx) -> ChangeId = |_| ChangeId(UNKNOWN.to_owned());
-    let pick_wc: fn(&Fx) -> ChangeId = |fx| fx.d.clone();
-    for pick in [pick_b, pick_root, pick_unknown, pick_wc] {
+    let pick_b: fn(&mut Fx) -> ChangeId = |fx| fx.b.clone();
+    let pick_root: fn(&mut Fx) -> ChangeId = |fx| fx.zero.clone();
+    let pick_unknown: fn(&mut Fx) -> ChangeId = |_| ChangeId(UNKNOWN.to_owned());
+    let pick_wc: fn(&mut Fx) -> ChangeId = |fx| fx.d.clone();
+    for pick in [pick_b, pick_root, pick_unknown, pick_wc, absorbable] {
         for (index, verb) in verbs.iter().enumerate() {
             let mut fx = base(None);
-            let x = pick(&fx);
+            let x = pick(&mut fx);
             let expected = card(&mut fx, &x).into_iter().nth(index).expect("row");
             agree(&mut fx, &expected, |repo| verb(repo, x));
         }

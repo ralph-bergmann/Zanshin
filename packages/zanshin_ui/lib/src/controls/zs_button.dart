@@ -16,8 +16,12 @@ import 'zs_control.dart';
 import 'zs_control_core.dart';
 import 'zs_focus_ring.dart';
 import 'zs_lerp_builder.dart';
+import 'zs_menu.dart';
 import 'zs_spinner.dart';
 import 'zs_tooltip.dart';
+
+// The menu button builds the button's own look through its private constructor.
+part 'zs_menu_button.dart';
 
 /// A text button's look (DS components/actions/Button.d.ts; actions.css:4-32).
 enum ZsButtonVariant {
@@ -131,7 +135,23 @@ class ZsButton extends StatelessWidget implements ZsControl {
     this.statesController,
     this.identifier,
     super.key,
-  }) : assert(!iconOnly || icon != null, 'An icon-only button needs an icon.');
+  }) : assert(!iconOnly || icon != null, 'An icon-only button needs an icon.'),
+       _chevron = false;
+
+  /// [ZsMenuButton]'s button: the label followed by the menu's chevron.
+  const ZsButton._withChevron({
+    required this.label,
+    required this.onPressed,
+    required this.variant,
+    required this.size,
+    required this.icon,
+    required this.disabledReason,
+    required this.focusNode,
+    required this.statesController,
+    required this.identifier,
+  }) : iconOnly = false,
+       busy = false,
+       _chevron = true;
 
   /// The verb, in sentence case; the name and tooltip of an icon-only button.
   final String label;
@@ -165,6 +185,9 @@ class ZsButton extends StatelessWidget implements ZsControl {
 
   @override
   final String? identifier;
+
+  /// Whether a `chevron-down` follows the label ([ZsMenuButton]).
+  final bool _chevron;
 
   bool get _large => size == ZsButtonSize.lg;
 
@@ -244,6 +267,10 @@ class ZsButton extends StatelessWidget implements ZsControl {
         final Widget? mark = busy
             ? ZsSpinner(size: iconSize, color: look.icon)
             : (glyph == null ? null : ZanshinIcon(glyph, size: iconSize, color: look.icon));
+        final double gap = _large ? 8 : 7;
+        // The menu's chevron sits 5 after the label and 4 nearer the edge (DS actions.css `.zs-menubtn>span{gap:5px}`,
+        // `.zs-btn.zs-menubtn{padding-right:8px}`).
+        final double chevronPull = _chevron ? 4 : 0;
         final Widget content = iconOnly
             ? SizedBox.square(
                 dimension: height,
@@ -254,13 +281,12 @@ class ZsButton extends StatelessWidget implements ZsControl {
                 child: Padding(
                   // `padding:0 12px` (lg `0 16px 0 13px`; DS components/actions/actions.css:4, :8).
                   padding: _large
-                      ? const EdgeInsets.fromLTRB(13, 0, 16, 0)
-                      : const EdgeInsets.symmetric(horizontal: 12),
+                      ? EdgeInsets.fromLTRB(13, 0, 16 - chevronPull, 0)
+                      : EdgeInsets.fromLTRB(12, 0, 12 - chevronPull, 0),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    spacing: _large ? 8 : 7,
                     children: <Widget>[
-                      ?mark,
+                      if (mark != null) ...<Widget>[mark, SizedBox(width: gap)],
                       Text(
                         label,
                         style: ZsType.control.copyWith(
@@ -269,6 +295,14 @@ class ZsButton extends StatelessWidget implements ZsControl {
                         ),
                         softWrap: false,
                       ),
+                      if (_chevron) ...<Widget>[
+                        const SizedBox(width: 5),
+                        ZanshinIcon(
+                          ZI.chevronDown,
+                          size: ZsIconSize.sm,
+                          color: look.text.withValues(alpha: look.text.a * .75),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -44,13 +44,15 @@ use crate::cli_command::{self, CliCommand};
 use crate::commit_views::plan_interdiff;
 use crate::duplicate::plan_duplicate;
 use crate::mutate::{
-    given, plan_abandon, plan_absorb, plan_describe, plan_edit, plan_new, plan_restore, resolve_commit, MutateError,
+    given, plan_abandon, plan_absorb, plan_describe, plan_edit, plan_new, plan_restore, resolve_commit, rev,
+    MutateError,
 };
 use crate::op_support::{resolve_immutable, start_repo_transaction, LocationArgs, NO_LOCATION, ONTO_WITH_INSERT};
 use crate::rebase::{
     load_dry_run_head, plan_rebase_branch, plan_rebase_revisions, plan_rebase_source, rebase_is_no_op,
 };
 use crate::revert::plan_revert;
+use crate::revset::{parse_revset, resolve_expression};
 use crate::snapshot::{CommandEnv, VerbContext};
 use crate::squash_split::{combined_description_needed, plan_squash, prepare_split};
 use crate::warning::Warnings;
@@ -182,6 +184,9 @@ pub struct ChangeActions {
     pub squash_into_parent: ActionOutcome,
     /// `jj abandon X`.
     pub abandon: ActionOutcome,
+    /// `jj absorb --from X` with the CLI's defaults: into the `mutable()` alias, all paths;
+    /// [`ActionStatus::NoOp`] when no hunk is absorbable (the CLI's "Nothing changed.").
+    pub absorb: ActionOutcome,
 }
 
 /// What a row's plan decided when it did not refuse.
@@ -653,7 +658,7 @@ pub(crate) fn drop_actions(
     })
 }
 
-/// [`crate::Repo::change_actions`]: the seven card-menu rows for `change`.
+/// [`crate::Repo::change_actions`]: the eight card-menu rows for `change`.
 ///
 /// # Errors
 ///
@@ -695,6 +700,18 @@ pub(crate) fn change_actions(
             abandon: rows.row(cli_command::ABANDON, ctx, |tx, ctx| {
                 plan_abandon(tx, &ctx.templates(rows.workspace), one)?;
                 Ok(Planned::AVAILABLE)
+            })?,
+            absorb: rows.row(cli_command::ABSORB, ctx, |tx, ctx| {
+                // `Repo::absorb`'s `--into` default, parsed and resolved as the verb does.
+                let into = parse_revset(rows.repo, "mutable()", &mut ctx.warnings).map_err(rev)?;
+                let prefixes = ctx.template_startup.id_prefix_context();
+                let destinations =
+                    |repo: &jj_lib::repo::MutableRepo| resolve_expression(repo, &into, Some(&prefixes)).map_err(rev);
+                let plan = plan_absorb(tx, rows.workspace, ctx, &prefixes, Some(change), destinations, &[])?;
+                Ok(Planned {
+                    no_op: plan.target_commits.is_empty(),
+                    ..Planned::AVAILABLE
+                })
             })?,
         })
     })

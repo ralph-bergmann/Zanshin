@@ -284,6 +284,7 @@ class _Details implements GraphDetails {
     describe: _available,
     squashIntoParent: _available,
     abandon: _available,
+    absorb: _available,
   );
 
   @override

@@ -1,7 +1,7 @@
 // Inspector — reading and shaping one change. The title is the describe field; checkboxes pick hunks; the composer turns a selection
 // into a commit (@: jj commit) or a split (jj split -r). Files, hunks and bookmarks can be dragged onto another change.
 (() => {
-const { Island, IconButton, Button, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch } = window.ZanshinDesignSystem_a33847;
+const { Island, IconButton, Button, MenuButton, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch } = window.ZanshinDesignSystem_a33847;
 const Swatch = HatchSwatch || (() => null);
 const first = (s) => (s || "").split("\n")[0].trim();
 const joinMsg = (s, b) => (s.trim() + (b.trim() ? "\n\n" + b.trim() : "")).trim();
@@ -147,7 +147,11 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
     : [
       isWC ? <Button key="new" onClick={() => onNew(c.id)} title="jj new — leave this change as it is and start a new one">New change</Button>
         : <Button key="edit" variant={composing ? "default" : "primary"} icon={<AtBadge size="sm"/>} onClick={onEdit} title="Move the working copy here — jj edit">Edit</Button>,
-      <Button key="sq" disabled={!canSquash} onClick={onSquash} title={canSquash ? "jj squash — fold into the parent" : "The parent can’t be rewritten"}>Squash into parent</Button>,
+      <MenuButton key="sq" title="Squash or absorb into earlier changes" onSelect={(id) => id === "squash" && onSquash()} items={[
+        { id: "squash", label: "Squash into parent", cmd: "jj squash -r " + c.id.slice(0, 8), disabled: !canSquash, title: canSquash ? "jj squash -r " + c.id.slice(0, 8) : "The parent can’t be rewritten" },
+        // The kit keeps no line history, so nothing is ever absorbable here.
+        { id: "absorb", label: "Absorb into ancestors", cmd: "jj absorb --from " + c.id.slice(0, 8), disabled: true, title: "Nothing to absorb: no hunk belongs to an earlier change." },
+      ]}>Squash</MenuButton>,
       <Button key="ab" variant="danger" className="zk-push" onClick={onAbandon} title="jj abandon">Abandon</Button>,
     ];
 

@@ -95,6 +95,8 @@ parity!(
     restore_from,
     restore_no_args,
     absorb,
+    absorb_from_two_ancestors,
+    absorb_from_undescribed_at,
     undo_cross_workspace,
     redo_after_undo,
     redo_nothing,
@@ -549,7 +551,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 474);
+    assert_eq!(SCENARIO_IDS.len(), 476);
 }
 
 #[test]

@@ -206,6 +206,7 @@ class AppMenuModel extends ChangeNotifier {
             ? names(from)
             : '@', // l10n-ignore: jj's symbol
       ),
+      GraphAbsorb(:final String id) => s.menuAbsorbName(name(id)),
       GraphCommit(:final String id) => s.menuCommitTarget(name(id)),
       GraphSplit(:final String id) => s.menuSplitTarget(name(id)),
       GraphBookmarkCreate(:final List<String> names) => s.menuBookmarkCreate(names.join(', ')),
@@ -527,6 +528,10 @@ class AppMenuModel extends ChangeNotifier {
                   final ValueChanged<String> squash when target != null => () => squash(target),
                   _ => change((id) => GraphSquash(revision: id)),
                 },
+              ),
+              PlatformMenuItem(
+                label: named == null ? s.menuAbsorb : s.menuAbsorbTarget(named),
+                onSelected: change(GraphAbsorb.new),
               ),
               PlatformMenuItem(
                 label: named == null || targetIsAt ? s.menuRevert : s.menuRevertTarget(named),

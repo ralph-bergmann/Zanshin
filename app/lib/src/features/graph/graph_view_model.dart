@@ -789,9 +789,16 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
         _finish();
         return const GraphActionDisabled(GraphDisabledReason.foreignOperation);
       }
-      final MutationResult result = await actions.run(action);
+      final AbsorbResult? absorbed = action is GraphAbsorb ? await actions.absorb(action.id) : null;
+      final MutationResult result = absorbed == null ? await actions.run(action) : _absorbMutation(absorbed);
       _running = null;
-      final GraphOutcome outcome = _succeeded(action, result, wrote: result.newOpId != head, plan: plan);
+      final GraphOutcome outcome = _succeeded(
+        action,
+        result,
+        wrote: result.newOpId != head,
+        plan: plan,
+        absorbed: absorbed,
+      );
       if (outcome.undoable) {
         // Its hints ride with the first layout of a new operation.
         _landing = outcome;
@@ -814,6 +821,19 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
       _finish();
       rethrow;
     }
+  }
+
+  /// An absorb's mutation, carrying the call's warnings (the nested result has none).
+  static MutationResult _absorbMutation(AbsorbResult absorbed) {
+    final MutationResult m = absorbed.mutation;
+    return MutationResult(
+      newOpId: m.newOpId,
+      newChangeIds: m.newChangeIds,
+      abandonedChangeIds: m.abandonedChangeIds,
+      workingCopyChangeId: m.workingCopyChangeId,
+      finish: m.finish,
+      warnings: absorbed.warnings,
+    );
   }
 
   /// Ends a run that reloads nothing.
@@ -840,6 +860,8 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
         return (anchor: onto.firstOrNull, destination: null);
       case GraphAbandon(:final List<String> ids):
         return (anchor: _firstParent(ids.firstOrNull), destination: null);
+      case GraphAbsorb(:final String id):
+        return (anchor: _firstParent(id), destination: null);
       case GraphRevert(:final String id) || GraphCommit(:final String id) || GraphSplit(:final String id):
         return (anchor: id, destination: null);
       case GraphSquash(:final String? revision, :final List<String> from, :final String? into):
@@ -864,12 +886,14 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     return edges.start < edges.end ? layout.keyOf(layout.parentOf(edges.start)) : null;
   }
 
-  /// The selection, the reveal and the undo state after [action] succeeded; [wrote] is whether it wrote an operation.
+  /// The selection, the reveal and the undo state after [action] succeeded; [wrote] is whether it wrote an operation,
+  /// [absorbed] a [GraphAbsorb]'s own result.
   GraphOutcome _succeeded(
     GraphAction action,
     MutationResult result, {
     required bool wrote,
     required ({String? anchor, String? destination}) plan,
+    AbsorbResult? absorbed,
   }) {
     final String? born = result.newChangeIds.firstOrNull;
     final String? selected = _selected;
@@ -894,6 +918,14 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
         if (plan.destination != null && result.abandonedChangeIds.contains(selected)) {
           _selected = plan.destination;
         }
+      case GraphAbsorb(:final String id):
+        // jj abandoned the emptied source: as after Abandon.
+        if (absorbed != null &&
+            selected == id &&
+            absorbed.rewrittenChangeIds.isNotEmpty &&
+            absorbed.sourceChangeId == null) {
+          _selected = null;
+        }
       default:
         break;
     }
@@ -912,6 +944,7 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
         if (action is GraphRebase) ...<String>[...action.source, ...action.revisions],
         if (action is GraphCommit) action.id,
         if (action is GraphSplit) action.id,
+        ...?absorbed?.rewrittenChangeIds,
       ],
     );
     switch (action) {

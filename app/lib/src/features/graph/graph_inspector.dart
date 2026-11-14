@@ -919,9 +919,11 @@ class InspectorViewModel extends ChangeNotifier {
 ///   "Describe this change…". The form replaces it in place: Summary and Details, ↩ in Summary or ⌘↩ save, the
 ///   command, Cancel and the gold Save.
 /// - **Meta:** author · date · parents; **chips:** the bookmarks with ✓ / local / remote.
-/// - **Actions** (hidden while the form is open): immutable "New change on top"; @ "New change", "Squash into parent",
-///   "Abandon"; else "Edit", "Squash into parent", "Abandon" — each tooltip the full command; Squash is disabled only
-///   with jj's refusal and opens the squash form when jj would ask for a combined description (Story 10.25).
+/// - **Actions** (hidden while the form is open): immutable "New change on top"; @ "New change", "Squash ▾",
+///   "Abandon"; else "Edit", "Squash ▾", "Abandon" — each tooltip the full command. The Squash menu button (Story
+///   10.36) opens "Squash into parent" and "Absorb into ancestors", each row's command its hint and its tooltip the
+///   reason it is off, else the command: Squash is disabled only with jj's refusal and opens the squash form when jj
+///   would ask for a combined description (Story 10.25); Absorb with jj's refusal, or when no hunk is absorbable.
 /// - **Changes:** the file count with the summary's totals, the viewed counter with Mark all / Reset, one row per file
 ///   with its ± and ✓ (one Tab stop, ↑ ↓ move the highlight, a click or ↩ focuses), and the focused file's diff block
 ///   (Story 10.24); or the empty, stale or refusal text. On a mutable change each row and the header have a checkbox.
@@ -2108,6 +2110,23 @@ class _Actions extends StatelessWidget {
 
     final ActionOutcome? squash = model.actions?.squashIntoParent;
     final ActionRefusal? refusal = squash?.status == ActionStatus.refused ? squash?.refusal : null;
+    final ActionOutcome? absorb = model.actions?.absorb;
+    final String? absorbDisabled = switch (absorb) {
+      ActionOutcome(status: ActionStatus.refused, :final ActionRefusal? refusal) => refusal?.context ?? refusal?.code,
+      ActionOutcome(status: ActionStatus.noOp) => strings.inspectorAbsorbNothing,
+      _ => null,
+    };
+
+    /// A row of the Squash menu: [command] as its hint, its tooltip the reason it is off, else the command.
+    ZsMenuItem row(String label, String command, {required String identifier, String? disabled, VoidCallback? run}) =>
+        ZsMenuItem(
+          label: label,
+          cmd: command,
+          enabled: can && disabled == null,
+          tooltip: disabled ?? command,
+          identifier: identifier,
+          onSelected: run,
+        );
     // The verbs wrap (`flex-wrap:wrap`, DS kit.css:112); Abandon stays right-aligned beside them.
     final verbs = data.immutable
         ? <Widget>[
@@ -2138,13 +2157,29 @@ class _Actions extends StatelessWidget {
                 icon: ZI.workingCopyAt,
                 identifier: 'inspector-edit',
               ),
-            button(
-              strings.inspectorSquash,
-              GraphSquash(revision: key),
-              GraphSquash(revision: short).command,
-              disabled: refusal == null ? null : refusal.context ?? refusal.code,
-              onPressed: () => unawaited(model.squash(key)),
-              identifier: 'inspector-squash',
+            ZsTooltip(
+              message: blocked ?? strings.inspectorSquashMenuTooltip,
+              child: ZsMenuButton(
+                label: strings.inspectorSquashMenu,
+                disabledReason: blocked,
+                identifier: 'inspector-squash-menu',
+                entries: <ZsMenuEntry>[
+                  row(
+                    strings.inspectorSquash,
+                    GraphSquash(revision: short).command,
+                    identifier: 'inspector-squash',
+                    disabled: refusal == null ? null : refusal.context ?? refusal.code,
+                    run: () => unawaited(model.squash(key)),
+                  ),
+                  row(
+                    strings.inspectorAbsorb,
+                    GraphAbsorb(short).command,
+                    identifier: 'inspector-absorb',
+                    disabled: absorbDisabled,
+                    run: () => unawaited(graph.run(GraphAbsorb(key))),
+                  ),
+                ],
+              ),
             ),
           ];
     return Container(

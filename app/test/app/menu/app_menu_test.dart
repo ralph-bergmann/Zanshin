@@ -105,6 +105,15 @@ class _GraphActions implements GraphActions {
       finish: null,
     );
   }
+
+  @override
+  Future<AbsorbResult> absorb(String from) async => AbsorbResult(
+    mutation: await run(GraphAbsorb(from)),
+    rewrittenChangeIds: const <String>[],
+    sourceChangeId: from,
+    numRebased: 0,
+    skippedPaths: const <SkippedPath>[],
+  );
 }
 
 /// A window's stand-in content: a sheet while [sheet] says so, and a text field when [field] is given.
@@ -347,6 +356,7 @@ void main() {
       'Describe…',
       'Edit',
       'Squash into Parent',
+      'Absorb into Ancestors',
       'Revert',
       'Abandon',
       'Fetch',
@@ -496,7 +506,7 @@ void main() {
       'Zanshin Help',
       // No graph bound:
       'Undo', 'Redo', 'Find', 'Free', 'Compact', 'Detailed Cards', 'Group Stacks', 'Show Minimap', 'Reload',
-      'New Change', 'Edit', 'Squash into Parent', 'Revert', 'Abandon',
+      'New Change', 'Edit', 'Squash into Parent', 'Absorb into Ancestors', 'Revert', 'Abandon',
       'Selection', 'Working Copy (@)', 'Parent', 'Child',
       // No key window yet; no recent project.
       'Close Window', 'Open Recent',
@@ -586,12 +596,17 @@ void main() {
     await tester.pump();
     rig.select('Squash kmnvxoqp into Parent');
     await tester.pump();
+    // Story 10.36: enabled like Squash; it runs through the absorb port.
+    expect(rig.enabled('Absorb kmnvxoqp into Ancestors'), isTrue);
+    rig.select('Absorb kmnvxoqp into Ancestors');
+    await tester.pump();
     rig.select('New Change');
     await tester.pump();
     expect(rig.graphActions!.ran.map((a) => a.command), <String>[
       'jj edit $_mid',
       'jj revert -r $_mid -B @',
       'jj squash -r $_mid',
+      'jj absorb --from $_mid',
       'jj new $_mid',
     ]);
 
@@ -613,6 +628,14 @@ void main() {
     rig.select('Working Copy (@)');
     expect((rig.model!.reveal?.key, rig.model!.selected), (_wc, _mid));
     rig.unbindGraph();
+  });
+
+  test('Undo and Redo name an absorb "Absorb ‹target›" (Story 10.36)', () {
+    final model = GraphViewModel();
+    addTearDown(model.dispose);
+    final AppLocalizations s = platformStrings();
+    expect(AppMenuModel.actionName(s, model, const GraphAbsorb('abc')), 'Absorb abc');
+    expect(AppMenuModel.actionName(s, model, const GraphUndo(GraphAbsorb('abc'))), 'Absorb abc');
   });
 
   test('Undo and Redo name Track / Untrack by the remote bookmark (Story 10.14)', () {

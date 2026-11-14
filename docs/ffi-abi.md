@@ -2039,7 +2039,7 @@ not a failure of the call.
 |-------|--------|
 | `DropActions` | `actions: [DropAction]` — every location's rows, in location order. |
 | `DropAction` | `verb: DropVerb`, `location: uint` (index into the request's `locations`), `outcome: ActionOutcome`. |
-| `ChangeActions` | Seven `ActionOutcome`s, always present: `new_onto` (`new X`), `new_insert_after` (`new -A X`), `new_insert_before` (`new -B X`), `edit`, `describe`, `squash_into_parent` (`squash -r X`), `abandon`. |
+| `ChangeActions` | Eight `ActionOutcome`s, always present: `new_onto` (`new X`), `new_insert_after` (`new -A X`), `new_insert_before` (`new -B X`), `edit`, `describe`, `squash_into_parent` (`squash -r X`), `abandon`, `absorb` (`absorb --from X` with the CLI's defaults — into the `mutable()` alias, all paths; `NoOp` when no hunk is absorbable; Story 10.36). Fields are append-only. |
 | `ActionOutcome` | `status: ActionStatus` (`Available`, `NoOp`, `Refused`), `refusal: FfiError` (present exactly for `Refused`), `combined_description_needed` (a squash row: two or more non-empty descriptions would be combined — `zanshin_squash_plan` returns the text), `allow_backwards_needed` (a bookmark row: the move is not a fast-forward). |
 
 The rows per location (`DropVerb`, append-only): a `Change` at `onto` — `RebaseSource`
