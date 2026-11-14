@@ -73,6 +73,7 @@ const Group = ({ title, children }) => <section className="gset-grp"><h3>{title}
 
 function GeneralPane({ t, setTweak }) {
   const [g, set] = useLocal("zanshin.settings.general", { name: "Ralph Stein", email: "ralph@dasralph.de" });
+  const [d, setD] = useLocal("zanshin.settings.diffs", { words: true, inline: "3", context: "3" });
   return <>
     <Group title="Appearance">
       <Row label="Theme"><Seg value={t.theme} onChange={v => setTweak("theme", v)} label="Theme" opts={[{ v: "light", l: "Light", icon: "sun" }, { v: "dark", l: "Dark", icon: "moon" }, { v: "system", l: "Auto", icon: "auto" }]}/></Row>
@@ -84,6 +85,9 @@ function GeneralPane({ t, setTweak }) {
     </Group>
     <Group title="Diffs">
       <Row label="Layout"><Seg value={t.diffMode === "split" ? "split" : "inline"} onChange={v => setTweak("diffMode", v)} label="Diff layout" opts={[{ v: "inline", l: "Unified" }, { v: "split", l: "Side by side" }]}/></Row>
+      <Row label="Changed words" hint="Marks the words that changed inside a line, where jj diff underlines them."><Switch on={d.words} set={v => setD("words", v)} label="Mark changed words"/></Row>
+      <Row label="Inline changes" hint="How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj." cfg="diff.color-words.max-inline-alternation"><select className="gset-sel" value={d.inline} onChange={e => setD("inline", e.target.value)} aria-label="Inline changes">{[["0", "Never"], ["1", "Up to 1"], ["2", "Up to 2"], ["3", "Up to 3"], ["5", "Up to 5"], ["-1", "Always"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Row>
+      <Row label="Context lines" hint="Unchanged lines shown around each change." cfg="diff.color-words.context"><select className="gset-sel" value={d.context} onChange={e => setD("context", e.target.value)} aria-label="Context lines">{["0", "1", "2", "3", "5", "10", "20"].map(n => <option key={n} value={n}>{n}</option>)}</select></Row>
     </Group>
     <Group title="Identity">
       <Row label="Name" cfg="user.name"><input className="gset-in" value={g.name} onChange={e => set("name", e.target.value)} aria-label="Name"/></Row>

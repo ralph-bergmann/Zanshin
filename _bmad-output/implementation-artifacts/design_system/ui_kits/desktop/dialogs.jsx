@@ -235,6 +235,7 @@ function zkCheckToml(text) {
 function ZKSettings({ tab, setTab, page, setPage, imm, setImm, trunk, setTrunk, immInfo = {}, onClose, prefs, setPref, project, active = true, onFocus, style }) {
   const [g, setG] = React.useState({ name: "Ralph Stein", email: "ralph@dasralph.de" });
   const [p, setP] = React.useState({ fetch: "origin", push: "origin", auto: "15", own: false, email: "ralph@work.example" });
+  const [d, setD] = React.useState({ words: true, inline: "3", context: "3" });
   const [remotes, setRemotes] = React.useState(ZK_REMOTES);
   const [files, setFiles] = React.useState(ZK_FILES);
   const [dirty, setDirty] = React.useState(false);
@@ -272,6 +273,9 @@ function ZKSettings({ tab, setTab, page, setPage, imm, setImm, trunk, setTrunk, 
             </SettingsGroup>
             <SettingsGroup title="Diffs">
               <SettingsRow label="Layout"><Segmented variant="inset" label="Diff layout" value={prefs.diffMode} onChange={(v) => setPref("diffMode", v)} options={[{ value: "unified", label: "Unified" }, { value: "split", label: "Side by side" }]}/></SettingsRow>
+              <SettingsRow label="Changed words" hint="Marks the words that changed inside a line, where jj diff underlines them."><Switch label="Mark changed words" checked={d.words} onChange={(v) => setD({ ...d, words: v })}/></SettingsRow>
+              <SettingsRow label="Inline changes" configKey="diff.color-words.max-inline-alternation" hint="How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj."><Select label="Inline changes" value={d.inline} onChange={(v) => setD({ ...d, inline: v })} options={[["0", "Never"], ["1", "Up to 1"], ["2", "Up to 2"], ["3", "Up to 3"], ["5", "Up to 5"], ["-1", "Always"]].map(([value, label]) => ({ value, label }))}/></SettingsRow>
+              <SettingsRow label="Context lines" configKey="diff.color-words.context" hint="Unchanged lines shown around each change."><Select label="Context lines" value={d.context} onChange={(v) => setD({ ...d, context: v })} options={["0", "1", "2", "3", "5", "10", "20"].map((n) => ({ value: n, label: n }))}/></SettingsRow>
             </SettingsGroup>
             <SettingsGroup title="Identity">
               <SettingsRow label="Name" configKey="user.name"><TextField value={g.name} onChange={(e) => setG({ ...g, name: e.target.value })} aria-label="Name"/></SettingsRow>

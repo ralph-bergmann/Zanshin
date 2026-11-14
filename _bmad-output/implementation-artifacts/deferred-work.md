@@ -3000,7 +3000,7 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 
 ## Surfaced in the follow-up review of Story 5.10 (bmad-build-auto, 2026-11-12)
 
-- **Decision for Ralph: a removed or added line whose unchanged text is only whitespace shows the line fill without word marks, where `jj diff` colours its changed words.** Medium.
+- ~~**Decision for Ralph: a removed or added line whose unchanged text is only whitespace shows the line fill without word marks, where `jj diff` colours its changed words.**~~ — DECIDED 2026-11-14 (Ralph, console session): keep the line colour; a line with no unchanged text gets no word marks, since a mark over a whole line says nothing its fill doesn't. Lines that keep some text are marked as in jj; the "Changed words" hint already says "inside a line". No code change. Medium.
   - `app/lib/src/features/graph/inspector_diff.dart:119` `diffWordMarks` keeps Story 10.32's rule ("no visible unchanged text → fill only") for non-changed lines; it hits every new file and every block over the inline limit. The rule predates 5.10 and Ralph's look rule says colours stay; the intent's "no rule of Zanshin's own marks words" can be read to cover it.
   - **Follow-up:** Ralph decides: keep 10.32's fill-only look, or draw the CLI's token marks on those lines too (drop the rule in `diffWordMarks` and its tests). 2026-11-12: Story 5.11's second style does not use the rule (Rust leaves pure blocks unmarked there); the decision stays open for the jj style.
 
@@ -3043,6 +3043,6 @@ The review's Phases 0–3 are Stories 11.24 and 11.25 (`_bmad-output/planning-ar
 - ~~**The design system artifact and the app design canvas still show the two diff styles of Stories 5.11 and 5.13, because the run could not republish them.**~~ — RESOLVED 2026-11-14 (console session, Ralph's OK): DS artifact republished as version 36 (1794655075-65cb), canvas 6sAzL5mDcVpWXevbTcempu updated to it (version 54). Medium.
   - The permission classifier refused the implementation run's publish to the DS artifact J5iSiy8cS6Q1EXa44g945d. The repo files under `_bmad-output/implementation-artifacts/design_system/` are updated: DiffView, DiffHunk, `content.css`, the Content and Settings cards, `_ds_bundle.js` and the readme.
   - **Follow-up:** publish with `.claude/skills/design-artifacts/SKILL.md` A (the DS artifact), then B (canvas 6sAzL5mDcVpWXevbTcempu), from a session allowed to publish.
-- **The DS UI kit's Settings dialog and the click dummy's Settings page still show the Diffs group with Layout only.** Low.
+- ~~**The DS UI kit's Settings dialog and the click dummy's Settings page still show the Diffs group with Layout only.**~~ — RESOLVED 2026-11-14 (console session, Ralph: "update both"): `ui_kits/desktop/dialogs.jsx` and `design/settings.jsx` gain Changed words, Inline changes and Context lines as in the app; DS republished as version 37. Low.
   - `design_system/ui_kits/desktop/dialogs.jsx:273-275` and `design/settings.jsx` (Diffs group) have no Changed words switch, Inline changes or Context lines. These have been missing since Story 5.11; Story 5.12 left the click dummy for the next design round. The Settings card (`components/settings/settings.card.html`) now shows all four rows.
   - **Follow-up:** add the three rows to both at the next design round, then republish (A, B).
