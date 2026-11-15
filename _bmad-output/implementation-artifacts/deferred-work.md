@@ -3073,10 +3073,10 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in Story 10.38 (bmad-build-auto, 2026-11-14)
 
-- **The design-system changes of Story 10.38 are in the repo but not published.** Medium. *(2026-11-15: Ralph wants it published once, after Story 10.40, for 10.35–10.40 together.)*
+- ~~**The design-system changes of Story 10.38 are in the repo but not published.**~~ — RESOLVED 2026-11-15 (console session, skill `design-artifacts` A and B): the DS artifact carries Stories 10.33–10.40 (version 41, with the `list-flat` / `list-tree` icons uploaded), and canvas `6sAzL5mDcVpWXevbTcempu` copies it (version 58). Medium.
   - The Design System artifact (https://claude.ai/artifact/J5iSiy8cS6Q1EXa44g945d) and canvas `6sAzL5mDcVpWXevbTcempu` still show the state before the story: the unattended run's publish (`design-artifacts` skill, step A) was refused by the auto-mode permission check. Repo files: `design_system/` (SplitDivider, DiffHunk parts and pinned numbers, kit inspector split, tokens without `--inspector-w-max` / `--panel-w-max`).
   - **Follow-up:** in a console session run the skill's steps A (build with `build_ds.py`, one publish) and B (canvas sync).
-- **Both inspector layouts, the divider, the parts and the pinned numbers were not checked through Marionette.** Low.
+- ~~**Both inspector layouts, the divider, the parts and the pinned numbers were not checked through Marionette.**~~ — RESOLVED 2026-11-15 (console session, after Story 10.40): the catalogue's Inspector › Wide and Tree (narrow layout) and Inspector diff › Pinned numbers scrolled right match the mock-up; the pinned numbers paint on an opaque backing. Low.
   - Widget tests cover the behaviour; the catalogue has Graph › Inspector › Wide / Narrow, Inspector diff › Three parts / Pinned numbers scrolled right, and Controls › Split divider.
   - **Follow-up:** compare those use cases with `design/Inspector Study.html` and the DS cards through Marionette.
 - ~~**A large file's unified diff may scroll sideways slowly (unverified).**~~ — RESOLVED 2026-11-15 (checked by Ralph in the running app on the Flutter plugin project): sideways scrolling looks fine. Medium.
@@ -3091,7 +3091,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in Story 10.33 (bmad-build-auto, 2026-11-14)
 
-- **The diff options menu, the folded whitespace rows and the dimmed, tagged lines were not checked through Marionette against the mock-up and the DS cards.** Low.
+- ~~**The diff options menu, the folded whitespace rows and the dimmed, tagged lines were not checked through Marionette against the mock-up and the DS cards.**~~ — RESOLVED 2026-11-15 (console session, after Story 10.40): Inspector diff › Whitespace ignored shows the options button, the "whitespace only" pill on a dimmed line and the hatched fold row, its hatch running through the gutter and number columns (Story 10.40's follow-up review). Low.
   - The unattended run had no catalogue session; widget tests cover the behaviour. The catalogue has Graph › Inspector diff › Whitespace ignored and the MenuButton icon-only rows (`app/widgetbook/folders/graph.dart`, `controls.dart`).
   - One look to settle: the unified fold row's hatch stops at the number columns, as the mock-up's `.isd-foldrow .isd-nums` background does, while the DS Content card hatches the full row.
   - **Follow-up:** compare those use cases with `design/Inspector Study.html` and the DS cards through Marionette.
@@ -3104,6 +3104,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **The file rows, folder rows, tree/flat switch, menus and copyable diff path were not checked through Marionette against the mock-up and the DS cards.** Low.
   - The unattended run had no catalogue session; widget tests cover the behaviour. The catalogue has Graph › Inspector › Tree, Long path (460), File menu and Line menu (`app/widgetbook/folders/graph.dart`).
   - **Follow-up:** compare those use cases with `design/Inspector Study.html` and the DS cards through Marionette.
+  - **2026-11-15, console session after Story 10.40:** Tree (joined folders, counts, checkboxes) and File menu checked; a click on the File menu's own canvas now closes it (Story 10.40 item 2); left: Long path and Line menu.
 - **No test shows that a successful login-shell adoption stores the environment that editor detection and launching use.** Low.
   - `_adopted ??= variables` in `adoptLoginShellEnvironment` (`packages/zanshin_core/lib/src/environment/login_shell.dart`) is untested: a real adoption installs a process-global Rust environment that would leak into other test files.
   - **Follow-up:** none, unless a test can adopt in a process of its own.
