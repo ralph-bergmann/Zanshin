@@ -1297,6 +1297,31 @@ void main() {
       expect(shape(diffBlockRows(block)), <String>['changed 1 1 p0', 'context 2 2', 'gap 2 p1']);
     });
 
+    // The ignoring read matched s1's line elsewhere, so no row touches it: a pick of s2 alone would commit half a move.
+    test('a section no row touches joins every section into one part', () {
+      final DiffBlock block = diffBlocks(
+        exactFile(<Hunk>[farHunk]),
+        ignoring(<String>['~   6    6|[-a-]{+A+}']),
+      ).single;
+      expect(block.parts, <List<HunkKey>>[
+        <HunkKey>[s1, s2],
+      ]);
+      expect(block.hunk.sections, <HunkKey>[s1, s2]);
+      expect(block.foldParts, isEmpty);
+    });
+
+    test('a block whose rows touch no section is one part of every section', () {
+      final DiffBlock block = diffBlocks(
+        exactFile(<Hunk>[farHunk]),
+        ignoring(<String>['~   3    3|[-c-]{+C+}']),
+      ).single;
+      expect(block.parts, <List<HunkKey>>[
+        <HunkKey>[s1, s2],
+      ]);
+      expect(block.hunk.sections, <HunkKey>[s1, s2]);
+      expect(block.foldParts, isEmpty, reason: 'a merged part is never a fold');
+    });
+
     test('blocks place a line by its left number, an added line by its right, a header with the line before — with '
         'old and new starts that differ', () {
       const first = Hunk(

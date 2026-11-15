@@ -709,6 +709,44 @@ void main() {
       expect(committed, _textFieldNew(), reason: 'no field twice, balanced brackets');
     });
 
+    test('Story 10.41: under -w a section no row touches joins the pick; committing the hunk commits the new file '
+        'whole', () async {
+      // Exact anchors on ppp: A removes lll at the top, B re-indents the qs and adds lll. -w anchors on lll and reads
+      // ppp as moved, so no row touches A; picking B alone would commit lll twice.
+      const after = 'ppp\nlll\n  q1\n  q2\n  q3\n';
+      final (ProjectRepo repo, GraphViewModel model, String at, ShowEntry entry) = await rewriteRepo(
+        'untouched-section',
+        'lll\nppp\nq1\nq2\nq3\n',
+        after,
+      );
+      final (:FileDiff exact, ignoring: _, :List<DiffBlock> blocks, rows: _) = await shown(
+        repo,
+        entry.change.commitId,
+        DiffWhitespace.ignoreAllSpace,
+      );
+      expect(exact.sections, hasLength(2));
+      final DiffBlock block = blocks.single;
+      expect(block.parts, <List<HunkKey>>[exact.sections]);
+      expect(block.hunk.sections, exact.sections);
+      expect(block.foldParts, isEmpty);
+
+      final GraphActionResult result = await model.run(
+        GraphCommit(
+          at,
+          message: const <String>['Move'],
+          hunks: HunkChoice(
+            left: entry.parentTreeIds,
+            files: <FileSelection>[FileSelection.hunks('x.txt', block.hunk.sections)],
+          ),
+        ),
+      );
+      expect(result, isA<GraphActionDone>(), reason: result is GraphActionRefused ? '${result.error}' : null);
+      final String committed = utf8.decode(
+        (await repo.handle.fileShow(paths: const <String>['x.txt'], revision: at)).files.single.content,
+      );
+      expect(committed, after, reason: 'lll once');
+    });
+
     test('Story 10.33: a b → a  b folds under -b and -w; a b → ab folds under -w, stays changed under -b', () async {
       const lines = 'one\ntwo\na b\nfour\nfive\n';
       final (ProjectRepo amount, _, _, ShowEntry amountEntry) = await rewriteRepo(

@@ -479,8 +479,8 @@ class DiffBlock {
   final Hunk exact;
 
   /// What the block shows as its hunk: [exact]'s ranges and symbol (the header keeps the exact range), its lines
-  /// [lines], its sections every section of every one of [parts], its counts the distinct left / right numbers on the
-  /// ignoring read's changed lines. A hunk checkbox picks exactly these sections.
+  /// [lines], its sections every section of every one of [parts] (so every section of [exact]), its counts the distinct
+  /// left / right numbers on the ignoring read's changed lines. A hunk checkbox picks exactly these sections.
   final Hunk hunk;
 
   /// The ignoring read's lines that belong to it, in order.
@@ -492,7 +492,8 @@ class DiffBlock {
 
   /// Its pickable parts, in the order of their first section: the exact sections its rows touch, tied into one part
   /// where one listed line touches two (by its left number and by its right number), so a pick never takes half of a
-  /// line the view shows as one.
+  /// line the view shows as one. When a section is touched by no row, all of [exact]'s sections form one part, so a
+  /// pick never takes half of a move the ignoring read shows as unchanged.
   final List<List<HunkKey>> parts;
 
   /// The indices in [parts] of its whitespace-only parts: no ignoring changed line touches them, listed lines do.
@@ -515,7 +516,8 @@ class DiffBlock {
 /// The blocks of [exact] while whitespace is ignored (Story 10.41): one per exact hunk. An ignoring line and a
 /// whitespace line belong to the last exact hunk starting at or before it (by its left number, else its right; before
 /// the first, the first; a line without numbers stays with the line before it). A block with no line and no whitespace
-/// line goes; none left means only whitespace changed.
+/// line goes; none left means only whitespace changed. A block's parts together always hold every exact section of its
+/// hunk ([DiffBlock.parts]).
 List<DiffBlock> diffBlocks(FileDiff exact, FileDiff ignoring) {
   final List<Hunk> hunks = exact.hunks;
   if (hunks.isEmpty) {
@@ -570,6 +572,19 @@ List<DiffBlock> diffBlocks(FileDiff exact, FileDiff ignoring) {
         tie[root(left)] = root(right);
       }
     }
+    // A section no row touches holds lines the ignoring read matched elsewhere (half of a move the exact read anchors
+    // across); picking only the touched sections would commit that move half. So all sections form one part, and it
+    // is never a fold: its pick may commit a moved line.
+    // shortcut: finer picks in such a block need the exact view; tying each untouched section to the section of its
+    // partner in the ignoring read would keep them, but needs that read's old-to-new number map in Dart. Upgrade when
+    // part picks in such blocks matter.
+    final bool merged = touched.length < all.length;
+    if (merged) {
+      for (var i = 0; i < all.length; i++) {
+        tie[root(i)] = root(0);
+        touched.add(i);
+      }
+    }
     final groups = <int, List<int>>{};
     for (var i = 0; i < all.length; i++) {
       if (touched.contains(i)) {
@@ -607,7 +622,7 @@ List<DiffBlock> diffBlocks(FileDiff exact, FileDiff ignoring) {
         ],
         <int>{
           for (var p = 0; p < parts.length; p++)
-            if (!parts[p].any(changed.contains)) p,
+            if (!merged && !parts[p].any(changed.contains)) p,
         },
         partOf,
       ),
