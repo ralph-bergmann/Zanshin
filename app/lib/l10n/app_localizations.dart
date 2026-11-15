@@ -1646,7 +1646,7 @@ abstract class AppLocalizations {
   /// **'Split'**
   String get inspectorSplit;
 
-  /// Composer on another change: the note under the buttons while every file is picked.
+  /// Composer on another change: the only text beside Cancel while every file is picked (no fields, no Split button).
   ///
   /// In en, this message translates to:
   /// **'Every change is picked — Split needs something left behind. To describe this change, click its title.'**

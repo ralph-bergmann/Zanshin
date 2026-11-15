@@ -289,8 +289,8 @@ class _ZsMenuAnchorState extends State<ZsMenuAnchor> {
   }
 
   void _open(Offset? position) {
-    // Opened again while open (a second click on the anchor, a second right-click): focus is in the menu, and the
-    // opener stays the one it came from.
+    // Opened again while open (a caller's `open` while the menu shows; clicks in the anchor area only close it): focus
+    // is in the menu, and the opener stays the one it came from.
     if (!_menu.isOpen) {
       _opener = FocusManager.instance.primaryFocus;
     }

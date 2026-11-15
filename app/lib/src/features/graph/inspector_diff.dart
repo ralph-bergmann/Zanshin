@@ -1650,6 +1650,7 @@ class InspectorDiffHunk extends StatelessWidget {
       Color? leftInk,
       Color? rightInk,
       Widget? gutter,
+      bool hatch = false,
     }) => Stack(
       fit: StackFit.passthrough,
       children: <Widget>[
@@ -1667,20 +1668,26 @@ class InspectorDiffHunk extends StatelessWidget {
             controller: pin.horizontal,
             child: Container(
               key: const ValueKey<String>('inspector-line-pin'),
-              padding: const EdgeInsets.only(left: 10),
               color: Color.alphaBlend(fill, _pinBase(colors)),
               // Always a decoration, so a toggle keeps the subtree (and a focused part checkbox) in place.
               foregroundDecoration: BoxDecoration(
                 border: edge ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  if (gutters) SizedBox(width: _gutter, child: gutter),
-                  _number(left, leftInk ?? none),
-                  const SizedBox(width: 8),
-                  _number(right, rightInk ?? none),
-                ],
+              // The opaque backing hides the row's hatch, so a fold row repeats it here (full width, as the DS draws).
+              child: CustomPaint(
+                painter: hatch ? _FoldHatchPainter(colors.flHover) : null,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      if (gutters) SizedBox(width: _gutter, child: gutter),
+                      _number(left, leftInk ?? none),
+                      const SizedBox(width: 8),
+                      _number(right, rightInk ?? none),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -1699,6 +1706,7 @@ class InspectorDiffHunk extends StatelessWidget {
               text: Align(alignment: Alignment.centerLeft, child: _foldText(context, entry)),
               edge: _edged(entry.part),
               gutter: _foldPicks ? _foldBox(context, entry.part) : null,
+              hatch: true,
             ),
           ),
         );

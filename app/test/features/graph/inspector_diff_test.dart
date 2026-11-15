@@ -441,29 +441,28 @@ void main() {
   testWidgets('a picked hunk keeps its checkbox and accent header', (tester) async {
     await tester.pumpWidget(view(matrix(), hunkPicked: (_) => true));
     expect(find.bySemanticsIdentifier('inspector-hunk-check'), findsNWidgets(0), reason: 'no sections');
-    await tester.pumpWidget(
-      view(
-        _file(
-          hunks: <Hunk>[
-            Hunk(
-              before: (start: 0, end: 1),
-              after: (start: 0, end: 1),
-              symbol: null,
-              sections: const [HunkKey(oldStart: 0, oldCount: 1, newStart: 0, newCount: 1)],
-              removed: 1,
-              added: 1,
-              lines: <HunkLine>[_line('~   1    1|[-a-]{+b+}')],
-            ),
-          ],
+    final FileDiff picked = _file(
+      hunks: <Hunk>[
+        Hunk(
+          before: (start: 0, end: 1),
+          after: (start: 0, end: 1),
+          symbol: null,
+          sections: const [HunkKey(oldStart: 0, oldCount: 1, newStart: 0, newCount: 1)],
+          removed: 1,
+          added: 1,
+          lines: <HunkLine>[_line('~   1    1|[-a-]{+b+}')],
         ),
-        hunkPicked: (_) => true,
-      ),
+      ],
     );
+    await tester.pumpWidget(view(picked, hunkPicked: (_) => true));
     expect(find.bySemanticsIdentifier('inspector-hunk-check'), findsOneWidget);
-    final Container header = tester.widget(find.byKey(const ValueKey<String>('inspector-hunk-header')));
+    Color? headerColor() => tester.widget<Container>(find.byKey(const ValueKey<String>('inspector-hunk-header'))).color;
     const ZsColors colors = ZsColors.night;
     // Unified, the pinned header sits on the opaque base (Story 10.40).
-    expect(header.color, Color.alphaBlend(colors.accentSoftHi, Color.alphaBlend(colors.codeBg, colors.flBgSolid)));
+    expect(headerColor(), Color.alphaBlend(colors.accentSoftHi, Color.alphaBlend(colors.codeBg, colors.flBgSolid)));
+    // Side by side does not pin: the band stays as the DS draws it.
+    await tester.pumpWidget(view(picked, hunkPicked: (_) => true, layout: DiffLayoutSetting.sideBySide));
+    expect(headerColor(), colors.accentSoftHi);
   });
 
   testWidgets('a new fill or new marks repaint the line; equal ones do not', (tester) async {
@@ -1198,6 +1197,13 @@ void main() {
           (pin.widget as Container).color!.a,
         tester.widget<Container>(find.byKey(const ValueKey<String>('inspector-hunk-header'))).color!.a,
       ];
+      // The opaque backing would hide the row's hatch, so the fold row's pin paints it again.
+      final Finder hatchedPins = find.descendant(
+        of: find.byKey(const ValueKey<String>('inspector-line-pin')),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is CustomPaint && widget.painter.runtimeType.toString() == '_FoldHatchPainter',
+        ),
+      );
       for (final ZsTheme theme in ZsTheme.values) {
         final appearance = ZsAppearance(theme: theme);
         await tester.pumpWidget(
@@ -1206,9 +1212,11 @@ void main() {
         expect(find.text(noNewlineMarker), findsOneWidget);
         expect(find.byKey(const ValueKey<String>('inspector-line-pin')), findsNWidgets(3));
         expect(alphas(), everyElement(1.0), reason: '${theme.name}: the lines');
+        expect(hatchedPins, findsNothing, reason: '${theme.name}: lines have no hatch');
         await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, appearance: appearance));
         expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
         expect(alphas(), everyElement(1.0), reason: '${theme.name}: the fold row');
+        expect(hatchedPins, findsOneWidget, reason: '${theme.name}: the hatch runs under the fold row\'s pin too');
       }
     });
 

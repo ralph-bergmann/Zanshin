@@ -868,7 +868,8 @@ class InspectorViewModel extends ChangeNotifier {
   /// command line shortens the message, never the change id or the paths.
   String? composerCommandCut(int keep) => _composer(short: true, keep: keep)?.command;
 
-  /// Whether the split would take every file of a change other than @ and leave it empty: Split stays disabled.
+  /// Whether the split would take every file of a change other than @ and leave it empty: the composer shows only its
+  /// hint and Cancel.
   bool get splitsEverything {
     final ({GraphLayout layout, int node})? at = _mutableNode;
     return at != null && at.layout.workingCopyIndex != at.node && allPicked;
