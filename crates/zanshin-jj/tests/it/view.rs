@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! Fixture tests for the direct `View` reads of Story 9.2 — `Repo::list_tags`,
-//! `Repo::list_heads` and `Repo::list_working_copies`.
+//! Fixture tests for the direct `View` reads of Story 9.2 — `Repo::list_tags` (reworked into the
+//! `jj tag list --all-remotes` rows by Story 9.59), `Repo::list_heads` and
+//! `Repo::list_working_copies`.
 //!
 //! The fixtures carry no remote refs (regenerating them is forbidden), so the tracked/untracked
 //! remote-tag rows are constructed in-test via `test_helpers::set_remote_tag`.
@@ -16,7 +17,7 @@ use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_commit_off_root, add_workspace, extract_fixture, set_remote_tag, set_tag};
-use zanshin_jj::{Repo, TagKind, ViewError};
+use zanshin_jj::{ChangeId, Repo, Tag, TagKind, ViewError};
 
 /// Opens the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> Workspace {
@@ -85,18 +86,31 @@ fn tags_local_resolves_to_the_targets_change_id() {
     let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
-    assert_eq!(tags.len(), 1, "exactly one tag row; got {tags:?}");
-    assert_eq!(tags[0].name, "v1");
-    assert_eq!(tags[0].kind, TagKind::Local);
-    assert_eq!(tags[0].target.0, expected, "target must be the commit's change id");
+    assert_eq!(
+        tags,
+        [Tag {
+            name: "v1".to_owned(),
+            target: Some(ChangeId(expected)),
+            conflicted: false,
+            synced: true,
+            kind: TagKind::Local,
+        }],
+        "target must be the commit's change id"
+    );
 }
 
-// ── Tags: a tracked remote tag is an ADDITIONAL row, listed unfiltered ───────
+/// A `TagKind::Remote` of `remote` and `tracked`.
+fn remote(remote_name: &str, tracked: bool) -> TagKind {
+    TagKind::Remote {
+        remote_name: remote_name.to_owned(),
+        tracked,
+    }
+}
 
-/// A tracked remote tag pointing at the SAME commit as the local one is deliberately NOT
-/// hidden: the CLI's `jj tag list` drops it (`cli/src/commit_ref_list.rs` @ v0.46.0's
-/// `include_synced_remotes`), but that is a display default — `list_tags` mirrors
-/// `list_bookmarks` and offers the unfiltered view.
+// ── Tags: a tracked remote tag is an ADDITIONAL row, synced ones included ────
+
+/// `--all-remotes` lists a tracked remote tag pointing at the SAME commit as the local one too:
+/// the list is `jj tag list --all-remotes` (Story 9.59), whose `include_synced_remotes` keeps it.
 #[test]
 fn tags_tracked_remote_adds_a_row_even_when_synced_with_the_local_one() {
     test_helpers::pin_test_env();
@@ -110,17 +124,13 @@ fn tags_tracked_remote_adds_a_row_even_when_synced_with_the_local_one() {
     let tags = repo.list_tags().unwrap();
 
     assert_eq!(tags.len(), 2, "local + tracked-remote = two rows; got {tags:?}");
-    // Sorted by name then kind: Local before Remote.
+    // The local row first, its tracked remote rows under it.
     assert_eq!(tags[0].kind, TagKind::Local, "Local must precede Remote for one name");
-    assert_eq!(
-        tags[1].kind,
-        TagKind::Remote {
-            remote_name: "origin".to_owned()
-        }
-    );
+    assert_eq!(tags[1].kind, remote("origin", true));
     assert!(
-        tags.iter().all(|t| t.name == "v1" && t.target.0 == expected),
-        "both rows name the same tag and target; got {tags:?}"
+        tags.iter()
+            .all(|t| t.name == "v1" && t.target.as_ref().map(|c| c.0.as_str()) == Some(expected.as_str()) && t.synced),
+        "both rows name the same tag and target, both synced; got {tags:?}"
     );
 }
 
@@ -145,21 +155,26 @@ fn tags_remote_row_reports_the_remote_refs_own_target() {
 
     assert_eq!(tags.len(), 2, "local + tracked-remote = two rows; got {tags:?}");
     assert_eq!(tags[0].kind, TagKind::Local);
-    assert_eq!(tags[0].target.0, local_change, "the Local row keeps the local target");
     assert_eq!(
-        tags[1].kind,
-        TagKind::Remote {
-            remote_name: "origin".to_owned()
-        }
+        tags[0].target,
+        Some(ChangeId(local_change)),
+        "the Local row keeps the local target"
     );
+    assert!(
+        !tags[0].synced,
+        "a tracked remote elsewhere makes the local row unsynced"
+    );
+    assert_eq!(tags[1].kind, remote("origin", true));
     assert_eq!(
-        tags[1].target.0, remote_change,
+        tags[1].target,
+        Some(ChangeId(remote_change)),
         "the Remote row must report the REMOTE ref's target, not the local one"
     );
+    assert!(!tags[1].synced);
 }
 
-/// A tracked remote tag with NO local counterpart still produces a row, and two remotes of one
-/// name sort by `remote_name` — the secondary key `TagKind`'s `Ord` declares.
+/// A tracked remote tag with NO local counterpart lists an absent local row (the CLI's
+/// "deleted" tag) and then one row per remote, in remote-name order.
 #[test]
 fn tags_remote_only_rows_sort_by_remote_name() {
     test_helpers::pin_test_env();
@@ -172,42 +187,131 @@ fn tags_remote_only_rows_sort_by_remote_name() {
     let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
-    let seen: Vec<(&str, &TagKind)> = tags.iter().map(|t| (t.name.as_str(), &t.kind)).collect();
+    let seen: Vec<(&str, &TagKind, bool)> = tags
+        .iter()
+        .map(|t| (t.name.as_str(), &t.kind, t.target.is_some()))
+        .collect();
     assert_eq!(
         seen,
         vec![
-            (
-                "v1",
-                &TagKind::Remote {
-                    remote_name: "origin".to_owned()
-                }
-            ),
-            (
-                "v1",
-                &TagKind::Remote {
-                    remote_name: "upstream".to_owned()
-                }
-            ),
+            ("v1", &TagKind::Local, false),
+            ("v1", &remote("origin", true), true),
+            ("v1", &remote("upstream", true), true),
         ],
-        "a remote-only tag is listed, and remotes of one name sort by remote_name"
+        "a remote-only tag is listed under an absent local row, remotes in name order"
     );
 }
 
-// ── Tags: an untracked remote tag is skipped ─────────────────────────────────
+// ── Tags: an untracked remote tag is its own row ─────────────────────────────
 
 #[test]
-fn tags_skip_untracked_remote() {
+fn tags_list_an_untracked_remote_as_an_untracked_row() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let commit = add_commit_off_root(&fx.path, "9.2: tagged");
     set_remote_tag(&fx.path, "loose", "origin", &commit, false);
+    let expected = change_id_of(&fx.path, &commit);
 
     let mut repo = Repo::open(&fx.path).unwrap();
     let tags = repo.list_tags().unwrap();
 
+    assert_eq!(
+        tags,
+        [Tag {
+            name: "loose".to_owned(),
+            target: Some(ChangeId(expected)),
+            conflicted: false,
+            synced: false,
+            kind: remote("origin", false),
+        }],
+        "`--all-remotes` lists an untracked remote tag, and no local row for it"
+    );
+}
+
+// ── Tags: the Git-tracking `git` remote is left out ──────────────────────────
+
+/// On a Git-backed repo the `git` rows are dropped after collecting (Story 9.59), the other remote
+/// rows of the same name stay.
+#[test]
+fn tags_drop_the_git_remote_rows() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let commit = add_commit_off_root(&fx.path, "9.59: tagged");
+    set_tag(&fx.path, "v1", &[&commit]);
+    set_remote_tag(&fx.path, "v1", "git", &commit, true);
+    set_remote_tag(&fx.path, "v1", "origin", &commit, true);
+    set_remote_tag(&fx.path, "v2", "git", &commit, false);
+
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let tags = repo.list_tags().unwrap();
+
+    let seen: Vec<(&str, &TagKind)> = tags.iter().map(|t| (t.name.as_str(), &t.kind)).collect();
+    assert_eq!(seen, vec![("v1", &TagKind::Local), ("v1", &remote("origin", true))]);
+}
+
+/// The `git` rows are dropped AFTER collecting: a tracked `v1@git` pointing elsewhere still makes
+/// the local row unsynced, though the row itself is not listed.
+#[test]
+fn tags_local_synced_still_reads_a_dropped_git_ref() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let local = add_commit_off_root(&fx.path, "9.59: local");
+    let elsewhere = add_commit_off_root(&fx.path, "9.59: elsewhere");
+    set_tag(&fx.path, "v1", &[&local]);
+    set_remote_tag(&fx.path, "v1", "git", &elsewhere, true);
+
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let tags = repo.list_tags().unwrap();
+
+    assert_eq!(tags.len(), 1, "no `@git` row; got {tags:?}");
+    assert_eq!(tags[0].kind, TagKind::Local);
+    assert!(!tags[0].synced, "the dropped git ref points elsewhere");
+}
+
+// ── Tags: `ui.tag-list-sort-keys` orders the items ───────────────────────────
+
+/// The sort keys come from `ui.tag-list-sort-keys`; they sort ITEMS, so a tracked remote row stays
+/// under its local row. A malformed value refuses `ViewError::Config`.
+#[test]
+fn tags_sort_by_the_config_keys() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let commit = add_commit_off_root(&fx.path, "9.59: tagged");
+    set_tag(&fx.path, "v1", &[&commit]);
+    set_tag(&fx.path, "v2", &[&commit]);
+    set_remote_tag(&fx.path, "v1", "origin", &commit, true);
+    let set_keys = |value: &str| {
+        zanshin_jj::config_set(
+            Some(&fx.path),
+            &zanshin_jj::ConfigTarget::Scope(zanshin_jj::ConfigScope::Repo),
+            "ui.tag-list-sort-keys",
+            value,
+        )
+        .result
+        .expect("config set");
+    };
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let labels = |repo: &mut Repo| -> Vec<String> {
+        repo.list_tags()
+            .unwrap()
+            .into_iter()
+            .map(|t| match t.kind {
+                TagKind::Local => t.name,
+                TagKind::Remote { remote_name, .. } => format!("{}@{remote_name}", t.name),
+            })
+            .collect()
+    };
+    assert_eq!(labels(&mut repo), ["v1", "v1@origin", "v2"]);
+
+    set_keys("[\"name-\"]");
+    assert_eq!(labels(&mut repo), ["v2", "v1", "v1@origin"]);
+
+    set_keys("\"name\"");
+    let err = repo.list_tags().expect_err("not an array");
     assert!(
-        tags.is_empty(),
-        "a present-but-untracked remote tag must be skipped; got {tags:?}"
+        matches!(&err, ViewError::Config(zanshin_jj::ConfigError::Load { reason })
+            if reason.contains("ui.tag-list-sort-keys")),
+        "{err:?}"
     );
 }
 
@@ -227,12 +331,14 @@ fn tags_conflicted_target_uses_first_added_change_id() {
 
     assert_eq!(tags.len(), 1, "a conflicted tag is still ONE row; got {tags:?}");
     assert_eq!(
-        tags[0].target.0, expected,
+        tags[0].target,
+        Some(ChangeId(expected)),
         "a conflicted tag must resolve to the FIRST added id's change id"
     );
+    assert!(tags[0].conflicted);
 }
 
-// ── Tags: sorted by name, then kind ──────────────────────────────────────────
+// ── Tags: sorted by name, each local row before its remote rows ──────────────
 
 #[test]
 fn tags_are_sorted_by_name_then_kind() {
@@ -252,12 +358,7 @@ fn tags_are_sorted_by_name_then_kind() {
         seen,
         vec![
             ("v1", &TagKind::Local),
-            (
-                "v1",
-                &TagKind::Remote {
-                    remote_name: "origin".to_owned()
-                }
-            ),
+            ("v1", &remote("origin", true)),
             ("v2", &TagKind::Local),
         ],
         "tags must be sorted by name then kind"
@@ -290,7 +391,7 @@ fn tags_on_corrupt_repo_returns_backend_error() {
 
 /// The OTHER half of `list_tags`' documented `ViewError::Backend`: a failing STORE read, not a
 /// failing head resolution. Resolving a tag's target to a change id needs the commit object, so
-/// removing exactly that loose object exercises the `to_change` arm. jj-lib 0.44.0 internals — a
+/// removing exactly that loose object exercises the `change_of` arm. jj-lib 0.44.0 internals — a
 /// pin bump may move where the failure surfaces; re-verify this test then.
 #[test]
 fn tags_store_read_failure_returns_backend_error() {

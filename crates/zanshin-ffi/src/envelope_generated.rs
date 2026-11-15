@@ -190,13 +190,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 74;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 78;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 75] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 79] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -272,6 +272,10 @@ pub mod zanshin {
             RequestKind::FileDelete,
             RequestKind::Diff,
             RequestKind::DiffLines,
+            RequestKind::TagSet,
+            RequestKind::TagDelete,
+            RequestKind::TagTrack,
+            RequestKind::TagUntrack,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -290,8 +294,9 @@ pub mod zanshin {
         /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 65 tables the variant name plus `Request` IS
-        /// the table name.
+        /// squash, never a different verb. `BookmarkTrackRequest` and `TagTrackRequest` (Stories 9.11 and
+        /// 9.59) carry their track and untrack kinds. For the other tables the variant name plus `Request`
+        /// IS the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
         /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -379,9 +384,13 @@ pub mod zanshin {
             pub const FileDelete: Self = Self(72);
             pub const Diff: Self = Self(73);
             pub const DiffLines: Self = Self(74);
+            pub const TagSet: Self = Self(75);
+            pub const TagDelete: Self = Self(76);
+            pub const TagTrack: Self = Self(77);
+            pub const TagUntrack: Self = Self(78);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 74;
+            pub const ENUM_MAX: u8 = 78;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -458,6 +467,10 @@ pub mod zanshin {
                 Self::FileDelete,
                 Self::Diff,
                 Self::DiffLines,
+                Self::TagSet,
+                Self::TagDelete,
+                Self::TagTrack,
+                Self::TagUntrack,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -537,6 +550,10 @@ pub mod zanshin {
                     Self::FileDelete => Some("FileDelete"),
                     Self::Diff => Some("Diff"),
                     Self::DiffLines => Some("DiffLines"),
+                    Self::TagSet => Some("TagSet"),
+                    Self::TagDelete => Some("TagDelete"),
+                    Self::TagTrack => Some("TagTrack"),
+                    Self::TagUntrack => Some("TagUntrack"),
                     _ => None,
                 }
             }
@@ -2482,6 +2499,96 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for BookmarkKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_TAG_KIND: i8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_TAG_KIND: i8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_TAG_KIND: [TagKind; 2] = [TagKind::Local, TagKind::Remote];
+
+        /// Whether a tag row is the local tag or a remote one (tracked or not). `remote_name` is populated
+        /// ONLY when kind == Remote (ABSENT for Local).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct TagKind(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl TagKind {
+            pub const Local: Self = Self(0);
+            pub const Remote: Self = Self(1);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Local, Self::Remote];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Local => Some("Local"),
+                    Self::Remote => Some("Remote"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for TagKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for TagKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for TagKind {
+            type Output = TagKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for TagKind {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for TagKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for TagKind {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -4715,13 +4822,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 63;
+        pub const ENUM_MAX_PAYLOAD: u8 = 64;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 64] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 65] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -4786,6 +4893,7 @@ pub mod zanshin {
             Payload::GitColocationResult,
             Payload::Diff,
             Payload::DiffLines,
+            Payload::Tags,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -4857,9 +4965,10 @@ pub mod zanshin {
             pub const GitColocationResult: Self = Self(61);
             pub const Diff: Self = Self(62);
             pub const DiffLines: Self = Self(63);
+            pub const Tags: Self = Self(64);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 63;
+            pub const ENUM_MAX: u8 = 64;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -4925,6 +5034,7 @@ pub mod zanshin {
                 Self::GitColocationResult,
                 Self::Diff,
                 Self::DiffLines,
+                Self::Tags,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -4993,6 +5103,7 @@ pub mod zanshin {
                     Self::GitColocationResult => Some("GitColocationResult"),
                     Self::Diff => Some("Diff"),
                     Self::DiffLines => Some("DiffLines"),
+                    Self::Tags => Some("Tags"),
                     _ => None,
                 }
             }
@@ -16943,6 +17054,491 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum TagSetRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_tag_set` (Story 9.59) — the CLI's `jj tag set`.
+        ///
+        /// `names` are DECODED names (ABSENT/EMPTY, or an empty-STRING name, is refused with
+        /// `jj.invalid_input` before the snapshot). `revision` ABSENT is the CLI's `-r` default `@`;
+        /// present it is a jj reverse-hex CHANGE ID. `allow_move` is `--allow-move`: without it a name that
+        /// is a local tag already refuses `jj.invalid_input`. Setting every name where it already points
+        /// writes no operation (`MutationResult.new_op_id` is the pre-call head).
+        pub struct TagSetRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TagSetRequest<'a> {
+            type Inner = TagSetRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TagSetRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 8;
+            pub const VT_ALLOW_MOVE: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TagSetRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TagSetRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TagSetRequest<'bldr>> {
+                let mut builder = TagSetRequestBuilder::new(_fbb);
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.add_allow_move(args.allow_move);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(TagSetRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(TagSetRequest::VT_NAMES, None)
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(TagSetRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn allow_move(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(TagSetRequest::VT_ALLOW_MOVE, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TagSetRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<bool>("allow_move", Self::VT_ALLOW_MOVE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct TagSetRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub allow_move: bool,
+        }
+        impl<'a> Default for TagSetRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TagSetRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    names: None,
+                    revision: None,
+                    allow_move: false,
+                }
+            }
+        }
+
+        pub struct TagSetRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TagSetRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(TagSetRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TagSetRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TagSetRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_allow_move(&mut self, allow_move: bool) {
+                self.fbb_
+                    .push_slot::<bool>(TagSetRequest::VT_ALLOW_MOVE, allow_move, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TagSetRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TagSetRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TagSetRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TagSetRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TagSetRequest");
+                ds.field("kind", &self.kind());
+                ds.field("names", &self.names());
+                ds.field("revision", &self.revision());
+                ds.field("allow_move", &self.allow_move());
+                ds.finish()
+            }
+        }
+        pub enum TagDeleteRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_tag_delete` (Story 9.59) — the CLI's `jj tag delete`.
+        ///
+        /// `names` are string PATTERNS passed through verbatim, unioned (a BARE one is a GLOB);
+        /// ABSENT/EMPTY is refused with `jj.invalid_input` before the snapshot. Matching nothing writes no
+        /// operation.
+        pub struct TagDeleteRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TagDeleteRequest<'a> {
+            type Inner = TagDeleteRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TagDeleteRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TagDeleteRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TagDeleteRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TagDeleteRequest<'bldr>> {
+                let mut builder = TagDeleteRequestBuilder::new(_fbb);
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(TagDeleteRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(TagDeleteRequest::VT_NAMES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TagDeleteRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct TagDeleteRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for TagDeleteRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TagDeleteRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    names: None,
+                }
+            }
+        }
+
+        pub struct TagDeleteRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TagDeleteRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(TagDeleteRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TagDeleteRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TagDeleteRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TagDeleteRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TagDeleteRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TagDeleteRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TagDeleteRequest");
+                ds.field("kind", &self.kind());
+                ds.field("names", &self.names());
+                ds.finish()
+            }
+        }
+        pub enum TagTrackRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_tag_track` and `zanshin_tag_untrack` (Story 9.59) — the CLI's `jj tag
+        /// track` / `untrack`; `kind` (`TagTrack` / `TagUntrack`) tells them apart.
+        ///
+        /// `names` are the CLI's `TAG[@REMOTE]` texts passed through verbatim: a `name@remote` symbol names
+        /// one remote tag exactly, any other text is a string pattern (a BARE one a GLOB); ABSENT/EMPTY is
+        /// refused with `jj.invalid_input` before the snapshot. `remotes` are remote-name PATTERNS
+        /// (`--remote`); ABSENT/EMPTY = not given. Nothing to (un)track writes no operation.
+        pub struct TagTrackRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TagTrackRequest<'a> {
+            type Inner = TagTrackRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TagTrackRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REMOTES: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TagTrackRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TagTrackRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TagTrackRequest<'bldr>> {
+                let mut builder = TagTrackRequestBuilder::new(_fbb);
+                if let Some(x) = args.remotes {
+                    builder.add_remotes(x);
+                }
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(TagTrackRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(TagTrackRequest::VT_NAMES, None)
+                }
+            }
+            #[inline]
+            pub fn remotes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(TagTrackRequest::VT_REMOTES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TagTrackRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("remotes", Self::VT_REMOTES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct TagTrackRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub remotes:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for TagTrackRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TagTrackRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    names: None,
+                    remotes: None,
+                }
+            }
+        }
+
+        pub struct TagTrackRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TagTrackRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(TagTrackRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TagTrackRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn add_remotes(
+                &mut self,
+                remotes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TagTrackRequest::VT_REMOTES, remotes);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TagTrackRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TagTrackRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TagTrackRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TagTrackRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TagTrackRequest");
+                ds.field("kind", &self.kind());
+                ds.field("names", &self.names());
+                ds.field("remotes", &self.remotes());
+                ds.finish()
+            }
+        }
         pub enum FileTrackRequestOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -26312,6 +26908,342 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("Bookmarks");
                 ds.field("bookmarks", &self.bookmarks());
+                ds.finish()
+            }
+        }
+        pub enum TagOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One row of `jj tag list --all-remotes` (Story 9.59).
+        ///
+        /// Every row: `target` (ABSENT = null when the row's target is absent — a local tag deleted while
+        /// still tracking a remote, or a tracked remote tag not pushed yet; a conflicted target carries its
+        /// first added commit's change id), `conflicted` (`!RefTarget::is_resolved`) and `synced` (local:
+        /// every TRACKED remote points where the local does, true with none; remote: tracked and pointing
+        /// where the local does). Remote rows only: `remote_name` and `tracked`.
+        pub struct Tag<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Tag<'a> {
+            type Inner = Tag<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Tag<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TARGET: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REMOTE_NAME: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CONFLICTED: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SYNCED: ::flatbuffers::VOffsetT = 14;
+            pub const VT_TRACKED: ::flatbuffers::VOffsetT = 16;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Tag { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TagArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Tag<'bldr>> {
+                let mut builder = TagBuilder::new(_fbb);
+                if let Some(x) = args.remote_name {
+                    builder.add_remote_name(x);
+                }
+                if let Some(x) = args.target {
+                    builder.add_target(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_tracked(args.tracked);
+                builder.add_synced(args.synced);
+                builder.add_conflicted(args.conflicted);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Tag::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn target(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Tag::VT_TARGET, None)
+                }
+            }
+            #[inline]
+            pub fn kind(&self) -> TagKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<TagKind>(Tag::VT_KIND, Some(TagKind::Local)).unwrap() }
+            }
+            #[inline]
+            pub fn remote_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Tag::VT_REMOTE_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn conflicted(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Tag::VT_CONFLICTED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn synced(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Tag::VT_SYNCED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn tracked(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Tag::VT_TRACKED, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Tag<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target", Self::VT_TARGET, false)?
+                    .visit_field::<TagKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote_name", Self::VT_REMOTE_NAME, false)?
+                    .visit_field::<bool>("conflicted", Self::VT_CONFLICTED, false)?
+                    .visit_field::<bool>("synced", Self::VT_SYNCED, false)?
+                    .visit_field::<bool>("tracked", Self::VT_TRACKED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct TagArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub target: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub kind: TagKind,
+            pub remote_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub conflicted: bool,
+            pub synced: bool,
+            pub tracked: bool,
+        }
+        impl<'a> Default for TagArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TagArgs {
+                    name: None,
+                    target: None,
+                    kind: TagKind::Local,
+                    remote_name: None,
+                    conflicted: false,
+                    synced: false,
+                    tracked: false,
+                }
+            }
+        }
+
+        pub struct TagBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TagBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Tag::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_target(&mut self, target: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Tag::VT_TARGET, target);
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: TagKind) {
+                self.fbb_.push_slot::<TagKind>(Tag::VT_KIND, kind, TagKind::Local);
+            }
+            #[inline]
+            pub fn add_remote_name(&mut self, remote_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Tag::VT_REMOTE_NAME, remote_name);
+            }
+            #[inline]
+            pub fn add_conflicted(&mut self, conflicted: bool) {
+                self.fbb_.push_slot::<bool>(Tag::VT_CONFLICTED, conflicted, false);
+            }
+            #[inline]
+            pub fn add_synced(&mut self, synced: bool) {
+                self.fbb_.push_slot::<bool>(Tag::VT_SYNCED, synced, false);
+            }
+            #[inline]
+            pub fn add_tracked(&mut self, tracked: bool) {
+                self.fbb_.push_slot::<bool>(Tag::VT_TRACKED, tracked, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TagBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TagBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Tag<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Tag<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Tag");
+                ds.field("name", &self.name());
+                ds.field("target", &self.target());
+                ds.field("kind", &self.kind());
+                ds.field("remote_name", &self.remote_name());
+                ds.field("conflicted", &self.conflicted());
+                ds.field("synced", &self.synced());
+                ds.field("tracked", &self.tracked());
+                ds.finish()
+            }
+        }
+        pub enum TagsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The tag list (Story 9.59), returned by `zanshin_tags`: the rows `jj tag list --all-remotes`
+        /// prints, in its order — each Local row followed by its tracked Remote rows, then the name's
+        /// untracked Remote rows, in name order; then sorted by `ui.tag-list-sort-keys` — minus every row
+        /// of the Git-tracking remote `git` on a Git-backed repo.
+        pub struct Tags<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Tags<'a> {
+            type Inner = Tags<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Tags<'a> {
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Tags { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TagsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Tags<'bldr>> {
+                let mut builder = TagsBuilder::new(_fbb);
+                if let Some(x) = args.tags {
+                    builder.add_tags(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn tags(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Tag<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Tag>>,
+                    >>(Tags::VT_TAGS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Tags<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Tag>>>>("tags", Self::VT_TAGS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct TagsArgs<'a> {
+            pub tags:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Tag<'a>>>>>,
+        }
+        impl<'a> Default for TagsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TagsArgs { tags: None }
+            }
+        }
+
+        pub struct TagsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TagsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_tags(
+                &mut self,
+                tags: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<Tag<'b>>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Tags::VT_TAGS, tags);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TagsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TagsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Tags<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Tags<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Tags");
+                ds.field("tags", &self.tags());
                 ds.finish()
             }
         }
@@ -45460,6 +46392,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_tags(&self) -> Option<Tags<'a>> {
+                if self.data_type() == Payload::Tags {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { Tags::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -45536,6 +46483,7 @@ pub mod zanshin {
           Payload::GitColocationResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitColocationResult>>("Payload::GitColocationResult", pos),
           Payload::Diff => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Diff>>("Payload::Diff", pos),
           Payload::DiffLines => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<DiffLines>>("Payload::DiffLines", pos),
+          Payload::Tags => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Tags>>("Payload::Tags", pos),
           _ => Ok(()),
         }
      })?
@@ -46068,6 +47016,13 @@ pub mod zanshin {
                     }
                     Payload::DiffLines => {
                         if let Some(x) = self.data_as_diff_lines() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::Tags => {
+                        if let Some(x) = self.data_as_tags() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

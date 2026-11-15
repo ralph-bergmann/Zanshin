@@ -108,15 +108,15 @@ use crate::ChangeId;
 /// Turns caller-supplied names into jj-lib `RefNameBuf`s, refusing the two arities the CLI
 /// refuses: no names at all (clap's `required = true`) and an EMPTY name (`parse_symbol`'s
 /// `Expected non-empty string`, which no spelling of the CLI argument can get around).
-/// `verb` names the CLI command in the refusal (`create`, `set`).
-fn validate_names(verb: &str, names: &[String]) -> Result<Vec<RefNameBuf>, MutateError> {
+/// `noun` and `verb` name the CLI command in the refusal (`bookmark create`, `tag set`).
+pub(crate) fn validate_names(noun: &str, verb: &str, names: &[String]) -> Result<Vec<RefNameBuf>, MutateError> {
     if names.is_empty() {
         return Err(MutateError::invalid(format!(
-            "bookmark {verb} requires at least one name"
+            "{noun} {verb} requires at least one name"
         )));
     }
     if names.iter().any(String::is_empty) {
-        return Err(MutateError::invalid("bookmark name must not be empty".to_owned()));
+        return Err(MutateError::invalid(format!("{noun} name must not be empty")));
     }
     Ok(names.iter().map(RefNameBuf::from).collect())
 }
@@ -153,8 +153,9 @@ fn ignored_remote_matcher(store: &jj_lib::store::Store) -> StringMatcher {
 
 /// The CLI's `default_ignored_remote_name` (`cli_util.rs:3463-3474` @ v0.46.0): jj-lib's reserved
 /// `git` on a GIT-backed repo, no remote otherwise. `forget` skips it when untracking, `track` /
-/// `untrack` leave it out of their default remote filter (Story 9.11).
-fn default_ignored_remote(store: &jj_lib::store::Store) -> Option<&'static RemoteName> {
+/// `untrack` leave it out of their default remote filter (Story 9.11), and so do the tag verbs
+/// (Story 9.59).
+pub(crate) fn default_ignored_remote(store: &jj_lib::store::Store) -> Option<&'static RemoteName> {
     jj_lib::git::get_git_backend(store)
         .is_ok()
         .then_some(jj_lib::git::REMOTE_NAME_FOR_LOCAL_GIT_REPO)
@@ -215,7 +216,7 @@ pub(crate) fn union_patterns(patterns: &[String]) -> Result<StringExpression, St
 /// `as_symbol` is the QUOTED revset rendering, and this is the ONE place it is right — the
 /// description is a rendering, so byte-level op-log parity (NFR-R-2) requires it. Every
 /// PAYLOAD name still crosses as `as_str` (`git.rs`'s `project_updates`).
-fn join_symbols(names: &[RefNameBuf]) -> String {
+pub(crate) fn join_symbols(names: &[RefNameBuf]) -> String {
     names
         .iter()
         .map(|name| name.as_symbol().to_string())
@@ -302,7 +303,7 @@ pub(crate) fn create(
     names: &[String],
     revision: Option<&ChangeId>,
 ) -> Result<MutationResult, MutateError> {
-    let ref_names = validate_names("create", names)?;
+    let ref_names = validate_names("bookmark", "create", names)?;
 
     // ONE head load for the whole verb, as the CLI has. The revision has to resolve before
     // the transaction opens (CLI order, `create.rs:57-60`) because the op-log description
@@ -920,20 +921,20 @@ pub(crate) fn rename(
 ///
 /// [`MutateError::InvalidInput`] when `names` is empty or a name is the empty string.
 pub(crate) fn check_set_args(names: &[String]) -> Result<(), MutateError> {
-    validate_names("set", names).map(drop)
+    validate_names("bookmark", "set", names).map(drop)
 }
 
-/// Refuses clap's `required = true` of `bookmark forget`, `track` and `untrack` (`verb`) — before
-/// the pre-verb snapshot. Every other refusal of their names follows the snapshot, where the CLI's
-/// command body parses them.
+/// Refuses clap's `required = true` of `bookmark forget`, `track` and `untrack`, and of `tag
+/// delete`, `track` and `untrack` (`noun` `verb`) — before the pre-verb snapshot. Every other
+/// refusal of their names follows the snapshot, where the CLI's command body parses them.
 ///
 /// # Errors
 ///
 /// [`MutateError::InvalidInput`] when `names` is empty.
-pub(crate) fn check_names_given(verb: &str, names: &[String]) -> Result<(), MutateError> {
+pub(crate) fn check_names_given(noun: &str, verb: &str, names: &[String]) -> Result<(), MutateError> {
     if names.is_empty() {
         return Err(MutateError::invalid(format!(
-            "bookmark {verb} requires at least one name"
+            "{noun} {verb} requires at least one name"
         )));
     }
     Ok(())
@@ -969,7 +970,7 @@ pub(crate) fn set(
     revision: Option<&ChangeId>,
     allow_backwards: bool,
 ) -> Result<MutationResult, MutateError> {
-    let ref_names = validate_names("set", names)?;
+    let ref_names = validate_names("bookmark", "set", names)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let target = crate::op_support::resolve_or_wc(
@@ -1080,22 +1081,26 @@ pub(crate) fn forget(
     Ok(finished.mutation)
 }
 
-/// Which of the two tracking verbs runs — `bookmark track` or `bookmark untrack`.
+/// Which of the two tracking verbs runs — `bookmark track` or `bookmark untrack`, `tag track` or
+/// `tag untrack` (Story 9.59).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tracking {
-    /// `jj bookmark track` (`bookmark/track.rs` @ v0.46.0).
+    /// `jj bookmark track` (`bookmark/track.rs` @ v0.46.0) / `jj tag track`.
     Track,
-    /// `jj bookmark untrack` (`bookmark/untrack.rs` @ v0.46.0).
+    /// `jj bookmark untrack` (`bookmark/untrack.rs` @ v0.46.0) / `jj tag untrack`.
     Untrack,
 }
 
-/// A remote bookmark a tracking verb matched, and whether it is tracked now.
-type MatchedRemote = (RemoteRefSymbolBuf, bool);
+/// A remote ref a tracking verb matched, and whether it is tracked now.
+pub(crate) type MatchedRemote = (RemoteRefSymbolBuf, bool);
 
-/// Splits `BOOKMARK[@REMOTE]` texts into name patterns and remote symbols — the CLI's
-/// `parse_name_patterns_or_remote_symbols` (`revset_util.rs:386-416` @ v0.46.0), minus its parse
-/// diagnostics (none for string patterns in jj-lib 0.46, as [`union_patterns`] notes) and its hint.
-fn parse_names_or_symbols(texts: &[String]) -> Result<(Vec<StringExpression>, Vec<RemoteRefSymbolBuf>), MutateError> {
+/// Splits `BOOKMARK[@REMOTE]` / `TAG[@REMOTE]` texts into name patterns and remote symbols — the
+/// CLI's `parse_name_patterns_or_remote_symbols` (`revset_util.rs:386-416` @ v0.46.0), minus its
+/// parse diagnostics (none for string patterns in jj-lib 0.46, as [`union_patterns`] notes) and its
+/// hint.
+pub(crate) fn parse_names_or_symbols(
+    texts: &[String],
+) -> Result<(Vec<StringExpression>, Vec<RemoteRefSymbolBuf>), MutateError> {
     let wrap =
         |e: RevsetParseError| MutateError::invalid(describe_pattern_parse_error("name pattern or remote symbol", &e));
     let mut diagnostics = RevsetDiagnostics::new();
@@ -1112,22 +1117,24 @@ fn parse_names_or_symbols(texts: &[String]) -> Result<(Vec<StringExpression>, Ve
     Ok((patterns, symbols))
 }
 
-/// The CLI's mixed-syntax refusals of `track` / `untrack` (`track.rs:84-95`, `untrack.rs:80-91` @
-/// v0.46.0).
-fn refuse_mixed_syntax(
+/// The CLI's mixed-syntax refusals of `track` / `untrack` (`bookmark/track.rs:84-95`,
+/// `bookmark/untrack.rs:80-91` @ v0.46.0, `tag/track.rs:80-88`, `tag/untrack.rs:83-91` @ v0.47.0),
+/// `noun` (`bookmark`, `tag`) in their `<noun>` placeholders.
+pub(crate) fn refuse_mixed_syntax(
+    noun: &str,
     patterns: &[StringExpression],
     symbols: &[RemoteRefSymbolBuf],
     remotes: &[String],
 ) -> Result<(), MutateError> {
     if !patterns.is_empty() && !symbols.is_empty() {
-        return Err(MutateError::invalid(
-            "Cannot specify both <bookmark> patterns and <bookmark>@<remote> symbols",
-        ));
+        return Err(MutateError::invalid(format!(
+            "Cannot specify both <{noun}> patterns and <{noun}>@<remote> symbols"
+        )));
     }
     if !remotes.is_empty() && !symbols.is_empty() {
-        return Err(MutateError::invalid(
-            "--remote cannot be used with <bookmark>@<remote> symbols",
-        ));
+        return Err(MutateError::invalid(format!(
+            "--remote cannot be used with <{noun}>@<remote> symbols"
+        )));
     }
     Ok(())
 }
@@ -1175,9 +1182,14 @@ fn trackable_matching(view: &View, bookmarks: &StringMatcher, remotes: &StringMa
     present.chain(absent).collect()
 }
 
-/// The CLI's `warn_unmatched_remotes` (`bookmark/mod.rs:229-243` @ v0.46.0): one warning naming
-/// every exact remote name with no remote view.
-fn warn_unmatched_remotes(sink: &mut Warnings, view: &View, expression: &StringExpression) {
+/// The CLI's `warn_unmatched_remotes` (`bookmark/mod.rs:229-243` @ v0.46.0, `tag/mod.rs:166-180` @
+/// v0.47.0): one `kind` warning naming every exact remote name with no remote view.
+pub(crate) fn warn_unmatched_remotes(
+    kind: WarningKind,
+    sink: &mut Warnings,
+    view: &View,
+    expression: &StringExpression,
+) {
     let unmatched: Vec<String> = expression
         .exact_strings()
         .map(RemoteName::new)
@@ -1185,10 +1197,7 @@ fn warn_unmatched_remotes(sink: &mut Warnings, view: &View, expression: &StringE
         .map(|name| name.as_symbol().to_string())
         .collect();
     if !unmatched.is_empty() {
-        sink.push(
-            WarningKind::BookmarkRemotesUnmatched,
-            format!("No matching remotes for names: {}", unmatched.join(", ")),
-        );
+        sink.push(kind, format!("No matching remotes for names: {}", unmatched.join(", ")));
     }
 }
 
@@ -1225,7 +1234,7 @@ pub(crate) fn track_or_untrack(
     tracking: Tracking,
 ) -> Result<MutationResult, MutateError> {
     let (patterns, symbols) = parse_names_or_symbols(names)?;
-    refuse_mixed_syntax(&patterns, &symbols, remotes)?;
+    refuse_mixed_syntax("bookmark", &patterns, &symbols, remotes)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let view = readonly.view();
     // Suppresses the unmatched-remotes warning for the default-ignored remote.
@@ -1241,7 +1250,12 @@ pub(crate) fn track_or_untrack(
         };
         let matched = trackable_matching(view, &bookmark_expr.to_matcher(), &remote_expr.to_matcher());
         crate::bookmarks::warn_unmatched(&mut ctx.warnings, view, &bookmark_expr);
-        warn_unmatched_remotes(&mut ctx.warnings, view, &remote_expr);
+        warn_unmatched_remotes(
+            WarningKind::BookmarkRemotesUnmatched,
+            &mut ctx.warnings,
+            view,
+            &remote_expr,
+        );
         matched
     } else {
         resolve_trackable(&mut ctx.warnings, view, &symbols)
@@ -1362,21 +1376,23 @@ mod tests {
     use crate::MutateError;
 
     /// The two arity refusals the CLI makes at clap level, which have to become wire-level
-    /// refusals here (a GUI has no clap): no names at all, and an empty name.
+    /// refusals here (a GUI has no clap): no names at all, and an empty name. Both name the noun
+    /// (Story 9.59's `tag set` shares the check).
     #[test]
     fn validate_names_refuses_the_two_clap_level_arities() {
-        let empty_list = validate_names("create", &[]).expect_err("clap's required = true");
+        let empty_list = validate_names("bookmark", "create", &[]).expect_err("clap's required = true");
         assert!(
-            matches!(&empty_list, MutateError::InvalidInput { reason, .. } if reason.contains("at least one name")),
+            matches!(&empty_list, MutateError::InvalidInput { reason, .. }
+                if reason == "bookmark create requires at least one name"),
             "unexpected error: {empty_list:?}"
         );
         let empty_name =
-            validate_names("create", &["ok".to_owned(), String::new()]).expect_err("parse_symbol rejects it");
+            validate_names("tag", "set", &["ok".to_owned(), String::new()]).expect_err("parse_symbol rejects it");
         assert!(
-            matches!(&empty_name, MutateError::InvalidInput { reason, .. } if reason.contains("must not be empty")),
+            matches!(&empty_name, MutateError::InvalidInput { reason, .. } if reason == "tag name must not be empty"),
             "unexpected error: {empty_name:?}"
         );
-        let ok = validate_names("create", &["a".to_owned(), "b".to_owned()]).expect("two ordinary names");
+        let ok = validate_names("bookmark", "create", &["a".to_owned(), "b".to_owned()]).expect("two ordinary names");
         assert_eq!(ok.len(), 2);
     }
 
@@ -1385,7 +1401,7 @@ mod tests {
     /// string is what NFR-R-2 pins byte-for-byte.
     #[test]
     fn join_symbols_renders_the_quoted_revset_form_in_argument_order() {
-        let names = validate_names("create", &["b".to_owned(), "a b".to_owned()]).expect("valid names");
+        let names = validate_names("bookmark", "create", &["b".to_owned(), "a b".to_owned()]).expect("valid names");
         assert_eq!(join_symbols(&names), r#"b, "a b""#);
         assert_eq!(join_symbols(&[]), "");
     }
@@ -1509,15 +1525,20 @@ mod tests {
         let empty = check_set_args(&[String::new()]).expect_err("parse_bookmark_name");
         assert!(empty.to_string().contains("must not be empty"), "{empty}");
         check_set_args(&["a".to_owned()]).expect("one name");
-        for verb in ["forget", "track", "untrack"] {
-            let refused = check_names_given(verb, &[]).expect_err("required = true");
+        for (noun, verb) in [
+            ("bookmark", "forget"),
+            ("bookmark", "track"),
+            ("bookmark", "untrack"),
+            ("tag", "delete"),
+        ] {
+            let refused = check_names_given(noun, verb, &[]).expect_err("required = true");
             assert!(
                 refused
                     .to_string()
-                    .contains(&format!("bookmark {verb} requires at least one name")),
+                    .contains(&format!("{noun} {verb} requires at least one name")),
                 "{refused}"
             );
-            check_names_given(verb, &[String::new()]).expect("an empty pattern is the parser's to refuse");
+            check_names_given(noun, verb, &[String::new()]).expect("an empty pattern is the parser's to refuse");
         }
     }
 
@@ -1570,20 +1591,20 @@ mod tests {
     #[test]
     fn refuse_mixed_syntax_refuses_in_the_cli_order() {
         let (patterns, symbols) = parse_names_or_symbols(&["a".to_owned(), "b@origin".to_owned()]).expect("both parse");
-        let both = refuse_mixed_syntax(&patterns, &symbols, &["origin".to_owned()]).expect_err("mixed");
+        let both = refuse_mixed_syntax("bookmark", &patterns, &symbols, &["origin".to_owned()]).expect_err("mixed");
         assert!(
             both.to_string()
                 .ends_with("Cannot specify both <bookmark> patterns and <bookmark>@<remote> symbols"),
             "{both}"
         );
-        let remote = refuse_mixed_syntax(&[], &symbols, &["origin".to_owned()]).expect_err("--remote");
+        let remote = refuse_mixed_syntax("tag", &[], &symbols, &["origin".to_owned()]).expect_err("--remote");
         assert!(
             remote
                 .to_string()
-                .ends_with("--remote cannot be used with <bookmark>@<remote> symbols"),
+                .ends_with("--remote cannot be used with <tag>@<remote> symbols"),
             "{remote}"
         );
-        refuse_mixed_syntax(&patterns, &[], &["origin".to_owned()]).expect("patterns take --remote");
-        refuse_mixed_syntax(&[], &symbols, &[]).expect("symbols alone");
+        refuse_mixed_syntax("bookmark", &patterns, &[], &["origin".to_owned()]).expect("patterns take --remote");
+        refuse_mixed_syntax("bookmark", &[], &symbols, &[]).expect("symbols alone");
     }
 }

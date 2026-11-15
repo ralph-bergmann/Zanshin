@@ -36,6 +36,7 @@ import '../ffi/revset_search.dart' show FoundChanges, RevsetCount, RevsetCounts;
 import '../ffi/select_tree.dart' show FileSelection, SelectTreeVerb, SelectedTree, SourceTree, TreeSelection;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
+import '../ffi/tags.dart' show Tag;
 import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
 import '../ffi/workspace.dart'
     show
@@ -338,6 +339,22 @@ final class RepoHandle {
       conflicted: conflicted,
       sort: sort,
     );
+  }
+
+  /// Read the tags of this repository (Story 9.59) — the rows `jj tag list
+  /// --all-remotes` prints, in its order, minus the rows of the Git-tracking
+  /// remote `git`: each local row (present, or deleted while still tracking a
+  /// remote), then its tracked remote rows, then the name's untracked remote
+  /// rows, sorted by `ui.tag-list-sort-keys` (default by name).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<WarnedList<Tag>> tags() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.tags(_handleId);
   }
 
   /// Read the configured git remotes for this repository.
@@ -2730,6 +2747,87 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.bookmarkUntrack(_handleId, names, remotes: remotes);
+  }
+
+  /// Create or move local tags to one revision (Story 9.59) — the CLI's `jj tag
+  /// set`.
+  ///
+  /// [names] are DECODED names. A `null` [revision] is the CLI's `-r` default
+  /// `@`; otherwise a jj reverse-hex change id. Per name in argument order,
+  /// fail-fast: without [allowMove] (`--allow-move`) a name that is a local tag
+  /// already refuses and nothing is written. An empty, undescribed target warns
+  /// `jj.tag_target_empty`. Tags are never auto-tracked. Setting every name where
+  /// it points writes nothing. Op-log description: `set tag {names} to commit
+  /// {id}`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no names, an empty name, or "Refusing to move tag:
+  /// {name}" with the hint in `hints` — `jj.change_not_found`,
+  /// `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> tagSet(List<String> names, {String? revision, bool allowMove = false}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.tagSet(_handleId, names, revision: revision, allowMove: allowMove);
+  }
+
+  /// Delete local tags (Story 9.59) — the CLI's `jj tag delete`.
+  ///
+  /// [names] are string PATTERNS (a bare one is a GLOB), unioned. A tracked
+  /// `name@remote` stays, so the next push sends the deletion. Matching nothing
+  /// writes nothing; an exact name with no local tag warns
+  /// `jj.tag_names_unmatched`. Op-log description: `delete tag {names}`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no patterns, or one that does not parse —
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> tagDelete(List<String> names) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.tagDelete(_handleId, names);
+  }
+
+  /// Start tracking remote tags (Story 9.59) — the CLI's `jj tag track`.
+  ///
+  /// [names] are the CLI's `TAG[@REMOTE]` texts: a `name@remote` symbol names
+  /// one remote tag exactly, any other text is a string pattern (a bare one a
+  /// GLOB) matched on every remote of [remotes] (remote-name patterns,
+  /// `--remote`; empty = every remote but `git` on a Git-backed repo). Tracking
+  /// merges the remote target into the local tag. Nothing to track writes
+  /// nothing. Warnings: `jj.remote_tags_unmatched`, `jj.tag_names_unmatched`,
+  /// `jj.tag_remotes_unmatched`, `jj.tag_already_tracked`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no names, an unparsable name or remote, patterns mixed
+  /// with symbols, or [remotes] with symbols — `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> tagTrack(List<String> names, {List<String> remotes = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.tagTrack(_handleId, names, remotes: remotes);
+  }
+
+  /// Stop tracking remote tags (Story 9.59) — the CLI's `jj tag untrack`.
+  /// [names] and [remotes] as [tagTrack]'s; the local tag stays. A `git` ref
+  /// warns `jj.tag_git_tracking_untrack` and stays tracked (the CLI's
+  /// refusal); an untracked one warns `jj.tag_not_tracked`. Nothing to untrack
+  /// writes nothing.
+  ///
+  /// Throws as [tagTrack].
+  Future<MutationResult> tagUntrack(List<String> names, {List<String> remotes = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.tagUntrack(_handleId, names, remotes: remotes);
   }
 
   /// Start tracking the working-copy paths matching [paths] (Story 9.22) — the

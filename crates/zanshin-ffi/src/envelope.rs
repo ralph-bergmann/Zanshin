@@ -318,6 +318,21 @@ pub const JJ_BOOKMARK_ALREADY_TRACKED: &str = "jj.bookmark_already_tracked";
 pub const JJ_BOOKMARK_NOT_TRACKED: &str = "jj.bookmark_not_tracked";
 /// Warning: `bookmark untrack` of a bookmark on the Git-tracking remote `git` (Story 9.11).
 pub const JJ_BOOKMARK_GIT_TRACKING_UNTRACK: &str = "jj.bookmark_git_tracking_untrack";
+/// Warning: `tag set` on an empty, undescribed revision (Story 9.59).
+pub const JJ_TAG_TARGET_EMPTY: &str = "jj.tag_target_empty";
+/// Warning: exact names given to `tag delete` / `track` / `untrack` that match no tag (Story 9.59).
+pub const JJ_TAG_NAMES_UNMATCHED: &str = "jj.tag_names_unmatched";
+/// Warning: `tag track` / `untrack` symbols that name no trackable remote tag (Story 9.59).
+pub const JJ_REMOTE_TAGS_UNMATCHED: &str = "jj.remote_tags_unmatched";
+/// Warning: exact `--remote` names given to `tag track` / `untrack` that match no remote (Story
+/// 9.59).
+pub const JJ_TAG_REMOTES_UNMATCHED: &str = "jj.tag_remotes_unmatched";
+/// Warning: `tag track` of an already tracked remote tag (Story 9.59).
+pub const JJ_TAG_ALREADY_TRACKED: &str = "jj.tag_already_tracked";
+/// Warning: `tag untrack` of a tag on the Git-tracking remote `git` (Story 9.59).
+pub const JJ_TAG_GIT_TRACKING_UNTRACK: &str = "jj.tag_git_tracking_untrack";
+/// Warning: `tag untrack` of a remote tag that is not tracked (Story 9.59).
+pub const JJ_TAG_NOT_TRACKED: &str = "jj.tag_not_tracked";
 /// Warning: a path `absorb` could not split.
 pub const JJ_ABSORB_PATH_SKIPPED: &str = "jj.absorb_path_skipped";
 /// Warning: a path whose content could not be read.
@@ -464,6 +479,13 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::BookmarkAlreadyTracked => JJ_BOOKMARK_ALREADY_TRACKED,
         K::BookmarkNotTracked => JJ_BOOKMARK_NOT_TRACKED,
         K::BookmarkGitTrackingUntrack => JJ_BOOKMARK_GIT_TRACKING_UNTRACK,
+        K::TagTargetEmpty => JJ_TAG_TARGET_EMPTY,
+        K::TagNamesUnmatched => JJ_TAG_NAMES_UNMATCHED,
+        K::RemoteTagsUnmatched => JJ_REMOTE_TAGS_UNMATCHED,
+        K::TagRemotesUnmatched => JJ_TAG_REMOTES_UNMATCHED,
+        K::TagAlreadyTracked => JJ_TAG_ALREADY_TRACKED,
+        K::TagGitTrackingUntrack => JJ_TAG_GIT_TRACKING_UNTRACK,
+        K::TagNotTracked => JJ_TAG_NOT_TRACKED,
         K::AbsorbPathSkipped => JJ_ABSORB_PATH_SKIPPED,
         K::PathAccessDenied => JJ_PATH_ACCESS_DENIED,
         K::PathNotAFile => JJ_PATH_NOT_A_FILE,
@@ -1869,6 +1891,13 @@ mod tests {
             K::BookmarkAlreadyTracked => "jj.bookmark_already_tracked",
             K::BookmarkNotTracked => "jj.bookmark_not_tracked",
             K::BookmarkGitTrackingUntrack => "jj.bookmark_git_tracking_untrack",
+            K::TagTargetEmpty => "jj.tag_target_empty",
+            K::TagNamesUnmatched => "jj.tag_names_unmatched",
+            K::RemoteTagsUnmatched => "jj.remote_tags_unmatched",
+            K::TagRemotesUnmatched => "jj.tag_remotes_unmatched",
+            K::TagAlreadyTracked => "jj.tag_already_tracked",
+            K::TagGitTrackingUntrack => "jj.tag_git_tracking_untrack",
+            K::TagNotTracked => "jj.tag_not_tracked",
             K::AbsorbPathSkipped => "jj.absorb_path_skipped",
             K::PathAccessDenied => "jj.path_access_denied",
             K::PathNotAFile => "jj.path_not_a_file",
@@ -1955,6 +1984,13 @@ mod tests {
             K::BookmarkAlreadyTracked,
             K::BookmarkNotTracked,
             K::BookmarkGitTrackingUntrack,
+            K::TagTargetEmpty,
+            K::TagNamesUnmatched,
+            K::RemoteTagsUnmatched,
+            K::TagRemotesUnmatched,
+            K::TagAlreadyTracked,
+            K::TagGitTrackingUntrack,
+            K::TagNotTracked,
             K::AbsorbPathSkipped,
             K::PathAccessDenied,
             K::PathNotAFile,

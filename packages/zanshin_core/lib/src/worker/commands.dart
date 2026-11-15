@@ -1730,6 +1730,96 @@ final class BookmarkTrackCommand extends WorkerCommand implements HandleScopedCo
   final bool untrack;
 }
 
+/// Read the tag list for the repo identified by [handleId] (Story 9.59) — the
+/// rows of `jj tag list --all-remotes` minus the `git` remote's.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinTags(raw)`, and replies with a `BufferResult` carrying the
+/// FlatBuffers `Envelope<Tags>` bytes.
+final class TagsCommand extends WorkerCommand implements HandleScopedCommand {
+  const TagsCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+}
+
+/// Create or move local tags to one revision, in the repo identified by
+/// [handleId] (Story 9.59) — the CLI's `jj tag set`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinTagSet(raw, …)`, and replies with a `BufferResult` carrying the
+/// FlatBuffers `Envelope<MutationResult>` bytes.
+final class TagSetCommand extends WorkerCommand implements HandleScopedCommand {
+  const TagSetCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.revision,
+    required this.allowMove,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// DECODED tag names.
+  final List<String> names;
+
+  /// jj reverse-hex change id of the target; `null` = `@`.
+  final String? revision;
+
+  /// `--allow-move`.
+  final bool allowMove;
+}
+
+/// Delete local tags, in the repo identified by [handleId] (Story 9.59) — the
+/// CLI's `jj tag delete`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinTagDelete(raw, …)`, and replies with a `BufferResult` carrying
+/// the FlatBuffers `Envelope<MutationResult>` bytes.
+final class TagDeleteCommand extends WorkerCommand implements HandleScopedCommand {
+  const TagDeleteCommand({required super.commandId, required this.handleId, required this.names});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// String PATTERNS (a bare one is a GLOB).
+  final List<String> names;
+}
+
+/// Start ([untrack] false) or stop ([untrack] true) tracking remote tags, in
+/// the repo identified by [handleId] (Story 9.59) — the CLI's `jj tag track` /
+/// `untrack`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinTagTrack` or `zanshinTagUntrack`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class TagTrackCommand extends WorkerCommand implements HandleScopedCommand {
+  const TagTrackCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.remotes,
+    required this.untrack,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `TAG[@REMOTE]` texts: `name@remote` symbols or string patterns.
+  final List<String> names;
+
+  /// Remote-name patterns (`--remote`); empty = not given.
+  final List<String> remotes;
+
+  /// `untrack` rather than `track`.
+  final bool untrack;
+}
+
 /// Start tracking the working-copy paths matching [paths], in the repo
 /// identified by [handleId] (Story 9.22) — the CLI's `jj file track`.
 ///

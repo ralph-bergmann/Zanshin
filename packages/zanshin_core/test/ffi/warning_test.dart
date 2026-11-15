@@ -426,6 +426,13 @@ void main() {
         'jj.bookmark_already_tracked',
         'jj.bookmark_not_tracked',
         'jj.bookmark_git_tracking_untrack',
+        'jj.tag_target_empty',
+        'jj.tag_names_unmatched',
+        'jj.remote_tags_unmatched',
+        'jj.tag_remotes_unmatched',
+        'jj.tag_already_tracked',
+        'jj.tag_git_tracking_untrack',
+        'jj.tag_not_tracked',
         'jj.absorb_path_skipped',
         'jj.path_access_denied',
         'jj.path_not_a_file',
@@ -476,7 +483,7 @@ void main() {
         'jj.resolve_conflicts_remain',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(77), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(84), reason: 'no code is registered twice');
     });
   });
 

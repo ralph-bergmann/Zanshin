@@ -99,6 +99,7 @@ mod snapshot_precondition;
 mod snapshot_watchman;
 mod squash_split;
 mod status;
+mod tag_ops;
 mod templates;
 mod view;
 mod warnings;

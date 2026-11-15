@@ -8,38 +8,50 @@
 //! never shells to the `jj` CLI (AR-AP-1). `bookmarks.rs` is the sibling listing; the two
 //! deliberately share one idiom.
 
+use std::collections::HashSet;
+
+use jj_lib::config::StackedConfig;
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::op_store::RefTarget;
 use jj_lib::repo::Repo as _;
+use jj_lib::str_util::StringMatcher;
 use jj_lib::workspace::Workspace;
 
-use crate::{ChangeId, CommitId};
+use crate::bookmarks::{collect_items, Include, Item, Predicates, Primary};
+use crate::{ChangeId, CommitId, ConfigError};
 
-/// Whether a tag is local or a tracked remote tag.
-///
-/// `PartialOrd`/`Ord` order `Local` before `Remote`, then remotes by `remote_name` — the
-/// secondary sort key for [`crate::Repo::list_tags`], mirroring [`crate::BookmarkKind`].
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+/// Whether a tag row is the local tag or a remote one, with the remote-only facts.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagKind {
     /// A tag local to this repository.
     Local,
-    /// A tracked remote tag. `remote_name` is always present for a `Remote` entry (never
-    /// `None`); it may be the empty string only in the theoretical empty-remote edge case
-    /// (jj does not forbid an empty remote name).
+    /// A remote tag, tracked or not. `remote_name` is always present for a `Remote` entry (never
+    /// `None`); it may be the empty string only in the theoretical empty-remote edge case (jj does
+    /// not forbid an empty remote name).
     Remote {
-        /// The remote this tag tracks (e.g. `"origin"`).
+        /// The remote this tag lives on (e.g. `"origin"`).
         remote_name: String,
+        /// Whether the local tag tracks this remote tag (jj-lib `RemoteRef::is_tracked`).
+        tracked: bool,
     },
 }
 
-/// One jj tag (local or tracked-remote) and its target change.
+/// One row of `jj tag list --all-remotes` (Story 9.59), the `@git` rows left out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
     /// Tag name, preserved as UTF-8 (jj-lib `RefName`).
     pub name: String,
-    /// Target change id in jj reverse-hex form. For a conflicted target, the first added
-    /// commit's change id (listing scope only) — the same rule [`crate::Bookmark::target`] uses.
-    pub target: ChangeId,
-    /// Whether this entry is the local tag or a tracked-remote tag.
+    /// Target change id in jj reverse-hex form; for a conflicted target the first added commit's
+    /// change id — the same rule [`crate::Bookmark::target`] uses. `None` when the row's target is
+    /// absent: a local tag deleted while still tracking a remote, or a tracked remote tag not
+    /// pushed yet.
+    pub target: Option<ChangeId>,
+    /// The target is an unresolved conflict (`!RefTarget::is_resolved`).
+    pub conflicted: bool,
+    /// Local row: every tracked remote tag of this name points where the local one does (true when
+    /// none is tracked). Remote row: tracked and pointing where the local one does.
+    pub synced: bool,
+    /// Whether this row is the local tag or a remote one.
     pub kind: TagKind,
 }
 
@@ -64,6 +76,10 @@ pub enum ViewError {
     /// [`crate::PreconditionError`].
     #[error(transparent)]
     Precondition(#[from] crate::PreconditionError),
+    /// The effective config could not be read: `ui.tag-list-sort-keys` is not an array of the CLI's
+    /// key names ([`crate::Repo::list_tags`], Story 9.59).
+    #[error(transparent)]
+    Config(#[from] ConfigError),
     /// An underlying jj-lib failure (loader / view / store read), opaque-string-wrapped so no
     /// `jj_lib` type escapes the public API (FR-JJ-16).
     #[error("jj-lib error: {0}")]
@@ -75,63 +91,92 @@ fn be<E: std::fmt::Display>(e: E) -> ViewError {
     ViewError::Backend(e.to_string())
 }
 
-/// Lists local + tracked-remote tags, sorted by name then kind.
+/// Lists the rows `jj tag list --all-remotes` prints (Story 9.59) — `cmd_tag_list`
+/// (`tag/list.rs:139-213` @ v0.47.0) with that one argument and without its template — minus the
+/// rows of the default-ignored remote (`git` on a Git-backed repo).
 ///
-/// Unlike the CLI's `jj tag list`, a tracked remote tag whose target equals the local one is
-/// NOT hidden (`cli/src/commit_ref_list.rs:89-91` @ v0.46.0 drops it via
-/// `include_synced_remotes`). That filter is a *display* default: the filtered, per-row view is
-/// [`crate::CommitMeta::tags`]' job, and the unfiltered view is this function's — exactly the
-/// split [`crate::Repo::list_bookmarks`] already makes. The backend classifies and offers; the
-/// UI decides.
+/// The rows come from the bookmark list's `collect_items` over every tag name: each local row, then
+/// its tracked remote rows, then the name's untracked remote rows, in name order; then sorted by
+/// `ui.tag-list-sort-keys` (read from `config`, default `["name"]`). The `git` rows are dropped
+/// AFTER collecting, so a local row's `synced` still sees the `git` ref as the CLI does.
 ///
 /// # Errors
 ///
+/// - [`ViewError::Config`] — `ui.tag-list-sort-keys` is malformed.
 /// - [`ViewError::Backend`] — the head load or a store read failed; the jj-lib reason is
 ///   forwarded as a string.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn list_tags(workspace: &Workspace) -> Result<Vec<Tag>, ViewError> {
+pub(crate) fn list_tags(workspace: &Workspace, config: &StackedConfig) -> Result<Vec<Tag>, ViewError> {
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
-    let view = readonly.view();
-    let store = readonly.store();
-
-    // CommitId → ChangeId (reverse-hex), the codebase idiom (bookmarks.rs:76-79).
-    let to_change = |commit_id| -> Result<ChangeId, ViewError> {
-        let commit = store.get_commit(commit_id).map_err(be)?;
-        Ok(ChangeId(commit.change_id().reverse_hex()))
+    let predicates = Predicates {
+        name_matcher: StringMatcher::all(),
+        remote_matcher: StringMatcher::all(),
+        matched_local_targets: HashSet::new(),
+        conflicted: false,
+        include: Include {
+            local_only: true,
+            synced_remotes: true,
+            untracked_remotes: true,
+        },
     };
+    let mut items = collect_items(readonly.view().tags(), &predicates);
+    let sort_keys = crate::config::ui_tag_list_sort_keys(config)?;
+    crate::bookmarks::sort(readonly.store(), &mut items, &sort_keys).map_err(be)?;
 
-    let mut out: Vec<Tag> = Vec::new();
-
-    // Local tags — already absent-pruned by jj-lib (`set_local_tag_target` removes on absent).
-    for (name, target) in view.local_tags() {
-        // added_ids().next() handles normal AND conflicted targets uniformly
-        // (a normal target is a one-add merge; no dead else-branch).
-        if let Some(commit_id) = target.present_adds().next() {
-            out.push(Tag {
+    let ignored =
+        crate::bookmark_ops::default_ignored_remote(readonly.store()).map(jj_lib::ref_name::RemoteName::as_str);
+    let change_of = |target: &RefTarget| -> Result<Option<ChangeId>, ViewError> {
+        target
+            .present_adds()
+            .next()
+            .map(|commit_id| {
+                let commit = readonly.store().get_commit(commit_id).map_err(be)?;
+                Ok(ChangeId(commit.change_id().reverse_hex()))
+            })
+            .transpose()
+    };
+    let mut out = Vec::new();
+    for item in &items {
+        let Item {
+            name,
+            local_target,
+            primary,
+            tracked,
+        } = item;
+        let remote_row = |remote: &str, target: &RefTarget, is_tracked: bool| -> Result<Tag, ViewError> {
+            Ok(Tag {
                 name: name.as_str().to_owned(),
-                target: to_change(commit_id)?,
-                kind: TagKind::Local,
-            });
-        }
-    }
-
-    // Remote tags — NOT pre-pruned: skip absent + untracked (`list_bookmarks` lists both since Story 9.29).
-    for (symbol, remote_ref) in view.all_remote_tags() {
-        if !remote_ref.is_present() || !remote_ref.is_tracked() {
-            continue;
-        }
-        if let Some(commit_id) = remote_ref.target.present_adds().next() {
-            out.push(Tag {
-                name: symbol.name.as_str().to_owned(),
-                target: to_change(commit_id)?,
+                target: change_of(target)?,
+                conflicted: !target.is_resolved(),
+                synced: is_tracked && target == *local_target,
                 kind: TagKind::Remote {
-                    remote_name: symbol.remote.as_str().to_owned(),
+                    remote_name: remote.to_owned(),
+                    tracked: is_tracked,
                 },
-            });
+            })
+        };
+        match primary {
+            Primary::Local { remote_refs } => out.push(Tag {
+                name: name.as_str().to_owned(),
+                target: change_of(local_target)?,
+                conflicted: !local_target.is_resolved(),
+                synced: remote_refs
+                    .iter()
+                    .all(|(_, remote_ref)| !remote_ref.is_tracked() || remote_ref.target == **local_target),
+                kind: TagKind::Local,
+            }),
+            Primary::Untracked { remote, remote_ref } => {
+                if Some(remote.as_str()) != ignored {
+                    out.push(remote_row(remote.as_str(), &remote_ref.target, false)?);
+                }
+            }
+        }
+        for (remote, remote_ref) in tracked {
+            if Some(remote.as_str()) != ignored {
+                out.push(remote_row(remote.as_str(), &remote_ref.target, true)?);
+            }
         }
     }
-
-    out.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.kind.cmp(&b.kind)));
     Ok(out)
 }
 

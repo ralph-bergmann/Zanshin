@@ -189,8 +189,16 @@ cli_commands! {
     SQUASH = "squash";
     /// `Repo::status`.
     STATUS = "status";
+    /// `Repo::tag_delete`.
+    TAG_DELETE = "tag delete";
     /// `Repo::list_tags`.
     TAG_LIST = "tag list";
+    /// `Repo::tag_set`.
+    TAG_SET = "tag set";
+    /// `Repo::tag_track`.
+    TAG_TRACK = "tag track";
+    /// `Repo::tag_untrack`.
+    TAG_UNTRACK = "tag untrack";
     /// `Repo::undo`.
     UNDO = "undo";
     /// `Repo::snapshot` (not `config set`'s author check, which plays `config set`).

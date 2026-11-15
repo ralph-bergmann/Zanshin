@@ -119,8 +119,9 @@ class _RevsetErrorKindReader extends fb.Reader<RevsetErrorKind> {
 ///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 65 tables the variant name plus `Request` IS
-///  the table name.
+///  squash, never a different verb. `BookmarkTrackRequest` and `TagTrackRequest` (Stories 9.11 and
+///  9.59) carry their track and untrack kinds. For the other tables the variant name plus `Request`
+///  IS the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 ///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -203,7 +204,11 @@ enum RequestKind {
   FileEdit(71),
   FileDelete(72),
   Diff(73),
-  DiffLines(74);
+  DiffLines(74),
+  TagSet(75),
+  TagDelete(76),
+  TagTrack(77),
+  TagUntrack(78);
 
   final int value;
   const RequestKind(this.value);
@@ -360,6 +365,14 @@ enum RequestKind {
         return RequestKind.Diff;
       case 74:
         return RequestKind.DiffLines;
+      case 75:
+        return RequestKind.TagSet;
+      case 76:
+        return RequestKind.TagDelete;
+      case 77:
+        return RequestKind.TagTrack;
+      case 78:
+        return RequestKind.TagUntrack;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -368,7 +381,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 74;
+  static const int maxValue = 78;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -1213,6 +1226,43 @@ class _BookmarkKindReader extends fb.Reader<BookmarkKind> {
 
   @override
   BookmarkKind read(fb.BufferContext bc, int offset) => BookmarkKind.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
+///  Whether a tag row is the local tag or a remote one (tracked or not). `remote_name` is populated
+///  ONLY when kind == Remote (ABSENT for Local).
+enum TagKind {
+  Local(0),
+  Remote(1);
+
+  final int value;
+  const TagKind(this.value);
+
+  factory TagKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return TagKind.Local;
+      case 1:
+        return TagKind.Remote;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static TagKind? _createOrNull(int? value) => value == null ? null : TagKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<TagKind> reader = _TagKindReader();
+}
+
+class _TagKindReader extends fb.Reader<TagKind> {
+  const _TagKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  TagKind read(fb.BufferContext bc, int offset) => TagKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
 ///  The kind of a `RemoteRefChange`'s ref (Story 9.24). Mirrors zanshin_jj::RemoteRefKind.
@@ -2260,7 +2310,8 @@ enum PayloadTypeId {
   GitColocationStatus(60),
   GitColocationResult(61),
   Diff(62),
-  DiffLines(63);
+  DiffLines(63),
+  Tags(64);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -2395,6 +2446,8 @@ enum PayloadTypeId {
         return PayloadTypeId.Diff;
       case 63:
         return PayloadTypeId.DiffLines;
+      case 64:
+        return PayloadTypeId.Tags;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -2403,7 +2456,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 63;
+  static const int maxValue = 64;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -9347,6 +9400,302 @@ class BookmarkTrackRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Arguments of `zanshin_tag_set` (Story 9.59) — the CLI's `jj tag set`.
+///
+///  `names` are DECODED names (ABSENT/EMPTY, or an empty-STRING name, is refused with
+///  `jj.invalid_input` before the snapshot). `revision` ABSENT is the CLI's `-r` default `@`;
+///  present it is a jj reverse-hex CHANGE ID. `allow_move` is `--allow-move`: without it a name that
+///  is a local tag already refuses `jj.invalid_input`. Setting every name where it already points
+///  writes no operation (`MutationResult.new_op_id` is the pre-call head).
+class TagSetRequest {
+  TagSetRequest._(this._bc, this._bcOffset);
+  factory TagSetRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<TagSetRequest> reader = _TagSetRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  bool get allowMove => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+
+  @override
+  String toString() {
+    return 'TagSetRequest{kind: ${kind}, names: ${names}, revision: ${revision}, allowMove: ${allowMove}}';
+  }
+}
+
+class _TagSetRequestReader extends fb.TableReader<TagSetRequest> {
+  const _TagSetRequestReader();
+
+  @override
+  TagSetRequest createObject(fb.BufferContext bc, int offset) => TagSetRequest._(bc, offset);
+}
+
+class TagSetRequestBuilder {
+  TagSetRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAllowMove(bool? allowMove) {
+    fbBuilder.addBool(3, allowMove);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class TagSetRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _names;
+  final String? _revision;
+  final bool? _allowMove;
+
+  TagSetRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? names,
+    String? revision,
+    bool? allowMove,
+  }) : _kind = kind,
+       _names = names,
+       _revision = revision,
+       _allowMove = allowMove;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
+    fbBuilder.addOffset(2, revisionOffset);
+    fbBuilder.addBool(3, _allowMove);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_tag_delete` (Story 9.59) — the CLI's `jj tag delete`.
+///
+///  `names` are string PATTERNS passed through verbatim, unioned (a BARE one is a GLOB);
+///  ABSENT/EMPTY is refused with `jj.invalid_input` before the snapshot. Matching nothing writes no
+///  operation.
+class TagDeleteRequest {
+  TagDeleteRequest._(this._bc, this._bcOffset);
+  factory TagDeleteRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<TagDeleteRequest> reader = _TagDeleteRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'TagDeleteRequest{kind: ${kind}, names: ${names}}';
+  }
+}
+
+class _TagDeleteRequestReader extends fb.TableReader<TagDeleteRequest> {
+  const _TagDeleteRequestReader();
+
+  @override
+  TagDeleteRequest createObject(fb.BufferContext bc, int offset) => TagDeleteRequest._(bc, offset);
+}
+
+class TagDeleteRequestBuilder {
+  TagDeleteRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class TagDeleteRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _names;
+
+  TagDeleteRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? names,
+  }) : _kind = kind,
+       _names = names;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_tag_track` and `zanshin_tag_untrack` (Story 9.59) — the CLI's `jj tag
+///  track` / `untrack`; `kind` (`TagTrack` / `TagUntrack`) tells them apart.
+///
+///  `names` are the CLI's `TAG[@REMOTE]` texts passed through verbatim: a `name@remote` symbol names
+///  one remote tag exactly, any other text is a string pattern (a BARE one a GLOB); ABSENT/EMPTY is
+///  refused with `jj.invalid_input` before the snapshot. `remotes` are remote-name PATTERNS
+///  (`--remote`); ABSENT/EMPTY = not given. Nothing to (un)track writes no operation.
+class TagTrackRequest {
+  TagTrackRequest._(this._bc, this._bcOffset);
+  factory TagTrackRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<TagTrackRequest> reader = _TagTrackRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get remotes => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'TagTrackRequest{kind: ${kind}, names: ${names}, remotes: ${remotes}}';
+  }
+}
+
+class _TagTrackRequestReader extends fb.TableReader<TagTrackRequest> {
+  const _TagTrackRequestReader();
+
+  @override
+  TagTrackRequest createObject(fb.BufferContext bc, int offset) => TagTrackRequest._(bc, offset);
+}
+
+class TagTrackRequestBuilder {
+  TagTrackRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemotesOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class TagTrackRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _names;
+  final List<String>? _remotes;
+
+  TagTrackRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? names,
+    List<String>? remotes,
+  }) : _kind = kind,
+       _names = names,
+       _remotes = remotes;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    final int? remotesOffset = _remotes == null
+        ? null
+        : fbBuilder.writeList(_remotes!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
+    fbBuilder.addOffset(2, remotesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Arguments of `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
 ///
 ///  `paths` are repo-relative paths interpreted as PREFIXES; the fileset DSL is terminal input
@@ -14966,6 +15315,223 @@ class BookmarksObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_bookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
     fbBuilder.startTable(1);
     fbBuilder.addOffset(0, bookmarksOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One row of `jj tag list --all-remotes` (Story 9.59).
+///
+///  Every row: `target` (ABSENT = null when the row's target is absent — a local tag deleted while
+///  still tracking a remote, or a tracked remote tag not pushed yet; a conflicted target carries its
+///  first added commit's change id), `conflicted` (`!RefTarget::is_resolved`) and `synced` (local:
+///  every TRACKED remote points where the local does, true with none; remote: tracked and pointing
+///  where the local does). Remote rows only: `remote_name` and `tracked`.
+class Tag {
+  Tag._(this._bc, this._bcOffset);
+  factory Tag(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Tag> reader = _TagReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get target => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  TagKind get kind => TagKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  String? get remoteName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get conflicted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get synced => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  bool get tracked => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+
+  @override
+  String toString() {
+    return 'Tag{name: ${name}, target: ${target}, kind: ${kind}, remoteName: ${remoteName}, conflicted: ${conflicted}, synced: ${synced}, tracked: ${tracked}}';
+  }
+}
+
+class _TagReader extends fb.TableReader<Tag> {
+  const _TagReader();
+
+  @override
+  Tag createObject(fb.BufferContext bc, int offset) => Tag._(bc, offset);
+}
+
+class TagBuilder {
+  TagBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(7);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTargetOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addKind(TagKind? kind) {
+    fbBuilder.addInt8(2, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteNameOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addConflicted(bool? conflicted) {
+    fbBuilder.addBool(4, conflicted);
+    return fbBuilder.offset;
+  }
+
+  int addSynced(bool? synced) {
+    fbBuilder.addBool(5, synced);
+    return fbBuilder.offset;
+  }
+
+  int addTracked(bool? tracked) {
+    fbBuilder.addBool(6, tracked);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class TagObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _target;
+  final TagKind? _kind;
+  final String? _remoteName;
+  final bool? _conflicted;
+  final bool? _synced;
+  final bool? _tracked;
+
+  TagObjectBuilder({
+    String? name,
+    String? target,
+    TagKind? kind,
+    String? remoteName,
+    bool? conflicted,
+    bool? synced,
+    bool? tracked,
+  }) : _name = name,
+       _target = target,
+       _kind = kind,
+       _remoteName = remoteName,
+       _conflicted = conflicted,
+       _synced = synced,
+       _tracked = tracked;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? targetOffset = _target == null ? null : fbBuilder.writeString(_target!);
+    final int? remoteNameOffset = _remoteName == null ? null : fbBuilder.writeString(_remoteName!);
+    fbBuilder.startTable(7);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, targetOffset);
+    fbBuilder.addInt8(2, _kind?.value);
+    fbBuilder.addOffset(3, remoteNameOffset);
+    fbBuilder.addBool(4, _conflicted);
+    fbBuilder.addBool(5, _synced);
+    fbBuilder.addBool(6, _tracked);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The tag list (Story 9.59), returned by `zanshin_tags`: the rows `jj tag list --all-remotes`
+///  prints, in its order — each Local row followed by its tracked Remote rows, then the name's
+///  untracked Remote rows, in name order; then sorted by `ui.tag-list-sort-keys` — minus every row
+///  of the Git-tracking remote `git` on a Git-backed repo.
+class Tags {
+  Tags._(this._bc, this._bcOffset);
+  factory Tags(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<Tags> reader = _TagsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<Tag>? get tags => const fb.ListReader<Tag>(Tag.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'Tags{tags: ${tags}}';
+  }
+}
+
+class _TagsReader extends fb.TableReader<Tags> {
+  const _TagsReader();
+
+  @override
+  Tags createObject(fb.BufferContext bc, int offset) => Tags._(bc, offset);
+}
+
+class TagsBuilder {
+  TagsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addTagsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class TagsObjectBuilder extends fb.ObjectBuilder {
+  final List<TagObjectBuilder>? _tags;
+
+  TagsObjectBuilder({
+    List<TagObjectBuilder>? tags,
+  }) : _tags = tags;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? tagsOffset = _tags == null
+        ? null
+        : fbBuilder.writeList(_tags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, tagsOffset);
     return fbBuilder.endTable();
   }
 
@@ -26029,6 +26595,8 @@ class Envelope {
         return Diff.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 63:
         return DiffLines.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 64:
+        return Tags.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

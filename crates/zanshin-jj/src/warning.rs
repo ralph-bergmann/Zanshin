@@ -119,6 +119,31 @@ pub enum WarningKind {
     /// `bookmark untrack` of a bookmark on the Git-tracking remote `git` — "Git-tracking bookmark
     /// cannot be untracked: {symbol}" (`bookmark/untrack.rs:115-121` @ v0.46.0; Story 9.11).
     BookmarkGitTrackingUntrack,
+    /// `tag set` on an empty, undescribed revision — "Target revision is empty."
+    /// (`tag/set.rs:84-86` @ v0.47.0; Story 9.59).
+    TagTargetEmpty,
+    /// Exact names given to `tag delete` that match no local tag, or to `tag track` / `untrack`
+    /// that match no local or remote tag — "No matching tags for names: {names}"
+    /// (`warn_unmatched_local_tags` / `warn_unmatched_local_or_remote_tags`, `tag/mod.rs:123-164` @
+    /// v0.47.0; Story 9.59).
+    TagNamesUnmatched,
+    /// `tag track` / `untrack` `name@remote` symbols that name no trackable remote tag — "No
+    /// matching remote tags for names: {symbols}" (`resolve_trackable_remote_tags`,
+    /// `tag/mod.rs:75-104` @ v0.47.0; Story 9.59).
+    RemoteTagsUnmatched,
+    /// Exact `--remote` names given to `tag track` / `untrack` that match no remote — "No matching
+    /// remotes for names: {remotes}" (`warn_unmatched_remotes`, `tag/mod.rs:166-181` @ v0.47.0;
+    /// Story 9.59).
+    TagRemotesUnmatched,
+    /// `tag track` of a remote tag that is already tracked — "Remote tag already tracked:
+    /// {symbol}" (`tag/track.rs:111-117` @ v0.47.0; Story 9.59).
+    TagAlreadyTracked,
+    /// `tag untrack` of a tag on the Git-tracking remote `git` — "Git-tracking tag cannot be
+    /// untracked: {symbol}" (`tag/untrack.rs:112-119` @ v0.47.0; Story 9.59).
+    TagGitTrackingUntrack,
+    /// `tag untrack` of a remote tag that is not tracked — "Remote tag not tracked yet: {symbol}"
+    /// (`tag/untrack.rs:120` @ v0.47.0; Story 9.59).
+    TagNotTracked,
     /// A path `absorb` could not split (`absorb.rs:156-159`).
     AbsorbPathSkipped,
     /// A path whose content could not be read (`file/show.rs:163-169`, `file/search.rs:127-133` @ v0.47.0).

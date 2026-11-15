@@ -76,5 +76,6 @@ mod select_tree_ffi;
 mod snapshot_ffi;
 mod squash_split_ffi;
 mod status_ffi;
+mod tags_ffi;
 mod watcher;
 mod workspace_ffi;

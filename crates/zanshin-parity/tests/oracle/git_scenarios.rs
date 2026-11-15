@@ -1175,6 +1175,270 @@ pub fn bookmark_tracking_scenarios() -> Vec<Scenario> {
     ]
 }
 
+// ── jj tag set / delete / track / untrack (Story 9.59) ──────────────────────
+
+/// One line per tag: `name[@remote] [tracked] -> first line of its description`, `-` for an absent
+/// target (a deleted local tag).
+const TAG_TEMPLATE: &str = r#"name ++ if(remote, "@" ++ remote) ++ if(tracked, " tracked") ++ " -> " ++ if(normal_target, normal_target.description().first_line(), "-") ++ "\n""#;
+
+/// The tags after the operation — the state aspects do not cover tags — read back through `jj tag
+/// list --all-remotes`, and the bare remote's refs by subject.
+fn tag_read_back(root: &Path) -> String {
+    let tags = jj(root, &["tag", "list", "--all-remotes", "-T", TAG_TEMPLATE])
+        .ok()
+        .stdout;
+    let remote = root.join("..").join("remote.git");
+    let refs = if remote.is_dir() {
+        git(&remote, &["for-each-ref", "--format=%(refname) %(subject)"])
+    } else {
+        String::new()
+    };
+    format!("tags={tags:?} remote.git={refs:?}")
+}
+
+/// A tag scenario on BASE + `setup`, compared with [`tag_read_back`].
+fn tag(
+    id: &'static str,
+    setup: &'static [Step],
+    zanshin: fn(&mut zanshin_jj::Repo, &Path, &crate::state::State) -> Outcome,
+    cli: fn(&crate::state::State) -> Vec<String>,
+) -> Scenario {
+    Scenario {
+        extra: Some(tag_read_back),
+        ..push(id, setup, zanshin, cli)
+    }
+}
+
+/// `v1` on B (`@-`).
+const TAGGED: &[Step] = &[Step::Jj(&["tag", "set", "v1", "-r", "@-"])];
+
+/// `v1` on B pushed to a bare `origin` (and so tracked there).
+const TAG_PUSHED: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+    Step::Jj(&["tag", "set", "v1", "-r", "@-"]),
+    Step::Jj(&["git", "push", "-t", "v1"]),
+];
+
+/// [`TAG_PUSHED`], then `v1@origin` untracked.
+const TAG_PUSHED_UNTRACKED: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+    Step::Jj(&["tag", "set", "v1", "-r", "@-"]),
+    Step::Jj(&["git", "push", "-t", "v1"]),
+    Step::Jj(&["tag", "untrack", "v1@origin"]),
+];
+
+/// [`TAG_PUSHED`], then a LOCAL-only `v2` that `origin`'s view lacks.
+const TAG_PUSHED_LOCAL_V2: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+    Step::Jj(&["tag", "set", "v1", "-r", "@-"]),
+    Step::Jj(&["git", "push", "-t", "v1"]),
+    Step::Jj(&["tag", "set", "v2", "-r", "@-"]),
+];
+
+/// [`TAG_PUSHED`], then `v1` deleted locally while `v1@origin` stays tracked.
+const TAG_PUSHED_DELETED: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+    Step::Jj(&["tag", "set", "v1", "-r", "@-"]),
+    Step::Jj(&["git", "push", "-t", "v1"]),
+    Step::Jj(&["tag", "delete", "v1"]),
+];
+
+/// `Repo::tag_set` of `names` to `label` (`None` = `@`).
+fn tag_set_outcome(
+    repo: &mut zanshin_jj::Repo,
+    s: &crate::state::State,
+    names: &[&str],
+    label: Option<&str>,
+    allow_move: bool,
+) -> Outcome {
+    let revision = label.map(|label| s.change(label));
+    let result = repo.tag_set(&strings(names), revision.as_ref(), allow_move);
+    crate::compare::zanshin_outcome(repo, &result)
+}
+
+/// `jj tag set <names> [-r <label>] [flags]`.
+fn tag_set_argv(s: &crate::state::State, names: &[&str], label: Option<&str>, flags: &[&str]) -> Vec<String> {
+    let mut argv = strings(&["tag", "set"]);
+    argv.extend(strings(names));
+    if let Some(label) = label {
+        argv.extend(["-r".to_owned(), s.change_arg(label)]);
+    }
+    argv.extend(strings(flags));
+    argv
+}
+
+/// `Repo::tag_delete` of `names`.
+fn tag_delete_outcome(repo: &mut zanshin_jj::Repo, names: &[&str]) -> Outcome {
+    let result = repo.tag_delete(&strings(names));
+    crate::compare::zanshin_outcome(repo, &result)
+}
+
+/// `Repo::tag_track` / `tag_untrack` of `names` on `remotes`.
+fn tag_track_outcome(repo: &mut zanshin_jj::Repo, untrack: bool, names: &[&str], remotes: &[&str]) -> Outcome {
+    let result = if untrack {
+        repo.tag_untrack(&strings(names), &strings(remotes))
+    } else {
+        repo.tag_track(&strings(names), &strings(remotes))
+    };
+    crate::compare::zanshin_outcome(repo, &result)
+}
+
+/// Every tag scenario: `set` on `@` and on `-r`, refused and allowed moves, the no-op, an empty
+/// target and clap's empty name; `delete` by glob, of a pushed tag and of an unknown name; `track`
+/// by symbol and by pattern, already tracked, `untrack`, `untrack` of `@git` and of an untracked
+/// tag, and the mixed-syntax refusal.
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than a dozen helper fns
+pub fn tag_scenarios() -> Vec<Scenario> {
+    vec![
+        tag(
+            "tag_set_at",
+            &[],
+            |repo, _, s| tag_set_outcome(repo, s, &["v1"], None, false),
+            |s| tag_set_argv(s, &["v1"], None, &[]),
+        ),
+        tag(
+            "tag_set_revision",
+            &[],
+            |repo, _, s| tag_set_outcome(repo, s, &["v2", "v1"], Some("A"), false),
+            |s| tag_set_argv(s, &["v2", "v1"], Some("A"), &[]),
+        ),
+        tag(
+            "tag_set_existing_refused",
+            TAGGED,
+            |repo, _, s| tag_set_outcome(repo, s, &["v2", "v1"], Some("C"), false),
+            |s| tag_set_argv(s, &["v2", "v1"], Some("C"), &[]),
+        ),
+        tag(
+            "tag_set_existing_allowed",
+            TAGGED,
+            |repo, _, s| tag_set_outcome(repo, s, &["v1"], Some("C"), true),
+            |s| tag_set_argv(s, &["v1"], Some("C"), &["--allow-move"]),
+        ),
+        tag(
+            "tag_set_noop",
+            TAGGED,
+            |repo, _, s| tag_set_outcome(repo, s, &["v1"], Some("B"), true),
+            |s| tag_set_argv(s, &["v1"], Some("B"), &["--allow-move"]),
+        ),
+        tag(
+            "tag_set_empty_target",
+            &[Step::Jj(&["new"])],
+            |repo, _, s| tag_set_outcome(repo, s, &["e"], None, false),
+            |s| tag_set_argv(s, &["e"], None, &[]),
+        ),
+        Scenario {
+            files: &[("c.txt", "c, edited before a clap refusal\n")],
+            ..tag(
+                "tag_set_empty_name_dirty_wc",
+                &[],
+                |repo, _, s| tag_set_outcome(repo, s, &[""], None, false),
+                |_| strings(&["tag", "set", ""]),
+            )
+        },
+        tag(
+            "tag_delete_glob",
+            &[
+                Step::Jj(&["tag", "set", "v1.0", "v1.1", "-r", "@-"]),
+                Step::Jj(&["tag", "set", "v2", "-r", "@--"]),
+            ],
+            |repo, _, _| tag_delete_outcome(repo, &["v1.*"]),
+            |_| strings(&["tag", "delete", "v1.*"]),
+        ),
+        tag(
+            "tag_delete_tracked",
+            TAG_PUSHED,
+            |repo, _, _| tag_delete_outcome(repo, &["v1"]),
+            |_| strings(&["tag", "delete", "v1"]),
+        ),
+        tag(
+            "tag_delete_unmatched",
+            TAGGED,
+            |repo, _, _| tag_delete_outcome(repo, &["nope"]),
+            |_| strings(&["tag", "delete", "nope"]),
+        ),
+        tag(
+            "tag_track_symbol",
+            TAG_PUSHED_UNTRACKED,
+            |repo, _, _| tag_track_outcome(repo, false, &["v1@origin"], &[]),
+            |_| strings(&["tag", "track", "v1@origin"]),
+        ),
+        tag(
+            "tag_track_pattern",
+            TAG_PUSHED_UNTRACKED,
+            |repo, _, _| tag_track_outcome(repo, false, &["v*", "nope"], &[]),
+            |_| strings(&["tag", "track", "v*", "nope"]),
+        ),
+        tag(
+            "tag_track_already_tracked",
+            TAG_PUSHED,
+            |repo, _, _| tag_track_outcome(repo, false, &["v1@origin", "nope@origin"], &[]),
+            |_| strings(&["tag", "track", "v1@origin", "nope@origin"]),
+        ),
+        tag(
+            "tag_track_remote_unmatched",
+            TAG_PUSHED_UNTRACKED,
+            |repo, _, _| tag_track_outcome(repo, false, &["v1"], &["nope"]),
+            |_| strings(&["tag", "track", "v1", "--remote", "nope"]),
+        ),
+        tag(
+            "tag_untrack_symbol",
+            TAG_PUSHED,
+            |repo, _, _| tag_track_outcome(repo, true, &["v1@origin"], &[]),
+            |_| strings(&["tag", "untrack", "v1@origin"]),
+        ),
+        tag(
+            "tag_untrack_git_and_not_tracked",
+            TAG_PUSHED_UNTRACKED,
+            |repo, _, _| tag_track_outcome(repo, true, &["v1@git", "v1@origin"], &[]),
+            |_| strings(&["tag", "untrack", "v1@git", "v1@origin"]),
+        ),
+        Scenario {
+            files: &[("c.txt", "c, edited before a refusal\n")],
+            ..tag(
+                "tag_track_mixed_dirty_wc",
+                TAG_PUSHED_UNTRACKED,
+                |repo, _, _| tag_track_outcome(repo, false, &["v1", "v1@origin"], &[]),
+                |_| strings(&["tag", "track", "v1", "v1@origin"]),
+            )
+        },
+        // A deleted-but-tracked tag is absent to `tag set`: set without `--allow-move`.
+        tag(
+            "tag_set_deleted_tracked",
+            TAG_PUSHED_DELETED,
+            |repo, _, s| tag_set_outcome(repo, s, &["v1"], Some("C"), false),
+            |s| tag_set_argv(s, &["v1"], Some("C"), &[]),
+        ),
+        tag(
+            "tag_track_local_only_pattern",
+            TAG_PUSHED_LOCAL_V2,
+            |repo, _, _| tag_track_outcome(repo, false, &["v2"], &[]),
+            |_| strings(&["tag", "track", "v2"]),
+        ),
+        tag(
+            "tag_track_local_only_symbol",
+            TAG_PUSHED_LOCAL_V2,
+            |repo, _, _| tag_track_outcome(repo, false, &["v2@origin"], &[]),
+            |_| strings(&["tag", "track", "v2@origin"]),
+        ),
+        tag(
+            "tag_untrack_pattern",
+            TAG_PUSHED,
+            |repo, _, _| tag_track_outcome(repo, true, &["v*"], &[]),
+            |_| strings(&["tag", "untrack", "v*"]),
+        ),
+        tag(
+            "tag_untrack_remote_with_symbol",
+            TAG_PUSHED,
+            |repo, _, _| tag_track_outcome(repo, true, &["v1@origin"], &["origin"]),
+            |_| strings(&["tag", "untrack", "v1@origin", "--remote", "origin"]),
+        ),
+    ]
+}
+
 // ── jj git fetch (Story 9.30) ────────────────────────────────────────────────
 
 // Every fetch below but `fetch_nothing_new` brings something new: `git --git-dir <remote> branch

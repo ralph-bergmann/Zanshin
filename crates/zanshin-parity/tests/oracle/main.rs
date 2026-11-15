@@ -330,6 +330,28 @@ parity!(
     bookmark_untrack_pattern,
     bookmark_untrack_not_tracked_and_git,
     bookmark_untrack_remote_git,
+    tag_set_at,
+    tag_set_revision,
+    tag_set_existing_refused,
+    tag_set_existing_allowed,
+    tag_set_noop,
+    tag_set_empty_target,
+    tag_set_empty_name_dirty_wc,
+    tag_delete_glob,
+    tag_delete_tracked,
+    tag_delete_unmatched,
+    tag_track_symbol,
+    tag_track_pattern,
+    tag_track_already_tracked,
+    tag_track_remote_unmatched,
+    tag_untrack_symbol,
+    tag_untrack_git_and_not_tracked,
+    tag_track_mixed_dirty_wc,
+    tag_set_deleted_tracked,
+    tag_track_local_only_pattern,
+    tag_track_local_only_symbol,
+    tag_untrack_pattern,
+    tag_untrack_remote_with_symbol,
     file_chmod_x,
     file_chmod_n,
     file_chmod_revision,
@@ -551,7 +573,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 476);
+    assert_eq!(SCENARIO_IDS.len(), 498);
 }
 
 #[test]

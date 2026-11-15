@@ -69,6 +69,7 @@ pub mod select_tree;
 pub mod snapshot;
 pub mod squash_split;
 pub mod status;
+pub mod tags;
 pub mod tracing_init;
 pub mod watcher;
 pub mod workspace;

@@ -150,8 +150,9 @@ table RevsetErrorDetail {
 /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 65 tables the variant name plus `Request` IS
-/// the table name.
+/// squash, never a different verb. `BookmarkTrackRequest` and `TagTrackRequest` (Stories 9.11 and
+/// 9.59) carry their track and untrack kinds. For the other tables the variant name plus `Request`
+/// IS the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -234,7 +235,11 @@ enum RequestKind : ubyte {
   FileEdit,
   FileDelete,
   Diff,
-  DiffLines
+  DiffLines,
+  TagSet,
+  TagDelete,
+  TagTrack,
+  TagUntrack
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -1239,6 +1244,43 @@ table BookmarkTrackRequest {
   remotes: [string];
 }
 
+/// Arguments of `zanshin_tag_set` (Story 9.59) — the CLI's `jj tag set`.
+///
+/// `names` are DECODED names (ABSENT/EMPTY, or an empty-STRING name, is refused with
+/// `jj.invalid_input` before the snapshot). `revision` ABSENT is the CLI's `-r` default `@`;
+/// present it is a jj reverse-hex CHANGE ID. `allow_move` is `--allow-move`: without it a name that
+/// is a local tag already refuses `jj.invalid_input`. Setting every name where it already points
+/// writes no operation (`MutationResult.new_op_id` is the pre-call head).
+table TagSetRequest {
+  kind: RequestKind;
+  names: [string];
+  revision: string;
+  allow_move: bool;
+}
+
+/// Arguments of `zanshin_tag_delete` (Story 9.59) — the CLI's `jj tag delete`.
+///
+/// `names` are string PATTERNS passed through verbatim, unioned (a BARE one is a GLOB);
+/// ABSENT/EMPTY is refused with `jj.invalid_input` before the snapshot. Matching nothing writes no
+/// operation.
+table TagDeleteRequest {
+  kind: RequestKind;
+  names: [string];
+}
+
+/// Arguments of `zanshin_tag_track` and `zanshin_tag_untrack` (Story 9.59) — the CLI's `jj tag
+/// track` / `untrack`; `kind` (`TagTrack` / `TagUntrack`) tells them apart.
+///
+/// `names` are the CLI's `TAG[@REMOTE]` texts passed through verbatim: a `name@remote` symbol names
+/// one remote tag exactly, any other text is a string pattern (a BARE one a GLOB); ABSENT/EMPTY is
+/// refused with `jj.invalid_input` before the snapshot. `remotes` are remote-name PATTERNS
+/// (`--remote`); ABSENT/EMPTY = not given. Nothing to (un)track writes no operation.
+table TagTrackRequest {
+  kind: RequestKind;
+  names: [string];
+  remotes: [string];
+}
+
 /// Arguments of `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
 ///
 /// `paths` are repo-relative paths interpreted as PREFIXES; the fileset DSL is terminal input
@@ -1897,6 +1939,35 @@ table Bookmark {
 /// a Local row together with its tracked rows (Story 9.19).
 table Bookmarks {
   bookmarks: [Bookmark];
+}
+
+/// Whether a tag row is the local tag or a remote one (tracked or not). `remote_name` is populated
+/// ONLY when kind == Remote (ABSENT for Local).
+enum TagKind : byte { Local, Remote }
+
+/// One row of `jj tag list --all-remotes` (Story 9.59).
+///
+/// Every row: `target` (ABSENT = null when the row's target is absent — a local tag deleted while
+/// still tracking a remote, or a tracked remote tag not pushed yet; a conflicted target carries its
+/// first added commit's change id), `conflicted` (`!RefTarget::is_resolved`) and `synced` (local:
+/// every TRACKED remote points where the local does, true with none; remote: tracked and pointing
+/// where the local does). Remote rows only: `remote_name` and `tracked`.
+table Tag {
+  name: string;          // tag name (UTF-8)
+  target: string;        // target ChangeId, reverse-hex; ABSENT when the target is absent
+  kind: TagKind;
+  remote_name: string;   // populated only when kind == Remote; ABSENT for Local
+  conflicted: bool;
+  synced: bool;
+  tracked: bool;         // Remote rows only
+}
+
+/// The tag list (Story 9.59), returned by `zanshin_tags`: the rows `jj tag list --all-remotes`
+/// prints, in its order — each Local row followed by its tracked Remote rows, then the name's
+/// untracked Remote rows, in name order; then sorted by `ui.tag-list-sort-keys` — minus every row
+/// of the Git-tracking remote `git` on a Git-backed repo.
+table Tags {
+  tags: [Tag];
 }
 
 /// One configured git remote (FR-JJ-9). BOTH URLs are verbatim — credentials are
@@ -3401,6 +3472,7 @@ union Payload {
   GitColocationResult,
   Diff,
   DiffLines,
+  Tags,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

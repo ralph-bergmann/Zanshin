@@ -115,6 +115,8 @@ fn from_view(e: crate::ViewError) -> WorkspaceError {
     match e {
         crate::ViewError::Backend(reason) => WorkspaceError::Backend(reason),
         crate::ViewError::Precondition(inner) => WorkspaceError::Precondition(inner),
+        // Only the tag list reads config; the working-copy read never returns it.
+        crate::ViewError::Config(inner) => WorkspaceError::Backend(inner.to_string()),
     }
 }
 
@@ -236,6 +238,11 @@ mod tests {
         assert!(matches!(
             from_view(crate::ViewError::Precondition(crate::PreconditionError::Backend("p".to_owned()))),
             WorkspaceError::Precondition(crate::PreconditionError::Backend(reason)) if reason == "p"
+        ));
+        let config = crate::ConfigError::Load { reason: "c".to_owned() };
+        assert!(matches!(
+            from_view(crate::ViewError::Config(config)),
+            WorkspaceError::Backend(reason) if reason.contains('c')
         ));
     }
 }

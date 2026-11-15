@@ -3107,6 +3107,7 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
     .chain(crate::git_scenarios::bookmark_rename_tracked_scenarios())
     .chain(crate::git_scenarios::fetch_scenarios())
+    .chain(crate::git_scenarios::tag_scenarios())
     .collect()
 }
 

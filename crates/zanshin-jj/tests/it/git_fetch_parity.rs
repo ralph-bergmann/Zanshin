@@ -211,7 +211,7 @@ impl Fx {
             .list_tags()
             .expect("tags")
             .into_iter()
-            .filter(|t| matches!(&t.kind, TagKind::Remote { remote_name } if remote_name == remote))
+            .filter(|t| matches!(&t.kind, TagKind::Remote { remote_name, tracked: true } if remote_name == remote))
             .map(|t| t.name)
             .collect()
     }

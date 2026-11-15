@@ -4519,6 +4519,177 @@ external void zanshin_string_free(
   ffi.Pointer<ffi.Char> ptr,
 );
 
+/// Delete local tags, in the repo referenced by `handle` — the CLI's `jj tag delete` (Story 9.59).
+///
+/// The arguments cross as a `TagDeleteRequest` `FlatBuffers` request buffer: `names` are string
+/// PATTERNS passed through verbatim (a BARE one is a GLOB), unioned. A tracked `name@remote` stays,
+/// so the next push sends the deletion. Matching nothing writes no operation. Warning:
+/// `jj.tag_names_unmatched`. Op-log description `delete tag {names}`. Returns a `FlatBuffers`
+/// `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `TagDeleteRequest` buffer, or its `kind`
+/// is not `TagDelete`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — `names` is empty (or absent), before the snapshot; or a pattern does not
+/// parse, after it (jj-lib's reason in `context`).
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_tags`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.TagDeleteRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_tag_delete(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Create or move local tags, in the repo referenced by `handle` — the CLI's `jj tag set` (Story
+/// 9.59).
+///
+/// The arguments cross as a `TagSetRequest` `FlatBuffers` request buffer: `names` are DECODED
+/// names; `revision` ABSENT is the CLI's `-r` default `@`, present a jj reverse-hex CHANGE ID;
+/// `allow_move` is `--allow-move`. Per name in argument order, fail-fast: a name that is a local tag
+/// already refuses without `allow_move`, and nothing is written. Warning: `jj.tag_target_empty`.
+/// Setting every name where it points writes no operation. Op-log description `set tag {names} to
+/// commit {id}`. Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `TagSetRequest` buffer, or its `kind` is
+/// not `TagSet`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — `names` is empty (or absent) or holds an empty name, before the snapshot;
+/// or a present tag without `allow_move` ("Refusing to move tag: {name}", the hint "Use
+/// --allow-move to update existing tags." in `hints`).
+/// - `jj.change_not_found` — `revision` is malformed, unknown or hidden; the id in `context`.
+/// - `jj.revset_resolution_error` — no `@` for `revision`'s default; `revision` is an ambiguous
+/// change-id prefix or a divergent change (the CLI's hints in `hints`), or
+/// `revsets.short-prefixes` fails to resolve.
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_tags`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.TagSetRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration of
+/// the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_tag_set(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Start tracking remote tags, in the repo referenced by `handle` — the CLI's `jj tag track`
+/// (Story 9.59).
+///
+/// The arguments cross as a `TagTrackRequest` `FlatBuffers` request buffer tagged `TagTrack`:
+/// `names` are the CLI's `TAG[@REMOTE]` texts passed through — a `name@remote` symbol names one
+/// remote tag exactly, any other text is a string pattern (a BARE one a GLOB) matched on the
+/// `remotes` (remote-name PATTERNS, `--remote`; absent/empty = every remote but `git` on a
+/// Git-backed repo). Tracking merges the remote target into the local tag. Nothing to track writes
+/// no operation. Warnings: `jj.remote_tags_unmatched` or `jj.tag_names_unmatched` +
+/// `jj.tag_remotes_unmatched`, then `jj.tag_already_tracked`. Op-log description `track remote tag
+/// {symbols}`. Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `TagTrackRequest` buffer, or its `kind`
+/// is not `TagTrack`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — `names` is empty (or absent), before the snapshot; after it, a name or
+/// remote that does not parse, patterns mixed with symbols ("Cannot specify both <tag> patterns
+/// and <tag>@<remote> symbols"), or `remotes` with symbols ("--remote cannot be used with
+/// <tag>@<remote> symbols").
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_tags`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.TagTrackRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+/// of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_tag_track(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Stop tracking remote tags, in the repo referenced by `handle` — the CLI's `jj tag untrack`
+/// (Story 9.59).
+///
+/// The arguments cross as a `TagTrackRequest` `FlatBuffers` request buffer tagged `TagUntrack`;
+/// `names` and `remotes` as `zanshin_tag_track`'s. The matched tracked refs are untracked — the
+/// local tag stays; a `git` ref warns and stays tracked (the CLI's refusal). Nothing to untrack
+/// writes no operation. Warnings: `jj.remote_tags_unmatched` or `jj.tag_names_unmatched` +
+/// `jj.tag_remotes_unmatched`, then `jj.tag_git_tracking_untrack` and `jj.tag_not_tracked`. Op-log
+/// description `untrack remote tag {symbols}`. Returns a `FlatBuffers` `Envelope` carrying a
+/// `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `TagTrackRequest` buffer, or its `kind`
+/// is not `TagUntrack`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — as for `zanshin_tag_track`.
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_tags`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.TagTrackRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+/// of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_tag_untrack(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// List the tags of the repo identified by `handle` — the rows `jj tag list --all-remotes` prints,
+/// in its order, minus the rows of the Git-tracking remote `git` on a Git-backed repo (Story 9.59).
+///
+/// Rows: each local row (present, or deleted while still tracking a remote), then its tracked
+/// remote rows, then the name's untracked remote rows, in name order; then sorted by
+/// `ui.tag-list-sort-keys`. Returns a `FlatBuffers` `Envelope` carrying a `Tags` payload on
+/// success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
+/// unreadable or a knob it reads wrongly typed (the key in `context`), or
+/// `ui.tag-list-sort-keys` is not an array of the CLI's key names.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
+/// the cause and both operation ids in `context`, nothing is written.
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_tags(
+  int handle,
+);
+
 /// Undo the last operation of the repo referenced by `handle` — the CLI's `jj undo` @ v0.46.0
 /// with its undo stack (Story 9.39): calling this twice in a row goes further back instead of
 /// redoing the first `undo`. `allow_cross_workspace` is the CLI's `--allow-cross-workspace`

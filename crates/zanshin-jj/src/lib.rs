@@ -75,6 +75,7 @@ pub(crate) mod source_symbol;
 pub(crate) mod squash_split;
 pub(crate) mod stale;
 pub(crate) mod status;
+pub(crate) mod tag_ops;
 pub(crate) mod template;
 pub(crate) mod topology;
 pub(crate) mod version;

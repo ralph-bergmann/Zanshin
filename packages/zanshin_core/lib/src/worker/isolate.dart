@@ -56,6 +56,7 @@ import '../ffi/revset_search.dart' as repo_ffi_revset_search;
 import '../ffi/select_tree.dart' as repo_ffi_select_tree;
 import '../ffi/squash_split.dart' as repo_ffi_squash_split;
 import '../ffi/status.dart' as repo_ffi_status;
+import '../ffi/tags.dart' as repo_ffi_tags;
 import '../ffi/warning.dart';
 import '../ffi/workspace.dart' as repo_ffi_workspace;
 import '../graph_layout/graph_grid_view.dart' show GraphGridView;
@@ -3359,6 +3360,109 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Read the tags of the repo identified by [handleId] (Story 9.59) — the rows
+  /// `jj tag list --all-remotes` prints, minus the `git` remote's. See
+  /// [RepoHandle.tags].
+  ///
+  /// Sends a [TagsCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<Tags>` bytes. Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.config_error`, `jj.jj_lib_error`). Completes with
+  /// a [StateError] after [close].
+  Future<WarnedList<repo_ffi_tags.Tag>> tags(int handleId) async {
+    final Uint8List bytes = await send(TagsCommand(commandId: _correlator.allocateId(), handleId: handleId));
+    return repo_ffi_tags.decodeTagsEnvelopeInternal(bytes);
+  }
+
+  /// Create or move local tags, in the repo identified by [handleId] (Story
+  /// 9.59) — the CLI's `jj tag set`. See [RepoHandle.tagSet].
+  ///
+  /// Sends a [TagSetCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes. Throws [ArgumentError] if a name or
+  /// [revision] contains an interior NUL (U+0000). Throws [ZanshinFfiException]
+  /// on FFI errors (e.g. `ffi.invalid_handle`, `jj.invalid_input`,
+  /// `jj.change_not_found`). Completes with a [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> tagSet(
+    int handleId,
+    List<String> names, {
+    String? revision,
+    bool allowMove = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    rejectInteriorNul(revision, 'revision');
+    final Uint8List bytes = await send(
+      TagSetCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        names: names,
+        revision: revision,
+        allowMove: allowMove,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Delete local tags, in the repo identified by [handleId] (Story 9.59) — the
+  /// CLI's `jj tag delete`. See [RepoHandle.tagDelete].
+  ///
+  /// Sends a [TagDeleteCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes. Throws [ArgumentError] if a pattern
+  /// contains an interior NUL (U+0000). Throws [ZanshinFfiException] on FFI
+  /// errors (e.g. `ffi.invalid_handle`, `jj.invalid_input`). Completes with a
+  /// [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> tagDelete(int handleId, List<String> names) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    final Uint8List bytes = await send(
+      TagDeleteCommand(commandId: _correlator.allocateId(), handleId: handleId, names: names),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Start tracking remote tags, in the repo identified by [handleId] (Story
+  /// 9.59) — the CLI's `jj tag track`. See [RepoHandle.tagTrack].
+  ///
+  /// Sends a [TagTrackCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes. Throws [ArgumentError] if a name or
+  /// remote contains an interior NUL (U+0000). Throws [ZanshinFfiException] on
+  /// FFI errors (e.g. `ffi.invalid_handle`, `jj.invalid_input`). Completes with
+  /// a [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> tagTrack(
+    int handleId,
+    List<String> names, {
+    List<String> remotes = const [],
+  }) => _tagTrack(handleId, names, remotes, untrack: false);
+
+  /// Stop tracking remote tags, in the repo identified by [handleId] (Story
+  /// 9.59) — the CLI's `jj tag untrack`. See [RepoHandle.tagUntrack]. Throws as
+  /// [tagTrack].
+  Future<repo_ffi_mutate.MutationResult> tagUntrack(
+    int handleId,
+    List<String> names, {
+    List<String> remotes = const [],
+  }) => _tagTrack(handleId, names, remotes, untrack: true);
+
+  Future<repo_ffi_mutate.MutationResult> _tagTrack(
+    int handleId,
+    List<String> names,
+    List<String> remotes, {
+    required bool untrack,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    rejectInteriorNuls(remotes, 'remotes');
+    final Uint8List bytes = await send(
+      TagTrackCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        names: names,
+        remotes: remotes,
+        untrack: untrack,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
   /// Start tracking the working-copy paths matching [paths], in the repo
   /// identified by [handleId] (Story 9.22) — the CLI's `jj file track`.
   ///
@@ -5317,6 +5421,56 @@ void _workerEntry(_WorkerInit init) {
             final Uint8List bytes = untrack
                 ? repo_ffi_bookmark_ops.zanshinBookmarkUntrack(raw, names, remotes: remotes)
                 : repo_ffi_bookmark_ops.zanshinBookmarkTrack(raw, names, remotes: remotes);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case TagsCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: TagsCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            responseSP.send((commandId, BufferResult(repo_ffi_tags.zanshinTags(raw))));
+          }
+
+        case TagSetCommand(
+          :final int handleId,
+          :final List<String> names,
+          :final String? revision,
+          :final bool allowMove,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: TagSetCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            final Uint8List bytes = repo_ffi_tags.zanshinTagSet(raw, names, revision: revision, allowMove: allowMove);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case TagDeleteCommand(:final int handleId, :final List<String> names):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: TagDeleteCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            responseSP.send((commandId, BufferResult(repo_ffi_tags.zanshinTagDelete(raw, names))));
+          }
+
+        case TagTrackCommand(
+          :final int handleId,
+          :final List<String> names,
+          :final List<String> remotes,
+          :final bool untrack,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: TagTrackCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            final Uint8List bytes = untrack
+                ? repo_ffi_tags.zanshinTagUntrack(raw, names, remotes: remotes)
+                : repo_ffi_tags.zanshinTagTrack(raw, names, remotes: remotes);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

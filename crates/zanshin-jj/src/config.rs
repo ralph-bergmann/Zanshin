@@ -1857,6 +1857,22 @@ pub(crate) fn ui_bookmark_list_sort_keys(
         .map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `ui.tag-list-sort-keys` (Story 9.59) — the CLI's `get_value_with(…,
+/// commit_ref_list::parse_sort_keys)` in `jj tag list` without `--sort` (`tag/list.rs:173-177` @
+/// v0.47.0). Its default `["name"]` is jj-cli's own ([`CLI_DEFAULTS`], the CLI's
+/// `config/misc.toml:49`).
+///
+/// # Errors
+///
+/// As [`ui_bookmark_list_sort_keys`]'s, naming `ui.tag-list-sort-keys`.
+pub(crate) fn ui_tag_list_sort_keys(
+    config: &StackedConfig,
+) -> Result<Vec<crate::bookmarks::BookmarkSortKey>, ConfigError> {
+    config
+        .get_value_with("ui.tag-list-sort-keys", |value| parse_sort_keys(&value))
+        .map_err(|e| value_error(&e))
+}
+
 /// The CLI's `parse_sort_keys` (`commit_ref_list.rs:169-182` @ v0.46.0), its messages verbatim
 /// (the last one is clap's `ValueEnum::from_str`).
 fn parse_sort_keys(value: &ConfigValue) -> Result<Vec<crate::bookmarks::BookmarkSortKey>, String> {
@@ -2793,6 +2809,14 @@ mod tests {
             "heads(::to & bookmarks())"
         );
         assert_eq!(super::ui_bookmark_list_sort_keys(&config).expect("builtin"), [K::Name]);
+        assert_eq!(super::ui_tag_list_sort_keys(&config).expect("builtin"), [K::Name]);
+        assert_eq!(
+            super::ui_tag_list_sort_keys(&stack_with("ui.tag-list-sort-keys = [\"committer-date-\"]")).expect("user"),
+            [K::CommitterDateDesc]
+        );
+        let super::ConfigError::Load { reason } =
+            super::ui_tag_list_sort_keys(&stack_with("ui.tag-list-sort-keys = [\"bogus\"]")).expect_err("refused");
+        assert!(reason.contains("ui.tag-list-sort-keys"), "{reason}");
 
         let user = stack_with(
             "revsets.bookmark-advance-to = \"@-\"\nrevsets.bookmark-advance-from = \"to\"\n\

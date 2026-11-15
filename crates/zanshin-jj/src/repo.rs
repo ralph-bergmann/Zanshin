@@ -810,22 +810,29 @@ impl Repo {
         })
     }
 
-    /// Lists local + tracked-remote tags, sorted by name then kind (ADR-0003 §5).
+    /// Lists the rows `jj tag list --all-remotes` prints, minus the rows of the Git-tracking `git`
+    /// remote on a Git-backed repo (Story 9.59).
     ///
-    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
-    /// `jj tag list` (AR-AP-1). A conflicted target resolves to the first added commit's
-    /// change id (listing scope only). Unlike the CLI's `jj tag list`, a tracked remote tag
-    /// whose target equals the local one is NOT hidden — that filter is a display default and
-    /// belongs to [`crate::CommitMeta::tags`], exactly as for [`Repo::list_bookmarks`].
+    /// Every local row (present, or deleted while still tracking a remote), every tracked remote
+    /// row and every untracked remote row, in the CLI's order: each local row followed by its
+    /// tracked remote rows, a name's untracked remote rows after that, in name order — then sorted
+    /// by `ui.tag-list-sort-keys` (default `["name"]`). Each row carries its target change id
+    /// (`None` when absent; a conflicted target resolves to the first added commit's change id),
+    /// `conflicted` and `synced`; a remote row also its remote and `tracked`. Runs the pre-verb
+    /// snapshot first (Story 9.26) and re-resolves to the head operation per call (ADR-0002).
+    /// Read-only; never shells to `jj tag list` (AR-AP-1).
     ///
     /// # Errors
     ///
+    /// - [`crate::ViewError::Config`] — `ui.tag-list-sort-keys` is not an array of the CLI's key
+    ///   names.
+    /// - [`crate::ViewError::Precondition`] — the pre-verb snapshot failed.
     /// - [`crate::ViewError::Backend`] — the head load or a store read failed; the jj-lib
     ///   reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_tags(&mut self) -> Result<Vec<crate::Tag>, crate::ViewError> {
-        self.with_verb(cli_command::TAG_LIST, |repo, _ctx| {
-            crate::view::list_tags(repo.workspace())
+        self.with_verb(cli_command::TAG_LIST, |repo, ctx| {
+            crate::view::list_tags(repo.workspace(), &ctx.config)
         })
     }
 
@@ -3349,7 +3356,7 @@ impl Repo {
     ) -> Result<crate::MutationResult, crate::MutateError> {
         self.with_checked_verb(
             cli_command::BOOKMARK_FORGET,
-            crate::bookmark_ops::check_names_given("forget", patterns),
+            crate::bookmark_ops::check_names_given("bookmark", "forget", patterns),
             |repo, ctx| crate::bookmark_ops::forget(repo.workspace_mut(), ctx, patterns, include_remotes),
         )
     }
@@ -3383,7 +3390,7 @@ impl Repo {
     ) -> Result<crate::MutationResult, crate::MutateError> {
         self.with_checked_verb(
             cli_command::BOOKMARK_TRACK,
-            crate::bookmark_ops::check_names_given("track", names),
+            crate::bookmark_ops::check_names_given("bookmark", "track", names),
             |repo, ctx| {
                 crate::bookmark_ops::track_or_untrack(
                     repo.workspace_mut(),
@@ -3414,9 +3421,130 @@ impl Repo {
     ) -> Result<crate::MutationResult, crate::MutateError> {
         self.with_checked_verb(
             cli_command::BOOKMARK_UNTRACK,
-            crate::bookmark_ops::check_names_given("untrack", names),
+            crate::bookmark_ops::check_names_given("bookmark", "untrack", names),
             |repo, ctx| {
                 crate::bookmark_ops::track_or_untrack(
+                    repo.workspace_mut(),
+                    ctx,
+                    names,
+                    remotes,
+                    crate::bookmark_ops::Tracking::Untrack,
+                )
+            },
+        )
+    }
+
+    /// Creates or moves local tags (Story 9.59) — the CLI's `jj tag set`.
+    ///
+    /// `names` are DECODED names, as [`Repo::bookmark_set`]'s are. `revision` is the CLI's `-r`:
+    /// `None` applies its default `@`. Per name in argument order, fail-fast: a name that is a local
+    /// tag already refuses unless `allow_move` (the CLI's `--allow-move`), and nothing is written.
+    /// An empty, undescribed target warns `jj.tag_target_empty`. Every name then points at the
+    /// target; tags are never auto-tracked. A run that changes nothing writes NO operation. Op-log
+    /// description: `set tag {names} to commit {id}`, argument order, full hex.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `names` is empty or holds an empty name (clap's
+    ///   refusal, before the pre-verb snapshot); or a present tag without `allow_move` ("Refusing to
+    ///   move tag: {name}", hint "Use --allow-move to update existing tags.").
+    /// - [`crate::MutateError::ChangeNotFound`] / [`crate::MutateError::RevsetResolutionError`] —
+    ///   `revision` does not resolve, or there is no `@` for its default.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn tag_set(
+        &mut self,
+        names: &[String],
+        revision: Option<&crate::ChangeId>,
+        allow_move: bool,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(
+            cli_command::TAG_SET,
+            crate::tag_ops::check_set_args(names),
+            |repo, ctx| crate::tag_ops::set(repo.workspace_mut(), ctx, names, revision, allow_move),
+        )
+    }
+
+    /// Deletes local tags (Story 9.59) — the CLI's `jj tag delete`.
+    ///
+    /// `patterns` are string patterns passed through VERBATIM (a BARE pattern is a GLOB), unioned.
+    /// An exact name with no local tag warns `jj.tag_names_unmatched`; matching nothing writes NO
+    /// operation. A tracked `name@remote` stays, so the next push sends the deletion. Op-log
+    /// description: `delete tag {names}`, view order.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `patterns` is empty (clap's refusal, before the
+    ///   pre-verb snapshot), or a pattern does not parse.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn tag_delete(&mut self, patterns: &[String]) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(
+            cli_command::TAG_DELETE,
+            crate::tag_ops::check_names("delete", patterns),
+            |repo, ctx| crate::tag_ops::delete(repo.workspace_mut(), ctx, patterns),
+        )
+    }
+
+    /// Starts tracking remote tags (Story 9.59) — the CLI's `jj tag track`.
+    ///
+    /// `names` and `remotes` as [`Repo::bookmark_track`]'s, over tags: `TAG[@REMOTE]` texts and
+    /// remote-name patterns (empty = every remote but `git` on a Git-backed repo). Already-tracked
+    /// refs warn `jj.tag_already_tracked`, unmatched symbols `jj.remote_tags_unmatched`, unmatched
+    /// exact names `jj.tag_names_unmatched`, unmatched exact remotes `jj.tag_remotes_unmatched`.
+    /// Nothing to track writes NO operation. Op-log description: `track remote tag {symbols}`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `names` is empty (clap's refusal, before the
+    ///   pre-verb snapshot); after it, a name or remote that does not parse, patterns mixed with
+    ///   symbols, or `remotes` given with symbols.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn tag_track(
+        &mut self,
+        names: &[String],
+        remotes: &[String],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(
+            cli_command::TAG_TRACK,
+            crate::tag_ops::check_names("track", names),
+            |repo, ctx| {
+                crate::tag_ops::track_or_untrack(
+                    repo.workspace_mut(),
+                    ctx,
+                    names,
+                    remotes,
+                    crate::bookmark_ops::Tracking::Track,
+                )
+            },
+        )
+    }
+
+    /// Stops tracking remote tags (Story 9.59) — the CLI's `jj tag untrack`.
+    ///
+    /// `names` and `remotes` as [`Repo::tag_track`]'s. Refs of the Git-tracking `git` remote warn
+    /// `jj.tag_git_tracking_untrack` and stay tracked (the CLI's refusal), untracked ones warn
+    /// `jj.tag_not_tracked`; the other matched refs are untracked. Nothing to untrack writes NO
+    /// operation. Op-log description: `untrack remote tag {symbols}`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Repo::tag_track`]'s.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn tag_untrack(
+        &mut self,
+        names: &[String],
+        remotes: &[String],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(
+            cli_command::TAG_UNTRACK,
+            crate::tag_ops::check_names("untrack", names),
+            |repo, ctx| {
+                crate::tag_ops::track_or_untrack(
                     repo.workspace_mut(),
                     ctx,
                     names,
@@ -5571,6 +5699,10 @@ mod tests {
         records!(repo, BOOKMARK_FORGET, bookmark_forget(&names, false));
         records!(repo, BOOKMARK_TRACK, bookmark_track(&names, &names));
         records!(repo, BOOKMARK_UNTRACK, bookmark_untrack(&names, &names));
+        records!(repo, TAG_SET, tag_set(&names, Some(&none()), false));
+        records!(repo, TAG_DELETE, tag_delete(&names));
+        records!(repo, TAG_TRACK, tag_track(&names, &names));
+        records!(repo, TAG_UNTRACK, tag_untrack(&names, &names));
         records!(repo, RESTORE, restore(Some(none()), None, None, &[], false));
         records!(repo, ABSORB, absorb(Some(none()), None, &[]));
         let squash = crate::SquashOptions {

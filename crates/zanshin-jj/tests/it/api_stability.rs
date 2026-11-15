@@ -394,14 +394,17 @@ fn sample_interdiff_view() -> zanshin_jj::InterdiffView {
     }
 }
 
-/// Names every `Tag` field by its public path (Story 9.2), so a field rename, reorder, or type
-/// change in the tag listing breaks this test at compile time.
+/// Names every `Tag` field by its public path (Stories 9.2 and 9.59), so a field rename, reorder,
+/// or type change in the tag listing breaks this test at compile time.
 fn sample_tag() -> zanshin_jj::Tag {
     zanshin_jj::Tag {
         name: String::new(),
-        target: zanshin_jj::ChangeId(String::new()),
+        target: Some(zanshin_jj::ChangeId(String::new())),
+        conflicted: false,
+        synced: false,
         kind: zanshin_jj::TagKind::Remote {
             remote_name: String::new(),
+            tracked: false,
         },
     }
 }
@@ -986,6 +989,38 @@ fn bookmark_tracking_surface_resolves() {
             &[String],
             &[String],
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+}
+
+/// Story 9.59: the tag verbs add no public type. `set` takes DECODED names, an optional change id
+/// and `allow_move`; `delete` pass-through patterns; `track` / `untrack` `TAG[@REMOTE]` texts and
+/// remote-name patterns. `ViewError` gains `Config` for `ui.tag-list-sort-keys`.
+#[test]
+fn tag_verbs_surface_resolves() {
+    _ = zanshin_jj::Repo::tag_set
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[String],
+            Option<&zanshin_jj::ChangeId>,
+            bool,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::tag_delete
+        as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::tag_track
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[String],
+            &[String],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::tag_untrack
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[String],
+            &[String],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    assert_eq!(
+        zanshin_jj::ViewError::Config(zanshin_jj::ConfigError::Load { reason: "k".into() }).to_string(),
+        "config error: k"
+    );
 }
 
 /// Story 9.19: `bookmark move` / `advance` / `rename` reuse `MutationResult`/`MutateError`; the
@@ -2372,8 +2407,9 @@ fn story_9_28_surface_resolves() {
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning; Story 9.19 the four rename warnings; Story 9.11 the five
-/// tracking warnings; Story 9.13 the three workspace forget/remove warnings).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 76] = {
+/// tracking warnings; Story 9.13 the three workspace forget/remove warnings; Story 9.59 the seven
+/// tag warnings).
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 83] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -2404,6 +2440,13 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 76] = {
         K::BookmarkAlreadyTracked,
         K::BookmarkNotTracked,
         K::BookmarkGitTrackingUntrack,
+        K::TagTargetEmpty,
+        K::TagNamesUnmatched,
+        K::RemoteTagsUnmatched,
+        K::TagRemotesUnmatched,
+        K::TagAlreadyTracked,
+        K::TagGitTrackingUntrack,
+        K::TagNotTracked,
         K::AbsorbPathSkipped,
         K::PathAccessDenied,
         K::PathNotAFile,
@@ -2539,6 +2582,13 @@ fn story_9_32_warning_surface_resolves() {
             | K::BookmarkAlreadyTracked
             | K::BookmarkNotTracked
             | K::BookmarkGitTrackingUntrack
+            | K::TagTargetEmpty
+            | K::TagNamesUnmatched
+            | K::RemoteTagsUnmatched
+            | K::TagRemotesUnmatched
+            | K::TagAlreadyTracked
+            | K::TagGitTrackingUntrack
+            | K::TagNotTracked
             | K::AbsorbPathSkipped
             | K::PathAccessDenied
             | K::PathNotAFile
@@ -2589,7 +2639,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::ResolveConflictsRemain => {}
         }
     }
-    assert_eq!(every.len(), 76);
+    assert_eq!(every.len(), 83);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

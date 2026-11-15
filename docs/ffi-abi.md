@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 116
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 121
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -339,9 +339,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Seventy-six of the 116 exported symbols take their arguments as a **FlatBuffers
+Eighty of the 121 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Sixty-four use the handle-scoped three-parameter shape:
+strings. Sixty-eight use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -500,15 +500,16 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **67** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **73** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
 request table's field order is an in-place WIP edit that MUST regenerate BOTH
 committed codegen sides in the same commit.
 
-Five tables are shared: `BookmarkTrackRequest` by `zanshin_bookmark_track` and
-`zanshin_bookmark_untrack`, `WorkspaceNamesRequest` by `zanshin_workspace_forget` and
+Six tables are shared: `BookmarkTrackRequest` by `zanshin_bookmark_track` and
+`zanshin_bookmark_untrack`, `TagTrackRequest` by `zanshin_tag_track` and `zanshin_tag_untrack`
+(Story 9.59), `WorkspaceNamesRequest` by `zanshin_workspace_forget` and
 `zanshin_workspace_remove`, `ChangeIdList` by three symbols (`zanshin_new_change`'s
 `parents`, `zanshin_abandon`'s `change_ids` and `zanshin_parallelize`'s revisions, Story
 9.16; its `insert_after` / `insert_before` lists — `jj new -A` / `-B`, Story 9.48 — are
@@ -517,8 +518,9 @@ read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest
 squash its caller is about to run, with the same arguments) and `MovementRequest` by two
 (`zanshin_move_working_copy` and `zanshin_movement_targets`, Story 9.10 — the targets call lists
 the candidates of the move its caller is about to run). Every other table has
-exactly one caller, and no table is orphaned. 66 tables + 6 shared reuses = the 72
-request-buffer symbols (Story 9.25 adds `RevsetCountsRequest` and `FindChangesRequest`; Story
+exactly one caller, and no table is orphaned. 73 tables + 7 shared reuses = the 80
+request-buffer symbols (Story 9.59 adds `TagSetRequest`, `TagDeleteRequest` and `TagTrackRequest`;
+Story 9.25 adds `RevsetCountsRequest` and `FindChangesRequest`; Story
 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
 an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
@@ -603,7 +605,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **116** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **121** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -647,6 +649,7 @@ or no `# Errors` block.
 | `zanshin_file_search` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileSearchRequest` (`binary`: `Detect` default / `AsText` = `--binary-as-text` / `Skip` = `--skip-binary`) | `FileSearch` (a `SearchMatch` with `binary` = "Binary file matches", path only) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_bookmarks` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkListRequest` | `Bookmarks` (rows + tracking facts, see § `Bookmarks` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b, 9.29, 9.19 |
 | `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.not_a_git_repo`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_tags` | `(uint64_t handle)` | — | `Tags` (rows + tracking facts, see § `Tags` payload) | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.59 |
 | `zanshin_git_push_remotes` | `(uint64_t handle)` | — | `GitPushRemotes` (the default push remotes; empty when none matches) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.54 |
 | `zanshin_git_fetch_remotes` | `(uint64_t handle)` | — | `GitFetchRemotes` (the default fetch remotes — the Fetch button's enable rule; empty when none matches) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.30 |
 | `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.7 |
@@ -699,6 +702,10 @@ or no `# Errors` block.
 | `zanshin_bookmark_forget` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkForgetRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.11 |
 | `zanshin_bookmark_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkTrackRequest` (`kind` `BookmarkTrack`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.11 |
 | `zanshin_bookmark_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkTrackRequest` (`kind` `BookmarkUntrack`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.11 |
+| `zanshin_tag_set` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `TagSetRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.59 |
+| `zanshin_tag_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `TagDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.59 |
+| `zanshin_tag_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `TagTrackRequest` (`kind` `TagTrack`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.59 |
+| `zanshin_tag_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `TagTrackRequest` (`kind` `TagUntrack`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.59 |
 | `zanshin_file_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileTrackRequest` | `TrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_chmod` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileChmodRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.13 |
@@ -1806,6 +1813,40 @@ that does not parse, patterns mixed with symbols, and `remotes` with symbols ref
 `jj.remote_bookmarks_unmatched` (symbols), `jj.bookmark_remotes_unmatched` (`remotes`),
 `jj.bookmark_already_tracked` (track), `jj.bookmark_git_tracking_untrack` and
 `jj.bookmark_not_tracked` (untrack).
+
+## `Tags` payload and `zanshin_tags`; tag set, delete, track and untrack (Story 9.59)
+
+`zanshin_tags(handle)` returns the rows `jj tag list --all-remotes` prints at v0.47.0
+(`cli/src/commands/tag/list.rs`, the shared `commit_ref_list.rs::{collect_items, sort}`), minus every
+row of the Git-tracking remote `git` on a Git-backed repo. The list takes no arguments: no name or
+revision filter, no `-T`, no `--sort`. Its rows are the `--all-remotes` set of the `Bookmarks`
+payload above — a `Local` row when the local target is present or the name has a tracked remote ref
+(`target` ABSENT for the CLI's deleted row), a `Remote` row for every tracked and every untracked
+remote ref — in the same order, sorted by `ui.tag-list-sort-keys` (default `["name"]`; malformed →
+`jj.config_error`). The `git` rows are dropped after collecting, so a local row's `synced` still sees
+the `git` ref. Each `Tag` table carries `name`, `target`, `kind`, `conflicted` and `synced` as a
+`Bookmark` row does, and on a `Remote` row `remote_name` and `tracked`; there are no ahead/behind
+distances. Dart: `Tag.target` is `String?`, `tracked` sits on `RemoteTag`
+(`packages/zanshin_core/lib/src/ffi/tags.dart`).
+
+The four verbs port `jj tag set` / `delete` / `track` / `untrack` at v0.47.0 and return the shipped
+`MutationResult`; a call that changes nothing writes no operation and `new_op_id` is the pre-call head.
+
+- `TagSetRequest.names` are DECODED names; `revision` absent is `-r`'s default `@`; `allow_move` is
+  `--allow-move` — without it a name that is a local tag already refuses `jj.invalid_input` ("Refusing
+  to move tag: {name}", hint "Use --allow-move to update existing tags."), fail-fast, nothing written.
+  Tags are never auto-tracked.
+- `TagDeleteRequest.names` are string PATTERNS (a bare one a glob); a tracked `name@remote` stays, so
+  the next push sends the deletion.
+- `TagTrackRequest.names` are the CLI's `TAG[@REMOTE]` texts and `remotes` remote-name patterns, as
+  `BookmarkTrackRequest`'s; one table serves both wrappers and `kind` (`TagTrack` / `TagUntrack`) tells
+  them apart.
+
+Only clap's checks (empty `names`, `set`'s empty name) refuse before the pre-verb snapshot. Warnings:
+`jj.tag_target_empty` (set), `jj.tag_names_unmatched` (delete, track and untrack patterns),
+`jj.remote_tags_unmatched` (symbols), `jj.tag_remotes_unmatched` (`remotes`), `jj.tag_already_tracked`
+(track), `jj.tag_git_tracking_untrack` and `jj.tag_not_tracked` (untrack). Untracking `name@git` warns
+and writes nothing — that is the CLI's refusal.
 
 ## File chmod; workspace forget, rename and remove (Story 9.13)
 

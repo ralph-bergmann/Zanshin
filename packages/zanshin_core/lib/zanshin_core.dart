@@ -114,6 +114,7 @@ export 'src/ffi/revset_search.dart'
 export 'src/ffi/select_tree.dart' show FileSelection, HunkKey, SelectTreeVerb, SelectedTree, SourceTree, TreeSelection;
 export 'src/ffi/squash_split.dart' show SplitResult, SquashPlan;
 export 'src/ffi/status.dart' show FileChange, FileChangeKind, WorkingCopyStatus;
+export 'src/ffi/tags.dart' show LocalTag, RemoteTag, Tag, TagKind;
 export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;
 export 'src/ffi/workspace.dart'
     show

@@ -137,6 +137,31 @@ abstract final class ZanshinWarningCode {
   /// 9.11).
   static const bookmarkGitTrackingUntrack = 'jj.bookmark_git_tracking_untrack';
 
+  /// `tag set` on an empty, undescribed revision (Story 9.59).
+  static const tagTargetEmpty = 'jj.tag_target_empty';
+
+  /// Exact names given to `tag delete` / `track` / `untrack` that match no tag
+  /// (Story 9.59).
+  static const tagNamesUnmatched = 'jj.tag_names_unmatched';
+
+  /// `tag track` / `untrack` `name@remote` symbols that name no trackable remote
+  /// tag (Story 9.59).
+  static const remoteTagsUnmatched = 'jj.remote_tags_unmatched';
+
+  /// Exact `remotes` names given to `tag track` / `untrack` that match no remote
+  /// (Story 9.59).
+  static const tagRemotesUnmatched = 'jj.tag_remotes_unmatched';
+
+  /// `tag track` of an already tracked remote tag (Story 9.59).
+  static const tagAlreadyTracked = 'jj.tag_already_tracked';
+
+  /// `tag untrack` of a tag on the Git-tracking remote `git` (Story 9.59) — the
+  /// CLI's refusal; nothing is written for it.
+  static const tagGitTrackingUntrack = 'jj.tag_git_tracking_untrack';
+
+  /// `tag untrack` of a remote tag that is not tracked (Story 9.59).
+  static const tagNotTracked = 'jj.tag_not_tracked';
+
   /// A path `absorb` could not split.
   static const absorbPathSkipped = 'jj.absorb_path_skipped';
 
@@ -354,6 +379,13 @@ abstract final class ZanshinWarningCode {
     bookmarkAlreadyTracked,
     bookmarkNotTracked,
     bookmarkGitTrackingUntrack,
+    tagTargetEmpty,
+    tagNamesUnmatched,
+    remoteTagsUnmatched,
+    tagRemotesUnmatched,
+    tagAlreadyTracked,
+    tagGitTrackingUntrack,
+    tagNotTracked,
     absorbPathSkipped,
     pathAccessDenied,
     pathNotAFile,

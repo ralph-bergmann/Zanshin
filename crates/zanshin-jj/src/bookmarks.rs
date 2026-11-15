@@ -274,32 +274,33 @@ pub(crate) fn check_list_flags(options: &BookmarkListOptions) -> Result<(), Book
     }
 }
 
-/// The CLI's `RefFilterPredicates` (`commit_ref_list.rs:45-61` @ v0.46.0).
-struct Predicates {
+/// The CLI's `RefFilterPredicates` (`commit_ref_list.rs:45-61` @ v0.46.0) — shared with the tag
+/// list (Story 9.59).
+pub(crate) struct Predicates {
     /// Matches local names.
-    name_matcher: StringMatcher,
+    pub(crate) name_matcher: StringMatcher,
     /// Matches remote names.
-    remote_matcher: StringMatcher,
+    pub(crate) remote_matcher: StringMatcher,
     /// Matches any of the local targets.
-    matched_local_targets: HashSet<CommitId>,
+    pub(crate) matched_local_targets: HashSet<CommitId>,
     /// Selects local refs having conflicted targets.
-    conflicted: bool,
+    pub(crate) conflicted: bool,
     /// Which rows beyond the matched names are included.
-    include: Include,
+    pub(crate) include: Include,
 }
 
 /// The `include_*` half of the CLI's `RefFilterPredicates`.
-struct Include {
+pub(crate) struct Include {
     /// Includes local-only refs.
-    local_only: bool,
+    pub(crate) local_only: bool,
     /// Includes tracked remote refs pointing to the same local targets.
-    synced_remotes: bool,
+    pub(crate) synced_remotes: bool,
     /// Includes untracked remote refs.
-    untracked_remotes: bool,
+    pub(crate) untracked_remotes: bool,
 }
 
-/// The primary row of a [`Item`]: the local bookmark, or an untracked remote one.
-enum Primary<'a> {
+/// The primary row of a [`Item`]: the local ref, or an untracked remote one.
+pub(crate) enum Primary<'a> {
     /// The local row; `remote_refs` are ALL its remote refs (its `synced` fact reads them).
     Local {
         /// Every `(remote, ref)` of this name.
@@ -315,15 +316,15 @@ enum Primary<'a> {
 }
 
 /// The CLI's `RefListItem`: a primary row and the tracked remote rows sorted with it.
-struct Item<'a> {
-    /// The bookmark name.
-    name: &'a RefName,
+pub(crate) struct Item<'a> {
+    /// The ref name.
+    pub(crate) name: &'a RefName,
     /// The local target (absent for a deleted or remote-only name).
-    local_target: &'a RefTarget,
+    pub(crate) local_target: &'a RefTarget,
     /// The primary row.
-    primary: Primary<'a>,
+    pub(crate) primary: Primary<'a>,
     /// The tracked remote refs listed under the primary.
-    tracked: Vec<(&'a RemoteName, &'a RemoteRef)>,
+    pub(crate) tracked: Vec<(&'a RemoteName, &'a RemoteRef)>,
 }
 
 impl Item<'_> {
@@ -345,8 +346,9 @@ impl Item<'_> {
 }
 
 /// The CLI's `collect_items` (`commit_ref_list.rs:63-121` @ v0.46.0): per name in view order, the
-/// local item (with its tracked remote refs) and then one item per untracked remote ref.
-fn collect_items<'a>(
+/// local item (with its tracked remote refs) and then one item per untracked remote ref. Bookmarks
+/// and tags (Story 9.59) share it.
+pub(crate) fn collect_items<'a>(
     all_refs: impl IntoIterator<Item = (&'a RefName, LocalRemoteRefTarget<'a>)>,
     predicates: &Predicates,
 ) -> Vec<Item<'a>> {
@@ -394,16 +396,17 @@ fn collect_items<'a>(
 }
 
 /// The CLI's `sort` (`commit_ref_list.rs:184-207` @ v0.46.0): loads the primaries' commits when a
-/// key needs them, then [`sort_inner`].
-fn sort(
+/// key needs them, then [`sort_inner`]. Bookmarks and tags (Story 9.59) share it; each maps the
+/// store failure into its own error.
+pub(crate) fn sort(
     store: &Arc<jj_lib::store::Store>,
     items: &mut [Item<'_>],
     sort_keys: &[BookmarkSortKey],
-) -> Result<(), BookmarkError> {
+) -> Result<(), backend::BackendError> {
     let mut commits = HashMap::new();
     if sort_keys.iter().any(|key| key.is_commit_dependant()) {
         for commit_id in items.iter().filter_map(|item| item.target().present_adds().next()) {
-            let commit = store.get_commit(commit_id).map_err(be)?;
+            let commit = store.get_commit(commit_id)?;
             commits.insert(commit_id.clone(), commit.store_commit().clone());
         }
     }
@@ -554,7 +557,7 @@ pub(crate) fn list_bookmarks(
     } else {
         options.sort.clone()
     };
-    sort(readonly.store(), &mut items, &sort_keys)?;
+    sort(readonly.store(), &mut items, &sort_keys).map_err(be)?;
 
     let lister = Lister { repo: &readonly };
     let mut out = Vec::new();
