@@ -3126,6 +3126,6 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in Story 10.43 (bmad-build-auto, 2026-11-15)
 
-- **A gap read may open another commit's lines after a commit switch that keeps the same file diff.** Medium if real; unverified.
+- ~~**A gap read may open another commit's lines after a commit switch that keeps the same file diff.**~~ — RESOLVED 2026-11-15 (closing run of Story 10.43, commit 4efc881ae6843e385d2c269c8328cff414352add): real for a rewrite of the selected change (same key, new commit id; a selection switch already unmounted the diff). Gap reads now use the shown diff's commit and mode, and a new revision with the same file diff re-reads every open gap, keeping how far it is open. Medium if real; unverified.
   - `InspectorViewModel.diffLines` (`app/lib/src/features/graph/graph_inspector.dart:464`) reads the current commit and whitespace mode at call time; the gap cache resets on a new fingerprint, `leftLineCount` or hunk range, and `previousDiff` withholds reads only on a file switch. Two commits with the same changes to one file but different unchanged lines would keep the open gaps and their lines.
   - **Follow-up:** reproduce by switching between two such commits with a gap open; if real, pass the shown diff's commit and mode into `readLines` (or reset the gaps on a commit switch).
