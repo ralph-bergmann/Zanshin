@@ -52,7 +52,7 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - Story 9.40: No-change verbs write no operation
 - Story 9.41: `--when.commands` scopes per verb
 - Story 9.42: Graph walk like `jj log` @ v0.46
-- Story 9.43: `converge` (decision pending)
+- Story 9.43: `converge` (declined 2026-10-26)
 - Story 9.44: `file edit`, `file delete`
 - Story 9.45: `git colocation status`/`enable`/`disable`
 - Story 9.46: v0.44 → v0.46 parity audit
@@ -68,10 +68,11 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - Story 9.56: Hints on errors + three 9.24/9.30/9.31 loop follow-ups
 - Story 9.57: `convert` leaves on disk what the CLI leaves (no own rollback)
 - Story 9.58: Follow-ups of 9.57 — `init` reports what it left, `convert_import` creates one level, the CLI's `immutable_heads()` error text
+- Story 9.59: Tag verbs — `tag set`/`delete`/`track`/`untrack` + the tag list through the FFI
 
 ## Requirements & Constraints
 
-- **Spec = the CLI's observable behavior at v0.46.0** (`git -C ../jj show v0.46.0:<path>`; re-read even where a story cites v0.44.0): verbs, preconditions, refusals and their order, defaults, op descriptions byte-identical, every on-disk effect. Terminal UX (TUI, editor, pager, prompts, `ui.status` chatter) is replaced. When the CLI refuses, Zanshin refuses equivalently — no "nicer" outcome. A deliberate divergence is named in the story (e.g. 9.44: a `file_edit` path below an existing non-directory refuses `jj.invalid_input`).
+- **Spec = the CLI's observable behavior at the pinned tag, now v0.47.0** (`git -C ../jj show v0.47.0:<path>`; re-read even where an older story cites v0.44.0/v0.46.0): verbs, preconditions, refusals and their order, defaults, op descriptions byte-identical, every on-disk effect. Terminal UX (TUI, editor, pager, prompts, `ui.status` chatter) is replaced. When the CLI refuses, Zanshin refuses equivalently — no "nicer" outcome. A deliberate divergence is named in the story (e.g. 9.44: a `file_edit` path below an existing non-directory refuses `jj.invalid_input`).
 - **Pass parameters through:** CLI/config defaults are editable pre-fills, never hidden Zanshin defaults; where the CLI prompts, return candidates or a plan. Absence is `null`. Zanshin path verbs take path prefixes, not filesets (ADR-0003); where the CLI opens an editor on content, the GUI supplies the new bytes.
 - jj only via jj-lib in `zanshin-jj`; production code never shells out to `jj` or parses its text (only the oracle's tests run the pinned `jj`).
 - A no-change verb writes no operation and returns the pre-call head op id ("already colocated" / "Nothing changed." are typed results with no op). A refused verb writes no operation unless the CLI's flow wrote one before refusing (e.g. a precondition's import). Writing a tree (`select_tree`) is not a mutation.
@@ -96,6 +97,7 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - **Graph walk = `jj log` @ v0.46:** the log set is evaluated through jj-lib's `ResolvedRevset::evaluate` (index merged with every `at_operation()` operation); its `into_inner()` keeps the resolved expression for the topology's passes (against the merge only when there is one); prioritize = `prioritize ∩ revset.within_visibility(head)`. Open: `commit_contents` refuses ids of rows reached only through a non-head `at_operation()`.
 - **Op-pinned reads:** load via `load_operation` + `load_at`, never `load_at_head`; no pre-verb snapshot, no operation, `lastPrecondition` unchanged, nothing retained on the handle. A gc'd operation refuses `jj.operation_not_found`. The UI passes the shown topology's `operationId`. The single worker cannot cancel, so expensive revset functions are batched or limited; debouncing is UI-side.
 - **Templates:** the `jj-cli` library is used for its template engine only — never `CliRunner`/`Ui`/commands, no `jj_cli` type in a public position; pinned with `jj-lib`.
+- **Ref verbs** (bookmarks 9.8/9.11/9.19, tags 9.59) share one shape: name patterns are globs by default; delete sets the local ref absent, so a tracked remote ref stays "deleted" until a push sends the deletion; untracking an `@git` ref refuses; ref lists mirror `--all-remotes` without `@git` rows. jj 0.47 has no `tag forget`.
 - **Network verbs** (fetch, clone, push) run on a once-per-call helper isolate with live progress; Cancel kills git's process group and refuses with a dedicated code.
 - **Oracle** (`crates/zanshin-parity`): stock `jj-cli` pinned with `jj-lib`, compares repo state via jj-lib and counts `Warning:` lines; ledger fails on UNEXPECTED/CHANGED/STALE. Reads, codes, hints, network and interactive verbs need hand audit (interactive selections via a `--tool` script); a status read can be witnessed by the CLI reading Zanshin's result. Pin bumps move `jj-lib`, `jj-cli` and the `../jj` tag together.
 - **Test layout:** `zanshin-jj`/`zanshin-ffi` integration tests live in one binary each (`tests/it/main.rs`, one module per file); env-mutating tests share the `test-helpers` lock or start with `own_process!`.
@@ -117,8 +119,9 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - 9.51 builds on 9.15/9.20/9.23/9.49; 9.52 on 6.4a/9.20/9.30; 9.54 follows 9.51/9.53.
 - 9.56 builds on 9.20, 9.30, 9.31 (plan fns/drop rows flip with the finish change) and 9.32/9.35; its hint field reaches every ported error path.
 - 9.57 builds on 9.20, 9.33 and 9.56; 9.58 extends `left_behind` to `init`, reworks `convert_import`'s destination creation, and its `immutable_heads()` wording reaches every verb, `clone` and `convert_import`.
+- 9.59 builds on 9.8, 9.11, 9.20 (push `-t`) and 9.2's `list_tags` (today Rust-only, used by the parity recorder); consumers 10.44–10.47 (bookmark and tag views, names/pickers, search actions).
 - 9.25 builds on 2.5, 4.9, 4.10–4.12, 9.2, 9.27; consumers 10.21 and 10.22; 9.28's `configSet` is the only `revsets.log` writer.
-- From the 0.44 → 0.46 bump: 9.42 (done) on 4.12/9.41; 9.43 waits on Ralph's product decision (two-phase query + apply if taken); 9.44 (done) ends in 9.40's gate and reuses 9.4's reads and 9.17's conflict materialization; 9.45 (done) builds on the 0.46 workspace model (9.13/9.23) and the 2.12/2.13 conversions; 9.46 (done) audited the already-ported verbs at v0.46.0: two `git remote list` ports, all citations at v0.46.0.
+- From the 0.44 → 0.46 bump: 9.42 (done) on 4.12/9.41; 9.43 declined by Ralph (not built); 9.44 (done) ends in 9.40's gate and reuses 9.4's reads and 9.17's conflict materialization; 9.45 (done) builds on the 0.46 workspace model (9.13/9.23) and the 2.12/2.13 conversions; 9.46 (done) audited the already-ported verbs at v0.46.0: two `git remote list` ports, all citations at v0.46.0.
 - 9.55 restructured every verb story's tests; later stories add tests as `tests/it/` modules.
 - Already covered outside Epic 9: reads `status`/`revset`/`change`/`op_log`/`bookmark list`/`remotes` (Epic 2), graph + `log` (Epic 4), `diff` (Epic 5); `describe`/`new`/`edit`/`abandon` (6.1), `undo` (6.2), `git fetch` (6.4a).
 - UI consumers: 10.10 (drop menu) uses 9.31's `drop_actions`; 10.25 the edited-text field; 10.26/10.27 use 9.50's `select_tree` (mode/conflict arm built); 11.8 (Sync) uses 9.24's poll.
