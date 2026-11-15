@@ -2085,7 +2085,7 @@ class InspectorDiffHunk extends StatelessWidget {
   );
 
   /// The width of a gap row's arrow columns: [numbers], the number columns they stand over, and at least two arrow
-  /// buttons wide when the row has [arrows].
+  /// buttons wide when the diff can open gaps ([arrows]) — on every gap row of it, so their texts line up.
   static double _arrowWidth(double numbers, {required bool arrows}) => arrows ? math.max(numbers, 2 * 24 + 4) : numbers;
 
   /// An unchanged gap row's arrows (design calm-study.css `.cs-gnums`, `.cs-gbtn`): ↕ for a gap of at most
@@ -2290,7 +2290,7 @@ class InspectorDiffHunk extends StatelessWidget {
       bool fold = false,
       bool hatch = false,
     }) {
-      final double arrowWidth = _arrowWidth(pin.numberWidth * 2 + 8, arrows: arrows != null);
+      final double arrowWidth = _arrowWidth(pin.numberWidth * 2 + 8, arrows: onExpand != null);
       final double gapPin = 10 + (gutters ? _gutter : 0) + arrowWidth;
       // A closed fold is its hatch alone, as before; every other gap row is the band.
       final Color fill = fold ? none : colors.flHover;
@@ -2499,7 +2499,7 @@ class InspectorDiffHunk extends StatelessWidget {
       child: Row(
         children: <Widget>[
           SizedBox(
-            width: _arrowWidth(pin.numberWidth, arrows: arrows != null),
+            width: _arrowWidth(pin.numberWidth, arrows: onExpand != null),
             child: Center(child: arrows),
           ),
           Flexible(child: text),
