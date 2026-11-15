@@ -8423,6 +8423,33 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 2.13, 9.20, 9.33, 9.56, 9.57; deferred-work "Surfaced in Story 9.57", "Surfaced in the closing run of Story 9.57", "Surfaced in the console session after the 9.57 story loop".
 
+### Story 9.59: Tag verbs — `jj tag set`, `delete`, `track`, `untrack`, and the tag list through the FFI [M/bridge]
+*(Added 2026-11-15, Ralph — console session, design round `design/Refs Study.html`. Stories 10.44–10.47 need it.)*
+
+**Motivation.** Zanshin reads tags but cannot change them. `zanshin-jj` has `view.rs` `list_tags` (local tags plus tracked remote tags) and `CommitMeta.tags`, and the graph sends tags as `TopologyRef` of kind `Tag`. There is no tag verb in Rust, the FFI or Dart, and `Repo::list_tags` has no FFI wrapper (only the parity recorder uses it).
+
+**Scope.**
+1. **The four verbs, like the CLI at v0.47.0** (`cli/src/commands/tag/{set,delete,track,untrack}.rs`), with the CLI's op descriptions:
+   - **`set`** creates or moves: names, `-r/--to` (default `@`), `--allow-move`. Without `--allow-move`, an existing tag refuses with "Refusing to move tag: <name>" and the hint "Use --allow-move to update existing tags." Names are parsed like `parse_tag_name` (`cli/src/revset_util.rs:316`).
+   - **`delete`** takes name patterns (glob by default, as `bookmark delete` in 9.8) and sets the local tag absent. A tracked remote tag stays as "deleted" until a push sends the deletion (`jj git push -t` or `--deleted`, 9.20).
+   - **`track` / `untrack`** take `TAG[@REMOTE]` and `--remote`. Untracking an `@git` tag refuses, as the CLI does.
+2. **The tag list through the FFI:** local tags plus remote tags with their targets and tracking state, as `jj tag list --all-remotes` shows them, without `@git` rows (as the bookmark list of 10.14).
+3. **FFI and bridge** in the shape of the bookmark verbs (9.8, 9.11, 9.19): append-only schema, externs, `cargo make codegen`, `docs/ffi-abi.md`, and in `packages/zanshin_core` the `RepoHandle` methods and worker commands.
+4. **Parity:** oracle cases for each verb and each refusal (`crates/zanshin-parity`).
+
+**Non-goals.** UI (10.44–10.47). Pushing tags (exists since 9.20). A `tag forget` (jj 0.47 has none).
+
+**Depends on.** 9.8, 9.11, 9.20 (done).
+
+**Witnesses.**
+- `set` creates a tag on `@` and on `-r`; on an existing tag it refuses without `--allow-move` and moves it with the flag.
+- `delete v1.*` deletes by glob; deleting a tag tracked on `origin` leaves `name@origin` as "deleted".
+- `track` and `untrack` change the tracking state; `untrack name@git` refuses.
+- The list shows local and remote tags with their tracking state.
+- The parity oracle agrees with the stock CLI for every case above.
+
+**Related:** 9.2 (`list_tags`), 9.20 (push `-t`), 10.44–10.47.
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
@@ -13045,6 +13072,136 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 ---
 
+### Story 10.44: The Bookmarks and Tags views — rail button, filter, tree, row buttons, delete dialog [UI/bridge]
+*(Added 2026-11-15, Ralph — console session. Ralph: "Wie konnte ich nur die Tags vergessen?" — tags get the same place as bookmarks, and both lists become calmer.)*
+
+**Design round: done.** `design/Refs Study.html` (`refs-study.jsx/.css`), approved by Ralph on 2026-11-15 ("Passt"). Sections 2–5 belong to this story.
+
+**Scope.**
+1. **A Tags button in the rail,** below Bookmarks, that behaves the same: the hover preview shows the first 5 tags and "+N more", a click pins the panel. It needs a new `tag` icon (DS icon set and `ZI`).
+2. **Both views as a tree with a filter** (`features/bookmarks/bookmark_list_view.dart` and `bookmark_list_model.dart`; a sibling for tags):
+   - A filter field on top searches this tree only. Matches are highlighted and their folders open.
+   - The tree splits names at `/`, like the inspector file tree (10.42): folders show open or closed through their icon, no chevron; a leaf shows its last segment.
+   - Leaves have no leading icon; only folders have one.
+   - A leaf shows its name, "change id · subject" below, and the state on the right (✓, ↑N/↓N, "deleted", the conflict mark). A local-only bookmark shows no state. An untracked remote name is dimmed and ends in a dim `@origin`.
+   - Everything else stays as today: click or ↩ selects the change, rows outside the view are dimmed, local bookmarks can be dragged onto a card. Tags cannot be dragged.
+   - The Bookmarks view keeps today's rows (`jj bookmark list --all-remotes`, no `@git`). The Tags view shows the tag list of 9.59.
+3. **Buttons in the row, not below it.** Today's Track/Untrack button below a remote row makes the list jump. On the hovered or focused leaf, small IconButtons now appear on its right, in place of the state, and the row keeps its height:
+   - "New change here": `jj new <name>`, or `jj new <name>@origin` for a remote row (bookmarks and tags);
+   - "Delete…": local bookmarks and tags (item 4);
+   - "Track" on an untracked remote row and "Untrack" on a tracked one: `jj bookmark|tag track|untrack <name>@origin`.
+   A right-click on a leaf opens a menu with the same actions plus "Rename…" (bookmarks only, `jj bookmark rename`) and "Copy name".
+4. **The delete dialog** (study section 5) for every Delete of a bookmark or tag: the row button, the row menu, the card's bookmark popover (10.15) and the tag popover (10.45).
+   - A bookmark or tag with no remote is deleted at once, without a dialog; the toast offers Undo.
+   - With a remote, a sheet asks where it should go. Each choice shows its commands:
+     - "Only here — keep it on origin": `jj bookmark forget <name>`; for a tag `jj tag untrack <name>@origin` + `jj tag delete <name>` (jj 0.47 has no `tag forget`).
+     - "Here, and on origin when you push the deletion" (the default, as `jj … delete`): `jj bookmark|tag delete <name>`. Its note says that a plain push skips deletions and the Push sheet offers to push them (11.22).
+     - "Here and on origin now" (danger tone): the delete plus `jj git push --remote <remote> -b|-t <name>`, with the note "Can't be undone: origin loses the bookmark/tag."
+   - A ref on several remotes names each remote in the choices and the push commands.
+5. **DS:** the `tag` icon, the tree rows of both views (no leading icon, row buttons), the filter field and the delete sheet. DESIGN-SYSTEM-SYNC entry; the publish waits for a console session.
+
+**Non-goals.** The cards (10.45), the name field and the move picker (10.46), the top search (10.47), a hover "+" or create action inside the views.
+
+**Design question.** Tree order: folders before top-level names, as in the inspector, so `main` sits at the bottom — or top-level names first. Without an answer, folders first is built.
+
+**Depends on.** 9.59; 10.14, 10.42 (done).
+
+**Witnesses.**
+- The rail shows Tags below Bookmarks; hovering it shows the preview, a click pins the Tags view.
+- Typing "onb" in the filter leaves only matching names and their folders, open, with the match highlighted.
+- Hovering a local, a tracked and an untracked remote row shows their buttons in place of the state; no row changes height.
+- "New change here" on a bookmark runs `jj new <name>`; Track and Untrack change the tracking state.
+- Deleting a bookmark without a remote needs no dialog and undoes from the toast. Deleting `feature/auth-flow`, which is on origin, offers the three choices with their commands; each choice runs exactly those commands.
+- Marionette, by the console session: both views against `design/Refs Study.html`.
+
+**Related:** 9.11, 9.59, 10.14, 10.15, 10.45, 11.22.
+
+---
+
+### Story 10.45: Tags on the cards; the card menu opens by right-click only [UI/bridge]
+*(Added 2026-11-15, Ralph — console session, same design round as 10.44: `design/Refs Study.html` section 1.)*
+
+**Scope.**
+1. **The graph keeps tags.** `backend_graph_layout.dart` (~:219-224) keeps only bookmark refs today; tag refs (`TopologyRefKind.tag`) become `GraphRef`s too.
+2. **The tag legend** is the bookmark legend's pill at the **bottom-right** edge of the card (the bookmark legend stays top-right), with the tag glyph and a calmer tone than the bookmark pill. It shows the first tag, shortened as bookmarks are, and "+N". It stays right of the card's centre, so the line to the parent stays free.
+3. **The tag popover** opens on hovering the tag pill, like the bookmark popover (10.15). It lists the card's tags with "on origin" or "local only" and offers "Create tag here…", "Move existing here…" (10.46) and "Delete" (the dialog of 10.44).
+4. **The ⋯ button goes.** *(Ralph: a right-click is faster than hitting the dots, and the card is the only element with both.)* The card menu opens by right-click as today. A focused card opens it with the context-menu key and ⇧F10, and VoiceOver offers a "Show menu" action on every card.
+5. **The card menu ends with a new group:** "Create bookmark here…" (`jj bookmark create <name> -r <id>`) and "Create tag here…" (`jj tag set <name> -r <id>`). So a change without refs can get a tag; there is no hover "+" for tags.
+6. **Tags elsewhere:** in the inspector header next to the bookmark chips, and in the peek card.
+7. **DS:** the card's tag legend, the tag popover, the card without ⋯, the card menu's new group. DESIGN-SYSTEM-SYNC entry; the publish waits for a console session.
+
+**Non-goals.** Dragging tags. The name field rules and the move picker (10.46).
+
+**Depends on.** 9.59, 10.44 (the delete dialog); 10.15 (done).
+
+**Witnesses.**
+- A card with a bookmark and two tags shows the bookmark pill top-right and `v1.5.0-rc1 +1` bottom-right; an immutable card shows its tag the same way.
+- Hovering the tag pill opens the popover with both tags and the three actions.
+- No card shows ⋯. Right-click, the context-menu key and ⇧F10 on a focused card open the same menu; VoiceOver lists "Show menu".
+- "Create tag here…" on a card without refs creates the tag (`jj tag set`), and the pill appears.
+- The inspector header and the peek card show the change's tags.
+- Marionette, by the console session: against `design/Refs Study.html` section 1.
+
+**Related:** 10.15, 10.44, 10.46.
+
+---
+
+### Story 10.46: Names and pickers — characters git refuses become `_`, "Move existing here…" picks from a list [UI]
+*(Added 2026-11-15, Ralph — console session, same design round: `design/Refs Study.html` sections 6 and 7.)*
+
+**Scope.**
+1. **The name field** for creating and renaming bookmarks and tags (`GraphNameSheet`, `graph_card_menu.dart` ~:855-925, and every sheet that uses it):
+   - Characters git refuses in a ref name become `_` while typing and on paste: space, `~ ^ : ? * [ \` and control characters. A quiet note under the field says so.
+   - Rules about the whole name show an inline error and disable Create instead, because replacing them while typing would fight the user: a leading or trailing `/` or `.`, `..`, `@{`, `//`, a `.lock` ending, a lone `@`.
+   - *(Ralph 2026-11-15. This is stricter than the CLI, which takes any name and fails later when it exports the ref to git.)*
+2. **"Move existing here…" picks from a list** instead of today's free-text field (`graph_card_menu.dart` ~:415-427):
+   - an autocomplete field with rows like the top search: the name with the match highlighted, where it is now ("now on <change id> <subject>"), and a "backwards" or "sideways" pill when the move goes that way;
+   - a switch "Allow moving backwards or sideways" (`--allow-backwards`); a blocked move says why;
+   - the command line under the list: `jj bookmark move <name> --to <id> [--allow-backwards]`.
+3. **The same picker for tags,** from the tag popover (10.45): `jj tag set <name> -r <id> --allow-move`. A tag that is on a remote shows the warning: "<name> is on origin — moving it changes a published tag. Anyone who fetched it keeps the old one; your next push of the tag moves it on origin too." *(Ralph 2026-11-15: warn, don't forbid — the CLI allows it.)*
+4. **DS:** the name field with its note and error, the move picker for bookmarks and tags. DESIGN-SYSTEM-SYNC entry; the publish waits for a console session.
+
+**Non-goals.** Moving refs by drag (exists for bookmarks).
+
+**Design question.** `@` inside a name: git allows it, but in jj `name@remote` means a remote ref, and the app already refuses to drag such names. Default: keep `@` allowed (only `@{` and a lone `@` are errors) — or replace it with `_` too.
+
+**Depends on.** 9.59, 10.45.
+
+**Witnesses.**
+- Typing `feature/my new:idea?` gives `feature/my_new_idea_`; pasting `fix/login ~ crash` gives `fix/login___crash`; `release/1.5.` shows "Must not end with “.”" and Create stays disabled.
+- "Move existing here…" with "feat" lists the matching bookmarks with their current change; a backwards move needs the switch and then runs `--allow-backwards`.
+- Moving `v1.5.0-rc1`, which is on origin, shows the warning and runs `jj tag set v1.5.0-rc1 -r <id> --allow-move`.
+- Marionette, by the console session: against `design/Refs Study.html` sections 6 and 7.
+
+**Related:** 10.15, 10.44, 10.45.
+
+---
+
+### Story 10.47: Search — tags, and actions on bookmark and tag hits [UI]
+*(Added 2026-11-15, Ralph — console session, same design round: `design/Refs Study.html` section 8. Ralph asked whether bookmark hits could get "track" and "new"; the study shows them only where they make sense.)*
+
+**Scope.**
+1. **Tag hits** (`graph_search_index.dart`, `graph_search_field.dart`, `graph_search_model.dart`): a "Tag" scope with the prefix `t:`, and tag hits under "Any" (2 hits plus "N more in Tag", as bookmarks). A tag hit selects its change, like a bookmark hit.
+2. **Actions on the active row only** (hovered or reached with the arrow keys), so the list stays calm:
+   - "New change here" (an icon button before the change id, and ⌘↩) on bookmark and tag hits: `jj new <name>`;
+   - "Track" on an untracked remote hit: `jj bookmark|tag track <name>@<remote>`.
+   The footer reads "↩ Select · ⌘↩ New change here".
+3. **DS:** the search rows with their actions and the footer. DESIGN-SYSTEM-SYNC entry; the publish waits for a console session.
+
+**Non-goals.** Other actions in the search (delete, rename).
+
+**Depends on.** 9.59, 10.44; 10.21 (done).
+
+**Witnesses.**
+- `t:v1.` lists tags; "Any" shows tag hits with "N more in Tag".
+- Only the active row shows its buttons; ⌘↩ on `feature/auth-flow` runs `jj new feature/auth-flow`.
+- `b:rel` shows Track on `release/1.4.x@origin`, and it tracks the bookmark.
+- Marionette, by the console session: against `design/Refs Study.html` section 8.
+
+**Related:** 10.21, 10.44.
+
+---
+
 ## Epic 11: Floating app shell (Flutter UI)
 
 > **Granularity:** backlog-level, like Epics 9 and 10. Full acceptance criteria are written per story (via `bmad-create-story`) when it is scheduled.
@@ -15055,5 +15212,28 @@ Nothing NEEDS DESIGN.
 **Depends on.** 11.24.
 
 **Related:** the review; 11.12 (window foundation), 11.13 (menu bar), 11.20 (zoom); project memories "Resolve async before the DI graph" and "Start-up work in the boot sequence".
+
+---
+
+### Story 11.26: The top bar keeps 12 pt to the window edge, like every other side [UI/native]
+*(Added 2026-11-15, Ralph — console session, design round `design/Refs Study.html` section 9, approved 2026-11-15.)*
+
+**Motivation.** The floating elements keep 12 pt to the window edge on the left, right and bottom, but the top bar sits about 4 pt from the top: it centres on the traffic lights (`chromeBarY = tlMidY − 22` with `tlMidY` 26, `zs_metrics.dart` ~:357-375; `floating_shell.dart` ~:347-353). In full screen it already sits at 12 (`tlMidY` 34).
+
+**Scope.**
+1. **In a window, the top bar sits 12 pt from the top,** as in full screen; the content starts at 68.
+2. **The traffic lights move down** to stay centred on the bar (centre y 34). This is new native work: today the Swift code only measures the buttons (`packages/zanshin_shell_macos/…/WindowChromeHost.swift`: "The buttons are only read, never moved"; `app/macos/Runner/MainWindowChrome.swift` places them through an empty `NSToolbar` and a titlebar accessory). The position must hold through resizing, entering and leaving full screen, a theme change and the window becoming key; the measured block is still reported to Dart, and the hover rings (`TrafficLightOverlayView`) follow.
+3. **DS:** `--tl-mid-y` 34 for a window, `--chrome-bar-y` 12, `--chrome-top` 68, and the readme's chrome geometry. DESIGN-SYSTEM-SYNC entry; the publish waits for a console session.
+
+**Non-goals.** The Settings and Projects windows (their traffic lights stay at 19/19); full screen (unchanged).
+
+**Depends on.** 11.4, 11.12 (done).
+
+**Witnesses.**
+- A window screenshot measures 12 pt from the top edge to the bar, the same as to the rail, the inspector and the bottom; the traffic lights sit centred on the bar.
+- Resizing, full screen in and out, and a theme switch keep the lights in place; the drag region and the window buttons still work.
+- Marionette and a native screenshot, by the console session.
+
+**Related:** 11.4, 11.12, 11.20.
 
 ---

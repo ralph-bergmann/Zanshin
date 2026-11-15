@@ -1,0 +1,135 @@
+/* REFS STUDY (2026-11-15). Builds on the floating client's own classes: graph.css (.gcard, .gbm, .gmenu, .gbl),
+   float.css (.fl-rail, .fl-callout, .fl-panel, .rsd-btn), app.css (.left-panel, .lp-search), search.css (.gs-*),
+   inspector.css (.rsd-in glass field), settings.css (.gconf sheet). Only what is new or study-only lives here. */
+:root{--rs-hov:color-mix(in oklab,var(--fl-bg-solid),#fff 7%);--rs-warn:#f7c243;--rs-warn-bg:rgba(234,181,50,.16)}
+[data-theme="light"]{--rs-hov:color-mix(in oklab,var(--fl-bg-solid),#3a2e22 6%);--rs-warn:#895604}
+html,body{overflow:auto}
+.rs-win{min-height:100%;box-sizing:border-box;padding:20px;background:var(--canvas);background-attachment:fixed;color:var(--text)}
+.rs-head{max-width:1100px;margin:0 0 10px;font-size:13px;line-height:1.5;color:var(--text-dim)}
+.rs-head b{color:var(--text)}
+/* the hover switch stays in reach while the page scrolls */
+.rs-force{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:10px;margin:0 -20px 18px;padding:8px 20px;font-size:12px;color:var(--text-dim);background:var(--fl-sheen),var(--fl-bg-strong);border-bottom:1px solid var(--fl-border);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+.rs-win h2{margin:0 0 8px;font-size:14px;font-weight:600}
+.rs-win section{margin-bottom:34px}
+.rs-note{max-width:1100px;margin:0 0 12px;font-size:12px;line-height:1.5;color:var(--text-dim);text-wrap:pretty}
+.rs-note.rs-after{margin:10px 0 0}
+.rs-note code,.rs-cap code,.rs-legend code,.rs-fnote code,.rs-allow code{font:11.5px var(--font-mono);color:var(--text-muted)}
+.rs-cap{margin:0 0 6px;font-size:11.5px;color:var(--text-faint)}
+.rs-abs{position:absolute;margin:0;white-space:nowrap}
+.rs-flow{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.rs-mono{font-family:var(--font-mono)}
+
+/* 1 · cards on the graph background */
+.rs-graph.gws{display:block;overflow-x:auto;border:1px solid var(--fl-border);border-radius:14px}
+/* the two new rows carry the longest commands; let the menu grow instead of wrapping them */
+.rs-graph .gmenu{max-width:360px}
+.rs-plane.gplane{min-width:0;min-height:0}
+/* the tag legend: the bookmark pill's shape on the bottom edge, calmer (no fill in the glyph, dim text, light border);
+   it stays right of the card's centre, where the line to the parent leaves the card */
+.gcard .gbm.rs-tg{top:auto;bottom:-11px}
+.gcard .gbm.rs-tg.is-legend{max-width:calc(50% - 14px)}
+.gbm.rs-tg .gbm-trigger,.gcard:hover .gbm.rs-tg .gbm-trigger{color:var(--text-dim);border-color:var(--border)}
+.gbm.rs-tg .gbm-main{font-weight:400;flex-shrink:1;overflow:hidden;text-overflow:ellipsis}
+.gbm.rs-tg .gbm-item{color:var(--text-muted)}
+.gbm.is-open .gbm-pop{display:block}
+.force-cards .rs-plane .gcard{border-color:var(--edge-hov);background-color:var(--card-solid-hi)}
+.force-cards .rs-plane .gbm.is-btn:not(.has){opacity:1;pointer-events:auto;transform:scale(1)}
+.gmenu .gmenu-item svg{color:var(--text-muted)}
+
+/* 2 · rail and callout */
+.rs-stage{position:relative;width:420px;height:360px;border:1px solid var(--fl-border);border-radius:14px;background:var(--canvas);overflow:hidden}
+.rs-rail.fl-rail{top:20px}
+.rs-stage .fl-callout{animation:none}
+
+/* 3 + 4 · the views */
+.rs-panel.fl-panel{position:relative;left:auto;top:auto;bottom:auto;animation:none}
+.rs-filter{margin:2px 10px 6px}
+.rs-filter svg{color:var(--text-dim)}
+.rs-clear{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:var(--fl-on);color:var(--text-dim)}
+.rs-clear:hover{color:var(--text)}
+.rs-tree.left-panel-body{padding:2px 6px 14px}
+.rs-row{position:relative;display:flex;align-items:center;gap:8px;padding-right:8px;border-radius:7px;outline:none;cursor:default}
+.rs-row:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
+.rs-dir{gap:6px;height:28px;font:11.5px var(--font-mono);color:var(--text-muted)}
+.rs-ficon{display:grid;color:var(--text-faint)}
+.rs-leaf{min-height:40px}
+.rs-leaf .gbl-text{flex:1}
+.rs-remote{color:var(--text-faint)}
+.rs-leaf.is-untracked .gbl-text{opacity:.6}
+.rs-state{display:flex;align-items:center;flex-shrink:0}
+/* hover: an opaque row colour, so the buttons can cover the text end without the row reflowing */
+.rs-row:hover,.force-rows .rs-row.is-fhov{background:var(--rs-hov)}
+.rs-acts{position:absolute;top:0;right:4px;bottom:0;display:none;align-items:center;gap:2px;padding-left:18px;background:linear-gradient(90deg,transparent,var(--rs-hov) 16px)}
+.rs-leaf:hover .rs-acts,.rs-leaf:focus-within .rs-acts,.force-rows .rs-leaf.is-fhov .rs-acts{display:flex}
+.rs-leaf:hover .rs-state,.rs-leaf:focus-within .rs-state,.force-rows .rs-leaf.is-fhov .rs-state{visibility:hidden}
+.rs-leaf:focus-within{background:var(--rs-hov)}
+/* small row buttons: icon (22 × 22) and text */
+.rs-ib,.rs-tb{display:inline-grid;place-items:center;height:22px;border-radius:6px;color:var(--text-dim);transition:background 120ms,color 120ms}
+.rs-ib{width:22px}
+.rs-tb{padding:0 7px;font-size:11.5px;font-weight:500}
+.rs-ib:hover,.rs-tb:hover{background:var(--fl-on);color:var(--text)}
+.rs-ib.danger:hover{color:var(--rem)}
+.rs-ib:focus-visible,.rs-tb:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.rs-legend{flex:1 1 260px;max-width:380px;margin:20px 0 0;padding:0 0 0 16px;font-size:12px;line-height:1.7;color:var(--text-dim)}
+.rs-legend b{color:var(--text-muted);font-weight:600}
+.rs-legend svg{vertical-align:-2px;color:var(--text-muted)}
+
+/* 5–7 · sheets, each over a piece of window */
+.rs-sheetbox{position:relative;height:500px;border:1px solid var(--fl-border);border-radius:14px;background:var(--canvas);overflow:hidden}
+.rs-sheetbox .gconf-scrim{padding-top:28px;animation:none}
+.rs-sheetbox .gconf{animation:none}
+.rs-sheetbox.is-name{width:388px;height:330px}
+.rs-sheetbox.is-move{width:548px;height:520px}
+.rs-choices{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.rs-choice{display:grid;grid-template-columns:15px minmax(0,1fr);gap:10px;align-items:start;padding:10px 12px;border-radius:10px;text-align:left;transition:background 120ms}
+.rs-choice:hover{background:var(--fl-hover)}
+.rs-choice.on{background:var(--fl-on)}
+.rs-choice:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.rs-choice-t{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rs-choice-l{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:500;color:var(--text)}
+.rs-choice.is-danger .rs-choice-l,.rs-choice.is-danger .rs-choice-n{color:var(--rem)}
+.rs-default{font-size:10.5px;font-weight:400;color:var(--text-faint)}
+.rs-ccmd{font:11px/1.5 var(--font-mono);color:var(--text-muted);white-space:pre-wrap;word-break:break-all}
+.rs-choice-n{font-size:11.5px;line-height:1.4;color:var(--text-dim)}
+/* the radio — DS controls.css › .zs-radio in the prototype's tokens */
+.rs-radio{position:relative;width:15px;height:15px;margin-top:1px;box-sizing:border-box;border-radius:50%;border:1.5px solid var(--text-faint);display:grid;place-items:center;transition:background 120ms,border-color 120ms}
+.rs-choice:hover .rs-radio:not(.is-on){border-color:var(--text-muted)}
+.rs-radio.is-on{background:var(--accent);border-color:var(--accent)}
+.rs-radio-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-ink);transform:scale(0);transition:transform 160ms}
+.rs-radio.is-on .rs-radio-dot{transform:scale(1)}
+.rs-choice.is-danger .rs-radio.is-on{background:var(--rem);border-color:var(--rem)}
+/* fields */
+.rs-field{display:flex;flex-direction:column;gap:6px}
+.rs-in.rsd-in{height:32px;padding:0 10px;font:12.5px var(--font-mono)}
+.rs-in.rsd-in.is-err,.rs-in.rsd-in.is-err:focus{border-color:var(--rem);box-shadow:0 0 0 3px color-mix(in oklch,var(--rem) 22%,transparent)}
+.rs-fnote{font-size:11.5px;line-height:1.4;color:var(--text-dim)}
+.rs-ferr{font-size:11.5px;line-height:1.4;color:var(--rem)}
+.gconf .gconf-body .gcid,.gconf-title .gcid{font-size:inherit;vertical-align:baseline}
+/* the move picker: the top search's rows in a well */
+.rs-plist.gs-list{max-height:200px;padding:4px;border-radius:10px;background:var(--fl-hover)}
+.rs-plist .gs-row{font-size:12.5px}
+.rs-now{display:inline-block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-faint)}
+.rs-now .gcid{margin:0 3px}
+.gs-tag.rs-warn{color:var(--rs-warn);background:var(--rs-warn-bg)}
+.rs-allow{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted);cursor:default}
+.rs-warn-t{color:var(--rs-warn)}
+
+/* 8 · top search */
+.rs-sbox{position:relative;width:560px;height:300px}
+.rs-tc.fl-tc{display:flex;width:470px;margin-left:45px}
+.rs-tc .gs{flex:1}
+.rs-sic{display:grid;place-items:center;width:26px;color:var(--accent)}
+.rs-tc .gs-pop{animation:none}
+.rs-sacts{display:flex;align-items:center;gap:2px}
+
+/* 9 · top inset, drawn 1 : 1 */
+.rs-fig{margin:0}
+.rs-fig figcaption{margin-top:6px;font-size:12px;color:var(--text-dim)}
+.rs-fig figcaption b{color:var(--text)}
+.rs-w-frame{fill:var(--canvas-base);stroke:var(--border-strong)}
+.rs-w-isl{fill:var(--fl-bg-solid);stroke:var(--fl-border)}
+.rs-w-tl{fill:none;stroke:rgba(255,255,255,.26)}
+[data-theme="light"] .rs-w-tl{stroke:rgba(58,46,34,.3)}
+.rs-w-mid{stroke:var(--gold);stroke-width:1;stroke-dasharray:3 3;opacity:.7}
+.rs-w-dim path{fill:none;stroke:var(--accent);stroke-width:1}
+.rs-w-dim text,.rs-w-lbl{fill:var(--accent);font:600 10.5px var(--font-mono)}
