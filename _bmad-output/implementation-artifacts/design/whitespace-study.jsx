@@ -47,17 +47,17 @@ const folded = (all) => {
   return out;
 };
 
-const Line = ({ l, marks }) => {
+const Line = ({ l }) => {
   if (l.k === "gap") {
-    return <div className="wss-gap"><span className="isd-nums"><span>⋯</span><span>⋯</span></span><span className="wss-gaptxt">{l.n} lines without a change</span></div>;
+    return <div className="wss-gap"><span className="isd-nums"><span>⋯</span><span>⋯</span></span><span className="wss-gaptxt">{l.n} more lines with only whitespace changes</span></div>;
   }
   const cls = "isd-line k" + (l.k === "+" ? "a" : l.k === "-" ? "r" : "c");
-  // A re-indented line: its new text, the two added spaces marked while the marks are shown.
-  const text = l.ws && marks
+  // A re-indented line: its new text with the two added spaces marked, as jj diff -w marks them.
+  const text = l.ws
     ? <span className="isd-txt">{"    "}<span className="wss-wsmark">{"  "}</span>{l.s.slice(6)}</span>
     : <span className="isd-txt">{l.s}</span>;
   return (
-    <div className={cls + (l.ws && marks ? " wss-ws" : "")}>
+    <div className={cls}>
       <span className="isd-nums"><span>{l.o ?? ""}</span><span>{l.n ?? ""}</span></span>
       <span className="isd-sig">{l.k === "+" ? "+" : l.k === "-" ? "−" : ""}</span>{text}
     </div>
@@ -88,7 +88,7 @@ function Hunk({ title, note, startOpen }) {
                 </button>
                 <span className="isd-stat"><span className="stat-add">+4</span><span className="stat-rem">−1</span></span>
               </div>
-              {shown.map((l, i) => <Line key={i} l={l} marks={open}/>)}
+              {shown.map((l, i) => <Line key={i} l={l}/>)}
             </div>
           </div>
         </div>
@@ -107,9 +107,9 @@ function App() {
       </header>
       <div className="wss-row">
         <Hunk startOpen={false} title="1 · Whitespace ignored (default)"
-          note="Exactly what jj diff -w shows: one real change at the top, one added “),” at the bottom. The re-indented lines are plain context, the ones far from a change collapse to a gap. The header says how many lines changed only in whitespace."/>
+          note="Exactly what jj diff -w shows: one real change at the top, one added “),” at the bottom. The re-indented lines are context with their added indentation marked, as jj marks it; the ones far from a change collapse to a gap. The header says how many lines changed only in whitespace."/>
         <Hunk startOpen={true} title="2 · After “Show”"
-          note="Every line that changed only in whitespace comes back where it belongs, with both numbers. The added indentation is marked, the text dimmed: nothing was deleted, the lines only moved right."/>
+          note="The gap opens: every line that changed only in whitespace is back where it belongs, with both numbers and the same marks. Nothing was deleted, the lines only moved right."/>
       </div>
       <footer className="wss-foot">
         A part that changed <i>only</i> whitespace (no line left under <code>jj diff -w</code>) keeps its folded row, with the same words:

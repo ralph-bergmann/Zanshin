@@ -15,8 +15,7 @@ html,body{overflow:auto}
 .wss-gap{display:flex;align-items:center;font:11.5px/22px var(--font-mono);background:var(--fl-hover)}
 .wss-gap .isd-nums{background:transparent}
 .wss-gaptxt{padding-left:18px;font:11.5px var(--font-sans);color:var(--text-faint)}
-/* a re-indented line while its marks show: the added indentation marked, the text dimmed */
-.wss-ws .isd-txt{color:var(--text-dim)}
+/* a re-indented line: the added indentation marked, as jj diff -w marks it */
 .wss-wsmark{background:color-mix(in oklch,var(--add) 38%,transparent);border-radius:2px}
 .wss-foot{margin-top:20px}
 .wss-fold{max-width:560px;margin-top:8px;border:1px solid var(--fl-border);border-radius:8px;overflow:hidden}
