@@ -3192,6 +3192,27 @@ void main() {
         await unmount(tester);
       });
 
+      testWidgets('focus a click leaves in the file list reveals nothing once the pointer leaves; the next key does', (
+        tester,
+      ) async {
+        await mixed(tester);
+        final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        addTearDown(mouse.removePointer);
+        await mouse.moveTo(tester.getCenter(_fileRow('b.sh')));
+        await mouse.down(tester.getCenter(_fileRow('b.sh')));
+        await mouse.up();
+        await settle(tester);
+        expect(focusedPane(), 'files', reason: 'the click focused the list');
+        await mouse.moveTo(Offset.zero);
+        await settle(tester);
+        expect(opacity(tester, fileBox('d.txt')), 0, reason: 'focus from a click alone');
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await settle(tester);
+        expect(opacity(tester, fileBox('d.txt')), 1, reason: 'a key in the pane');
+        await unmount(tester);
+      });
+
       testWidgets('a hidden box keeps its semantics and its tap', (tester) async {
         final SemanticsHandle semantics = tester.ensureSemantics();
         await mixed(tester);
