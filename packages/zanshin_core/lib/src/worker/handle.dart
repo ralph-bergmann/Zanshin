@@ -2758,7 +2758,9 @@ final class RepoHandle {
   /// already refuses and nothing is written. An empty, undescribed target warns
   /// `jj.tag_target_empty`. Tags are never auto-tracked. Setting every name where
   /// it points writes nothing. Op-log description: `set tag {names} to commit
-  /// {id}`.
+  /// {id}`. Tags are in the builtin `immutable_heads()`, so tagging `@` makes it
+  /// immutable: as in the CLI, a new `@` starts on top, the result warns
+  /// `jj.working_copy_immutable` and its working-copy change id moves.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] on an interior NUL (U+0000); throws

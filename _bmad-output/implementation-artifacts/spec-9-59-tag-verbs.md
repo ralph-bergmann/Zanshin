@@ -5,12 +5,26 @@ created: '2026-11-15'
 status: 'done'
 baseline_revision: 'b9ea558d45e9e7e6acaaa52000d1621da4169f4a'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-9-context.md'
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      A bad name pattern refuses with Zanshin's own text and no hint, unlike the CLI.
+    evidence: |-
+      describe_pattern_parse_error says "failed to parse name pattern…" (lowercase, source appended) and drops the hint; the CLI says "Failed to parse name pattern: {kind}" with Caused by lines and revset_parse_error_hint (cli/src/revset_util.rs:336-339 @ v0.47.0). Pre-existing in the bookmark verbs; tag delete/track/untrack inherit it.
+    location: >-
+      crates/zanshin-jj/src/bookmark_ops.rs:177
+    severity: medium
+  - summary: >-
+      The shared bookmark and list helpers still cite the CLI at v0.46.0.
+    evidence: |-
+      bookmark_ops.rs (:154, :176, :186, :200) and bookmarks.rs (:277, :348, :398) cite v0.46.0 line numbers; at v0.47.0 parse_union_name_patterns starts at revset_util.rs:323. Pre-existing; behavior was not found to differ.
+    location: >-
+      crates/zanshin-jj/src/bookmark_ops.rs, crates/zanshin-jj/src/bookmarks.rs
+    severity: low
 ---
 
 <intent-contract>
@@ -126,6 +140,28 @@ deferred: []
   - `[false]` `[reject]` (intent) the "deleted" state is implicit (Local row with no target) — that is the bookmark list's shape since Story 9.29, which 10.14 already reads; the CLI shows the same row as `(deleted)`.
   - `[false]` `[reject]` (intent) deferred-work rule untouched — nothing was deferred, so nothing to mirror.
 
+### 2026-11-16 — Review pass
+Follow-up pass. The dispatch named one risk: `list_tags` rows were never compared with the CLI. The oracle now does it (new `crates/zanshin-parity/tests/oracle/tag_list.rs`).
+- verdicts: 17 findings — high 0, medium 1, low 12, false 4, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (blind) `tag_set`'s docs leave out that tagging `@` makes it immutable, so a new `@` starts and the working-copy change id moves — one sentence added to `Repo::tag_set` and `RepoHandle.tagSet`.
+  - `[low]` `[reject]` (blind) the tag list takes no filters or `--sort` — the intent excludes them ("Never: list filters/`-T`/`--sort` arguments").
+  - `[low]` `[reject]` (blind) carried — a local tag deleted while only `@git` tracks it lists a target-less Local row with no remote row; same claim as the logged edge row, code unchanged. New: the oracle witness `a_tag_deleted_before_an_export_keeps_its_local_row_like_the_cli` shows the CLI prints the same row (plus the `@git` row the intent drops).
+  - `[low]` `[patch]` (blind) `list_tags` rows are never compared with the CLI — not carried although the first pass rejected it: this follow-up dispatch named the risk and asked for oracle witnesses. Added `tag_list.rs` (5 tests, same repo through `Repo::list_tags` and `jj tag list --all-remotes -T`): every row kind incl. tracked/untracked on two remotes, unsynced, deleted and remote-only rows, `ui.tag-list-sort-keys = ["name-"]`, a conflicted tag, the deleted-before-export row, and a colocated repo where the CLI prints `@git` rows. All agree.
+  - `[low]` `[reject]` (blind) carried — `ViewError::Config` on the shared enum; same claim as the logged row, code unchanged.
+  - `[low]` `[defer]` (blind) the reused bookmark/list helpers cite v0.46.0 — pre-existing citations, behavior not found to differ; deferred and mirrored in deferred-work.md.
+  - `[false]` `[reject]` (blind) `git_fetch_parity.rs` was quietly narrowed — the old `list_tags` returned only tracked remote rows, so filtering on `tracked: true` keeps exactly the prior comparison.
+  - `[low]` `[patch]` (blind) the sprint-status `done` entry has no outcome note — added a `DONE 2026-11-15 (…)` note in the sibling style and bumped `last_updated`.
+  - `[medium]` `[defer]` (blind) a bad name pattern refuses with "failed to parse name pattern…" and no hint, unlike the CLI's "Failed to parse name pattern: …" + `revset_parse_error_hint` — real (`bookmark_ops.rs:177` vs `revset_util.rs:336` @ v0.47.0) but pre-existing in the shared bookmark helper; deferred and mirrored.
+  - `[low]` `[reject]` (blind) missing tests for an ambiguous `revision`, a conflicted local tag refused without `allow_move`, `zanshin_tags`' config error over the wire, `track --remote` glob — each runs shared code tested elsewhere (`resolve_change`, `is_present`, the envelope mapper, the bookmark remote matcher); unlikely to break alone.
+  - `[low]` `[reject]` (blind) `tag_ops::track_or_untrack` parses after `reload_head`, the bookmark sibling before — same behavior; the cost is one head load on a refusal; reordering is churn.
+  - `[low]` `[reject]` (edge) carried — the deleted-local-with-only-`@git` row; same as the logged edge row, now CLI-witnessed (see above).
+  - `[low]` `[patch]` (intent) the list has no CLI witness — same entry as the blind row; `tag_list.rs` added.
+  - `[low]` `[reject]` (intent) warning texts and the `--allow-move` hint are pinned by source-copied literals, not by the oracle (which counts warnings) — texts match the v0.47.0 source; widening the oracle's warning aspect is project-wide work.
+  - `[false]` `[reject]` (intent) "set same target" without `allow_move` (reading R2b) — the CLI refuses any present tag without `--allow-move` (`tag/set.rs`), as the Always clause says; R2b contradicts the CLI.
+  - `[false]` `[reject]` (intent) epic-context and sprint-status edits are outside scope — workflow bookkeeping the build requires.
+  - `[false]` `[reject]` (intent) the absent-target Local row goes beyond the matrix's list row — the Always clause asks for `collect_items` rows with `None` targets; the oracle now shows the CLI prints the same row.
+
 ## Design Notes
 
 - Why a separate `tag_ops.rs` instead of a `RefFamily` generic over `bookmark_ops`: the verbs differ (tags have no auto-track, no fast-forward rule, no tracked-remote guard on set, no forget/rename/move), and the view accessors differ per family; sharing only the parsing helpers keeps bookmark code paths untouched.
@@ -176,3 +212,29 @@ Status: done
 **Residual risks.**
 - Coverage not measured (gate rule); `tag_ops.rs` and `crates/zanshin-ffi/src/tags.rs` are new files that must reach the 80 % floor at the loop's final gate.
 - Tagging `@` makes `@` immutable (`tags()` is in the builtin immutable heads), so the finish creates a new `@` with `jj.working_copy_immutable` — the CLI does the same; the oracle agrees.
+
+### Follow-up review pass (2026-11-16)
+
+Status: done
+
+**Summary.** The named risk is closed: `Repo::list_tags` now has a CLI witness. The new oracle module `tag_list.rs` reads the same repo through `Repo::list_tags` and `jj tag list --all-remotes -T <row template>` (the CLI's `@git` rows left out, its target list cut to the first added change id, as `Tag::target` keeps it) and asserts equality. Against `cmd_tag_list` and `CommitRef::{local, remote, remote_only}` at v0.47.0 the rows agree on order, `tracked`, `synced`, `conflicted`, targets, the target-less deleted row and the descending sort key. No product code changed apart from two doc sentences.
+
+**Files.**
+- `crates/zanshin-parity/tests/oracle/tag_list.rs` (new), `main.rs` -- five read witnesses: every row kind (local only; tracked on `origin` + untracked on `remote2`; moved locally = unsynced; untracked; deleted = target-less local row; remote-only untracked), `ui.tag-list-sort-keys = ["name-"]`, a conflicted tag (concurrent `tag set` on two unrelated commits), a tag deleted before an export (local row kept, `@git` row dropped), and a colocated repo where the CLI prints `@git` rows.
+- `crates/zanshin-jj/src/repo.rs`, `packages/zanshin_core/lib/src/worker/handle.dart` -- `tag_set` / `tagSet` docs say tagging `@` makes it immutable and moves the working copy.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` -- `DONE` note on `9-59-tag-verbs`, `last_updated` 2026-11-16.
+- `_bmad-output/implementation-artifacts/deferred-work.md` -- two deferred items mirrored.
+
+**Review.** 17 findings (medium 1, low 12, false 4). Patched: list rows CLI-witnessed (low; not carried, the dispatch asked for it), `tag_set` immutable-`@` docs (low), sprint-status outcome note (low). Deferred: pattern-parse refusal text and hint differ from the CLI (medium, pre-existing in the shared bookmark helper); stale v0.46.0 citations in the shared helpers (low, pre-existing). Rejected (reasons in the triage log): list filters (intent excludes them), the deleted-local-with-only-`@git` row and `ViewError::Config` (carried), four extra error-path tests, the track/untrack parse order, oracle warning-text comparison, and four `false` findings. Patched by verdict: high 0, medium 0, low 3 entries.
+
+**Follow-up review recommended: false.** A follow-up pass recommends another only when it patched a `high`; this one patched none.
+
+**Verification (gate rule: no `cargo make test`/`test-full`/`coverage`).**
+- `cargo test -p zanshin-parity --test oracle tag_list::` -- 5 passed.
+- `cargo clippy -p zanshin-jj -p zanshin-parity --all-targets -- -D warnings` -- clean; `cargo fmt --all --check` -- clean (after `cargo fmt -p zanshin-parity`).
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed lib/src/worker/handle.dart` -- unchanged.
+- No verb, FFI or schema changed, so no codegen and no full oracle run.
+
+**Residual risks.**
+- The witnesses do not cover a sort key that loads commits (`committer-date`, `author-name`); `bookmarks::sort` is shared with the bookmark list and its CLI-copied sort tests.
+- Coverage is still unmeasured until the loop's final gate.

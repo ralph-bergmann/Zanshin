@@ -3443,6 +3443,10 @@ impl Repo {
     /// target; tags are never auto-tracked. A run that changes nothing writes NO operation. Op-log
     /// description: `set tag {names} to commit {id}`, argument order, full hex.
     ///
+    /// The builtin `immutable_heads()` includes `tags()`, so tagging `@` (the default) makes it
+    /// immutable: as in the CLI, the finish starts a new `@` on top, warns
+    /// `jj.working_copy_immutable`, and the result's working-copy change id moves.
+    ///
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — `names` is empty or holds an empty name (clap's

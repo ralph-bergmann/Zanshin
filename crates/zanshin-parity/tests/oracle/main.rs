@@ -27,6 +27,7 @@ mod refusal_order;
 mod remote_refusals;
 mod scenarios;
 mod state;
+mod tag_list;
 
 /// One `#[test]` per scenario id, so they run in parallel and fail individually. The same id
 /// lists also yield `SCENARIO_IDS`, so a table entry without a test cannot slip through.
