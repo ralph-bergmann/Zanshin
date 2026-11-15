@@ -3123,3 +3123,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **A move whose halves lie in two different exact hunks may leave one hunk's block with no row, so it is dropped and a pick of the other hunk commits half the move.** High if real; unverified.
   - `diffBlocks` (`app/lib/src/features/graph/inspector_diff.dart`) skips a block with no ignoring line and no listed line; the closing run's merge works per block only. It needs every line in the dropped hunk's range to stay matched under `-w` while the alignment crosses the context between the hunks — usually the crossed lines turn into `-w` changed lines in the first block.
   - **Follow-up:** build a real-repo fixture where `diffBlocks` returns fewer blocks than the exact hunks while the `-w` read still differs; if it exists, keep such a hunk as a block (or tie it to its partner hunk).
+
+## Surfaced in Story 10.43 (bmad-build-auto, 2026-11-15)
+
+- **A gap read may open another commit's lines after a commit switch that keeps the same file diff.** Medium if real; unverified.
+  - `InspectorViewModel.diffLines` (`app/lib/src/features/graph/graph_inspector.dart:464`) reads the current commit and whitespace mode at call time; the gap cache resets on a new fingerprint, `leftLineCount` or hunk range, and `previousDiff` withholds reads only on a file switch. Two commits with the same changes to one file but different unchanged lines would keep the open gaps and their lines.
+  - **Follow-up:** reproduce by switching between two such commits with a gap open; if real, pass the shown diff's commit and mode into `readLines` (or reset the gaps on a commit switch).
