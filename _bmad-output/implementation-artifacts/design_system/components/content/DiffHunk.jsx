@@ -22,7 +22,7 @@ export function zsDiffSides(ls) {
       }
     }
     const s = runs.map(([x]) => x).join("");
-    return { t, n, s, ws: group.some((l) => l.ws) || undefined, runs: runs.some(([x, k]) => !k && x.trim()) ? runs : undefined };
+    return { t, n, s, runs: runs.some(([x, k]) => !k && x.trim()) ? runs : undefined };
   };
   const cells = (run, left) => {
     const groups = new Map();
@@ -37,21 +37,24 @@ export function zsDiffSides(ls) {
   for (let i = 0; i < ls.length;) {
     const l = ls[i];
     if (l.t === "hdr") { swapped = l.s.startsWith("-------"); rows.push([l]); i++; continue; }
-    if (l.t === "fold") { rows.push({ fold: l }); i++; continue; }
+    if (zsDiffGap(l)) { rows.push({ fold: l }); i++; continue; }
     if (l.t === "ctx") { rows.push([l.l == null ? null : cell([l], "ctx", true, l.l), l.r == null ? null : cell([l], "ctx", false, l.r)]); i++; continue; }
     const run = [];
-    while (i < ls.length && ls[i].t !== "ctx" && ls[i].t !== "hdr" && ls[i].t !== "fold") run.push(ls[i++]);
+    while (i < ls.length && ls[i].t !== "ctx" && ls[i].t !== "hdr" && !zsDiffGap(ls[i])) run.push(ls[i++]);
     const lefts = cells(run, true), rights = cells(run, false);
     for (let k = 0; k < Math.max(lefts.length, rights.length); k++) rows.push([lefts[k] || null, rights[k] || null]);
   }
   return rows;
 }
 
+// A row for hidden whitespace-only lines (Story 10.41): a gap, or a whitespace-only part's fold.
+const zsDiffGap = (l) => l.t === "gap" || l.t === "fold";
+
 // Numbers for git-sigil lines (no numbers of their own), counted from oldStart / newStart.
 function zsNumbered(ls, oldStart, newStart) {
   let l = oldStart, r = newStart;
   return ls.map((x) => {
-    if (x.l != null || x.r != null || x.t === "hdr" || x.t === "fold") return x;
+    if (x.l != null || x.r != null || x.t === "hdr" || zsDiffGap(x)) return x;
     const n = { ...x };
     if (x.t !== "add") n.l = l++;
     if (x.t !== "rem") n.r = r++;
@@ -69,10 +72,12 @@ function zsNumbered(ls, oldStart, newStart) {
 // row) with a checkbox on each part's first line; `picked` lists the picked parts — some of them: the header on --accent at 12 % and the
 // hunk checkbox mixed; a picked part's lines carry the 2px edge. Unified, the gutter and numbers stay pinned at the visible left edge
 // while the text scrolls under them (a DiffView around the hunks scrolls them as one unit).
-// Whitespace ignored (2026-11-14, Story 10.33, sync #26): a line object with `ws: "picked" | "opened"` changed only in whitespace and
-// shows because its part is picked or opened — its text at .62; unified, with a right number it carries the pill "whitespace only"
-// ("whitespace only · Hide" while only opened, onHide). `{ t: "fold", n }` is a part made only of such lines, folded into one hatched
-// row "⋯ N lines changed whitespace only · Show" (onShow), full width, its checkbox in the gutter while the hunk is selectable.
+// Whitespace ignored (2026-11-15, Story 10.41, Whitespace Study): the lines are exactly jj diff -w / -b's — a whitespace-only line is a
+// context line with jj's marks (" 6:8|      {+  +}controller,"), nothing dimmed. `{ t: "gap", n, open, fixed }` stands for n lines jj
+// skips, at their place: a --fl-hover band with ⋯ in both number columns, "N more lines with only whitespace changes" and a Show pill
+// (onShow); open, it stays above its lines, "N lines with only whitespace changes" with Hide (onHide; no pill when `fixed`, a pick
+// keeps it open). `{ t: "fold", n, open, fixed }` is a part made only of such lines: closed one hatched row "⋯ N lines changed whitespace
+// only · Show" (onShow), full width, its checkbox in the gutter while the hunk is selectable; open, the gap band, hatched, the checkbox kept.
 export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [], wordMarks = true, mode = "unified", selectable = false, selected = false, lifted = false, onToggle, onGrab, parts, picked: pickedIn = [], onTogglePart, onShow, onHide, className = "" }) {
   const ls = zsNumbered(lines.map(zsDiffLine).filter((l) => l.t !== "hunk"), oldStart, newStart);
   const partOf = parts ? lines.filter((l) => !(typeof l === "string" && l.startsWith("@@"))).map((_, i) => parts[i] ?? null) : [];
@@ -91,20 +96,31 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
       <Checkbox size="sm" checked={picked.includes(p)} onChange={() => onTogglePart && onTogglePart(p)} label={picked.includes(p) ? "Unpick these lines" : "Pick these lines"} />}</span>
   );
   const pick = (p) => (showParts ? p != null && picked.includes(p) : all) ? " is-pick" : "";
+  const nLines = (n) => n + " " + (n === 1 ? "line" : "lines");
   const fold = (l, p, k, side) => {
-    if (p != null) seen.add(p);
+    const isFold = l.t === "fold";
+    const on = picked.includes(p);
+    // the part's checkbox goes on its first row
+    const first = isFold && p != null && !seen.has(p);
+    if (first) seen.add(p);
+    const box = gut && <span className="zs-diff-gut">{first && selectable && <Checkbox size="sm" checked={on} onChange={() => onTogglePart && onTogglePart(p)} label={on ? "Unpick these whitespace-only lines" : "Pick these whitespace-only lines"} />}</span>;
+    if (isFold && !l.open) {
+      return (
+        <div key={k} className={"zs-diff-fold" + (side ? " is-side" : "")}>
+          {side ? box : <span className="zs-diff-pin">{box}<span className="ln l" /><span className="ln r" /></span>}
+          <button type="button" className="zs-fold-tx" title="Show these lines" onClick={() => onShow && onShow(l, p)}>⋯ {nLines(l.n)} changed whitespace only · Show</button>
+        </div>
+      );
+    }
     return (
-      <div key={k} className={"zs-diff-fold" + (side ? " is-side" : "")}>
-        {side ? gut && <span className="zs-diff-gut">{selectable && <Checkbox size="sm" checked={false} onChange={() => onTogglePart && onTogglePart(p)} label="Pick these whitespace-only lines" />}</span>
-          : <span className="zs-diff-pin">{gut && <span className="zs-diff-gut">{selectable && <Checkbox size="sm" checked={false} onChange={() => onTogglePart && onTogglePart(p)} label="Pick these whitespace-only lines" />}</span>}<span className="ln l" /><span className="ln r" /></span>}
-        <button type="button" className="zs-fold-tx" title="Show these lines" onClick={() => onShow && onShow(p)}>⋯ {l.n} {l.n === 1 ? "line" : "lines"} changed whitespace only · Show</button>
+      <div key={k} className={"zs-diff-gap" + (isFold ? " is-fold" : "") + (side ? " is-side" : "")}>
+        {side ? box : <span className="zs-diff-pin">{box}<span className="ln l">⋯</span><span className="ln r">⋯</span></span>}
+        <span className="zs-gap-tx">{l.open ? nLines(l.n) : l.n + " more " + (l.n === 1 ? "line" : "lines")} with only whitespace changes</span>
+        {!l.fixed && <button type="button" className="zs-ws-tag" title={l.open ? "Hide these lines again" : "Show these lines"} onClick={() => (l.open ? onHide : onShow)?.(l, p)}>{l.open ? "Hide" : "Show"}</button>}
       </div>
     );
   };
-  const tag = (l, p) => l.ws && l.r != null && (l.ws === "opened"
-    ? <button type="button" className="zs-ws-tag" title="Hide the whitespace-only lines again" onClick={() => onHide && onHide(p)}>whitespace only · Hide</button>
-    : <span className="zs-ws-tag" title="Shown because its part is picked: a pick takes every line of its part">whitespace only</span>);
-  const changed = ls.filter((l) => l.t !== "ctx" && l.t !== "hdr" && l.t !== "fold");
+  const changed = ls.filter((l) => l.t !== "ctx" && l.t !== "hdr" && !zsDiffGap(l));
   const a = new Set(changed.map((l) => l.r).filter((n) => n != null)).size;
   const r = new Set(changed.map((l) => l.l).filter((n) => n != null)).size;
   const span = (side, start) => {
@@ -114,10 +130,10 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
   const [ol, oc] = span("l", oldStart), [nl, nc] = span("r", newStart);
   const head = range || "@@ −" + ol + "," + oc + " +" + nl + "," + nc + " @@";
   const body = mode !== "split"
-    ? ls.map((l, i) => (l.t === "fold" ? fold(l, partOf[i], i, false) : (
-        <div key={i} className={"zs-diff-line " + l.t + pick(partOf[i]) + (l.ws ? " is-ws" : "")}>
+    ? ls.map((l, i) => (zsDiffGap(l) ? fold(l, partOf[i], i, false) : (
+        <div key={i} className={"zs-diff-line " + l.t + pick(partOf[i])}>
           <span className="zs-diff-pin">{gutter(partOf[i])}<span className="ln l">{l.t !== "hdr" ? l.l ?? "" : ""}</span><span className="ln r">{l.t !== "hdr" ? l.r ?? "" : ""}</span></span>
-          <span className="tx">{zsDiffText(l)}</span>{tag(l, partOf[i])}
+          <span className="tx">{zsDiffText(l)}</span>
         </div>
       )))
     : zsDiffSides(ls).map((row, k) => {
@@ -128,7 +144,7 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
         <div key={k} className={"zs-diff-row" + (row.length === 1 ? " hdr" : "") + (gut ? " has-gut" + pick(p) : "")}>
           {gutter(p)}
           {row.map((c, j) => (
-            <div key={j} className={"zs-diff-side " + (c ? c.t : "empty") + (c && c.ws ? " is-ws" : "")}>
+            <div key={j} className={"zs-diff-side " + (c ? c.t : "empty")}>
               {c && c.t !== "hdr" && <span className="ln">{c.n}</span>}
               <span className="tx">{c ? zsDiffText(c) : ""}</span>
             </div>

@@ -860,23 +860,43 @@
   "@diffContextFromRepo": {"description": "Story 10.40: note under the context-line choices of the diff options menu when the repo or workspace config sets diff.color-words.context, so a pick (written to the user config) may not change the diff."},
   "diffOptionsNote": "Every diff follows these. A Context lines pick writes jj's diff.color-words.context to your user config, as Settings › General › Diffs does. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn't see.",
   "@diffOptionsNote": {"description": "The note at the end of the diff options menu."},
-  "inspectorWhitespaceOnly": "whitespace only",
-  "@inspectorWhitespaceOnly": {"description": "Pill on a line that changed only in whitespace, shown dimmed because its part is picked while the diff ignores whitespace."},
-  "inspectorWhitespaceOnlyTooltip": "Shown because its part is picked: a pick takes every line of its part",
-  "@inspectorWhitespaceOnlyTooltip": {"description": "Tooltip of the whitespace only pill on a picked part's line."},
-  "inspectorWhitespaceOnlyHide": "whitespace only · Hide",
-  "@inspectorWhitespaceOnlyHide": {"description": "Button on a line that changed only in whitespace, shown because the user opened its folded part: folds it again."},
-  "inspectorWhitespaceHideTooltip": "Hide the whitespace-only lines again",
-  "@inspectorWhitespaceHideTooltip": {"description": "Tooltip of the whitespace only · Hide button."},
+  "inspectorGapClosed": "{count, plural, =1{1 more line with only whitespace changes} other{{count} more lines with only whitespace changes}}",
+  "@inspectorGapClosed": {
+    "description": "Story 10.41: the row that stands for lines jj diff -w / -b skips because they changed only in whitespace, while they are hidden; its Show button reveals them below it.",
+    "placeholders": {"count": {"type": "int", "example": "21"}}
+  },
+  "inspectorGapOpen": "{count, plural, =1{1 line with only whitespace changes} other{{count} lines with only whitespace changes}}",
+  "@inspectorGapOpen": {
+    "description": "Story 10.41: the same row while its lines show below it; its Hide button hides them again (no button while a pick keeps them shown).",
+    "placeholders": {"count": {"type": "int", "example": "21"}}
+  },
+  "inspectorGapShow": "Show",
+  "@inspectorGapShow": {"description": "Story 10.41: the button on a whitespace gap row that shows its hidden lines."},
+  "inspectorGapShowLabel": "{count, plural, =1{Show 1 line with only whitespace changes} other{Show {count} lines with only whitespace changes}}",
+  "@inspectorGapShowLabel": {
+    "description": "Story 10.41: VoiceOver name of the gap row's Show button, with the number of lines it shows.",
+    "placeholders": {"count": {"type": "int", "example": "21"}}
+  },
+  "inspectorGapHideLabel": "{count, plural, =1{Hide 1 line with only whitespace changes} other{Hide {count} lines with only whitespace changes}}",
+  "@inspectorGapHideLabel": {
+    "description": "Story 10.41: VoiceOver name of the gap row's Hide button, with the number of lines it hides.",
+    "placeholders": {"count": {"type": "int", "example": "21"}}
+  },
+  "inspectorGapHide": "Hide",
+  "@inspectorGapHide": {"description": "Story 10.41: the button on an open whitespace gap row that hides its lines again."},
+  "inspectorGapHideTooltip": "Hide these lines again",
+  "@inspectorGapHideTooltip": {"description": "Story 10.41: tooltip of the gap row's Hide button."},
   "inspectorFoldText": "⋯ {count, plural, =1{1 line} other{{count} lines}} changed whitespace only · Show",
   "@inspectorFoldText": {
     "description": "The row a part made only of whitespace changes folds into while the diff ignores whitespace; a click shows its lines.",
     "placeholders": {"count": {"type": "int", "example": "4"}}
   },
   "inspectorFoldShowTooltip": "Show these lines",
-  "@inspectorFoldShowTooltip": {"description": "Tooltip of a folded whitespace-only row."},
+  "@inspectorFoldShowTooltip": {"description": "Tooltip of a folded whitespace-only row and of a gap row's Show button."},
   "inspectorFoldPick": "Pick these whitespace-only lines",
   "@inspectorFoldPick": {"description": "VoiceOver name and tooltip of an unchecked folded row's checkbox: Commit / Split takes the part's lines, and the row opens."},
+  "inspectorFoldUnpick": "Unpick these whitespace-only lines",
+  "@inspectorFoldUnpick": {"description": "Story 10.41: VoiceOver name and tooltip of a picked whitespace-only part's checkbox on its open row: Commit / Split no longer takes the part's lines."},
 
   "toastAbandoned": "Abandoned {changes}",
   "@toastAbandoned": {

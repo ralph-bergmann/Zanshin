@@ -1918,9 +1918,10 @@ class _ThreeParts extends StatelessWidget {
   }
 }
 
-/// Story 10.33: whitespace ignored (`jj diff -w`) in a hunk of two parts. The first, picked, changes code and
-/// re-indents a line: that line shows dimmed with "whitespace only". The second only re-indents: it folds into one
-/// hatched row with its checkbox and Show. The menu, the checkboxes and Show work on the use case's own state.
+/// Story 10.41: whitespace ignored (`jj diff -w`) on Ralph's `text_field.dart`, a `TextField` wrapped in `Semantics(`.
+/// The hunk keeps the exact range and shows the ignoring read's lines: the real changes, the re-indented context lines
+/// with jj's marks, and one gap row for the 21 re-indented lines `jj diff -w` skips (Show / Hide); one checkbox, whose
+/// pick opens the gap. The menu, the checkbox and Show work on the use case's own state.
 class _WhitespaceIgnored extends StatefulWidget {
   const _WhitespaceIgnored({required this.layout});
 
@@ -1931,84 +1932,148 @@ class _WhitespaceIgnored extends StatefulWidget {
 }
 
 class _WhitespaceIgnoredState extends State<_WhitespaceIgnored> {
-  static const _sections = <HunkKey>[
-    HunkKey(oldStart: 1, oldCount: 2, newStart: 1, newCount: 3),
-    HunkKey(oldStart: 5, oldCount: 2, newStart: 6, newCount: 2),
+  // `text_field.dart`'s old lines 6-32, without their six spaces of indentation.
+  static const _fields = <String>[
+    'controller: controller,',
+    'enabled: enabled,',
+    'style: textStyle,',
+    'keyboardType: keyboardType,',
+    'textInputAction: textInputAction,',
+    'textCapitalization: textCapitalization,',
+    'autocorrect: autocorrect,',
+    'enableSuggestions: enableSuggestions,',
+    'focusNode: focusNode,',
+    'obscureText: obscureText,',
+    'decoration: InputDecoration(',
+    '  label: label,',
+    '  hintText: hintText,',
+    '  helperText: helperText,',
+    '  error: error,',
+    '  prefixIcon: prefixIcon != null ? Opacity(opacity: opacity, child: prefixIcon) : null,',
+    '  suffixIcon: _buildTrailing(),',
+    '  counterText: counterText,',
+    '  alignLabelWithHint: alignLabelWithHint,',
+    '),',
+    'onChanged: onChanged,',
+    'onSubmitted: onSubmitted,',
+    'autofocus: autofocus,',
+    'maxLength: maxLength,',
+    'minLines: minLines,',
+    'maxLines: maxLines,',
+    'buildCounter: buildCounter,',
   ];
 
+  static String _n(int? number) => '${number ?? ''}'.padLeft(4);
+
+  /// Field [i] moved right by two spaces: old 6 + [i] against new 8 + [i], the added spaces marked as jj marks them.
+  static String _moved(String kind, int i) {
+    final String field = _fields[i];
+    final String rest = field.trimLeft();
+    final String lead = ' ' * (6 + field.length - rest.length);
+    return '$kind${_n(6 + i)} ${_n(8 + i)}|$lead{+  +}$rest';
+  }
+
+  static const _sections = <HunkKey>[
+    HunkKey(oldStart: 4, oldCount: 20, newStart: 4, newCount: 30),
+    HunkKey(oldStart: 25, oldCount: 7, newStart: 35, newCount: 0),
+  ];
+
+  static final _head = <HunkLine>[
+    _colorWords('    1    1|  Widget build(BuildContext context) {'),
+    _colorWords('    2    2|    final prefixIcon = this.prefixIcon;'),
+    _colorWords('    3    3|    final opacity = enabled ? 1.0 : 0.38;'),
+    _colorWords('    4    4|'),
+    _colorWords('~   5    5|    return {+Semantics(+}'),
+    _colorWords('+        6|{+      identifier: identifier,+}'),
+    _colorWords('~   5    7|{+      child: +}TextField('),
+  ];
+
+  static final _tail = <HunkLine>[
+    _colorWords('   33   36|    );'),
+    _colorWords('   34   37|  }'),
+    _colorWords('   35   38|}'),
+  ];
+
+  // What plain `jj diff` prints: the exact read, one hunk of two parts.
   static final _hunk = Hunk(
-    before: (start: 0, end: 8),
-    after: (start: 0, end: 9),
-    symbol: 'class A',
+    before: (start: 0, end: 35),
+    after: (start: 0, end: 38),
+    symbol: null,
     sections: _sections,
-    removed: 4,
-    added: 5,
+    removed: 27,
+    added: 30,
     lines: <HunkLine>[
-      _colorWords('    1    1|class A {'),
-      _colorWords("-   2     |[-  build() => Text('a');-]"),
-      _colorWords('+        2|{+  build() => Padding(+}'),
-      _colorWords("~   3    3|{+  +}  child: Text('b'),"),
-      _colorWords('+        4|{+  );+}'),
-      _colorWords('    4    5|  int x = 1;'),
-      _colorWords('    5    6|  int y = 2;'),
-      _colorWords('~   6    7|{+  +}  return x;'),
-      _colorWords('~   7    8|{+  +}  return y;'),
-      _colorWords('    8    9|}'),
+      ..._head,
+      for (var i = 0; i < 19; i++) _colorWords(_moved('~', i)),
+      for (var i = 19; i < 27; i++) _colorWords('+     ${_n(8 + i)}|{+        ${_fields[i]}+}'),
+      _colorWords('   25   35|      ),'),
+      for (var i = 20; i < 27; i++) _colorWords('-${_n(6 + i)}     |[-      ${_fields[i]}-]'),
+      ..._tail,
     ],
   );
 
-  // What the read at -w says: line 3 and lines 7-8 are context there.
-  static final _ignored = IgnoredLines.of(
-    FileDiff(
-      path: 'lib/a.dart',
-      kind: FileChangeKind.modified,
-      fromPath: null,
-      binary: false,
-      modeChange: false,
-      sections: const <HunkKey>[],
-      hunks: <Hunk>[
-        Hunk(
-          before: (start: 0, end: 8),
-          after: (start: 0, end: 9),
-          symbol: null,
-          sections: const <HunkKey>[],
-          removed: 1,
-          added: 2,
-          lines: <HunkLine>[
-            _colorWords("-   2     |[-  build() => Text('a');-]"),
-            _colorWords('+        2|{+  build() => Padding(+}'),
-            _colorWords("    3    3|    child: Text('b'),"),
-            _colorWords('+        4|{+  );+}'),
-            _colorWords('    6    7|    return x;'),
-            _colorWords('    7    8|    return y;'),
-          ],
-        ),
-      ],
-      removed: 1,
-      added: 2,
-      fingerprint: 'w',
-    ),
+  // What `jj diff -w` prints, and the 27 lines that changed only in whitespace (the backend's list).
+  static final _ignoring = FileDiff(
+    path: 'packages/design/lib/src/widgets/text_field.dart',
+    kind: FileChangeKind.modified,
+    fromPath: null,
+    binary: false,
+    modeChange: false,
+    sections: _sections,
+    hunks: <Hunk>[
+      Hunk(
+        before: (start: 0, end: 8),
+        after: (start: 0, end: 10),
+        symbol: null,
+        sections: const <HunkKey>[HunkKey(oldStart: 4, oldCount: 20, newStart: 4, newCount: 30)],
+        removed: 1,
+        added: 3,
+        lines: <HunkLine>[..._head, for (var i = 0; i < 3; i++) _colorWords(_moved(' ', i))],
+      ),
+      Hunk(
+        before: (start: 29, end: 35),
+        after: (start: 31, end: 38),
+        symbol: null,
+        sections: const <HunkKey>[],
+        removed: 0,
+        added: 1,
+        lines: <HunkLine>[
+          for (var i = 24; i < 27; i++) _colorWords(_moved(' ', i)),
+          _colorWords('+       35|{+      ),+}'),
+          ..._tail,
+        ],
+      ),
+    ],
+    removed: 1,
+    added: 4,
+    fingerprint: 'w',
+    whitespaceLines: <HunkLine>[for (var i = 0; i < 27; i++) _colorWords(_moved(' ', i))],
   );
 
-  final _picked = <HunkKey>{_sections[0]};
+  final _picked = <HunkKey>{};
   DiffWhitespaceSetting _whitespace = DiffWhitespaceSetting.ignoreAll;
   int? _context = 3;
 
   @override
   Widget build(BuildContext context) {
     final diff = FileDiff(
-      path: 'lib/a.dart',
+      path: _ignoring.path,
       kind: FileChangeKind.modified,
       fromPath: null,
       binary: false,
       modeChange: false,
       sections: _sections,
       hunks: <Hunk>[_hunk],
-      removed: 4,
-      added: 5,
+      removed: 27,
+      added: 30,
       fingerprint: 'f',
     );
-    bool? hunkPicked(Hunk hunk) => _picked.isEmpty ? false : (_picked.length == _sections.length ? true : null);
+    // The view hands a hunk checkbox a hunk whose sections are the parts its rows touch.
+    bool? hunkPicked(Hunk hunk) {
+      final int n = hunk.sections.where(_picked.contains).length;
+      return n == 0 ? false : (n == hunk.sections.length ? true : null);
+    }
+
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -2025,18 +2090,18 @@ class _WhitespaceIgnoredState extends State<_WhitespaceIgnored> {
                 layout: widget.layout,
                 onLayoutChanged: (_) {},
                 hunkPicked: hunkPicked,
-                onHunkToggled: (_) => setState(() {
-                  if (hunkPicked(_hunk) ?? false) {
-                    _picked.clear();
+                onHunkToggled: (hunk) => setState(() {
+                  if (hunkPicked(hunk) ?? false) {
+                    _picked.removeAll(hunk.sections);
                   } else {
-                    _picked.addAll(_sections);
+                    _picked.addAll(hunk.sections);
                   }
                 }),
                 partPicked: _picked.contains,
                 onPartToggled: (part) => setState(() => _picked.remove(part) || _picked.add(part)),
                 whitespace: _whitespace,
                 onWhitespaceChanged: (whitespace) => setState(() => _whitespace = whitespace),
-                ignored: _whitespace == DiffWhitespaceSetting.showAll ? null : _ignored,
+                ignoring: _whitespace == DiffWhitespaceSetting.showAll ? null : _ignoring,
                 contextLines: _context,
                 onContextLinesChanged: (lines) => setState(() => _context = lines),
               ),

@@ -363,7 +363,40 @@ void main() {
       testOpShow(testOperation(1, now: _now), <OpChangedCommit>[
         OpChangedCommit(commitId: _x, abandoned: false, addedCommitIds: <String>[_x], removedCommitIds: const []),
       ]),
-      diff: (call) => testDiff(const <String>['new.txt'], description: true),
+      // Story 10.41: at -w the file's one line changed only in whitespace.
+      diff: (call) => call.whitespace == DiffWhitespace.exact
+          ? testDiff(const <String>['new.txt'], description: true)
+          : const Diff(
+              files: <FileDiff>[
+                FileDiff(
+                  path: 'new.txt',
+                  kind: FileChangeKind.modified,
+                  fromPath: null,
+                  binary: false,
+                  modeChange: false,
+                  sections: <HunkKey>[],
+                  hunks: <Hunk>[],
+                  removed: 0,
+                  added: 0,
+                  fingerprint: 'w',
+                  whitespaceLines: <HunkLine>[
+                    HunkLine(
+                      kind: HunkLineKind.context,
+                      text: 'new \n',
+                      segments: <Segment>[
+                        Segment(kind: SegmentKind.equal, text: 'new'),
+                        Segment(kind: SegmentKind.added, text: ' '),
+                        Segment(kind: SegmentKind.equal, text: '\n'),
+                      ],
+                      left: 1,
+                      right: 1,
+                    ),
+                  ],
+                ),
+              ],
+              operationId: 'op',
+              commitIds: <String>[],
+            ),
     );
     await withView(tester, changes, () async {
       final Finder menus = find.byWidgetPredicate(
@@ -394,8 +427,16 @@ void main() {
         find.byWidgetPredicate((w) => w is InspectorDiffView && w.path == 'new.txt'),
       );
       expect(focused.whitespace, DiffWhitespaceSetting.ignoreAll);
-      expect(focused.ignored, isNotNull);
+      expect(focused.ignoring, isNotNull);
       expect(row('diff-options-whitespace-ignoreAll').checked, isTrue);
+      // The rows come from the ignoring read: here only a gap row for the whitespace-only line.
+      expect(find.text('1 more line with only whitespace changes'), findsOneWidget);
+      await tester.ensureVisible(find.bySemanticsIdentifier('inspector-gap-show'));
+      await tester.pump();
+      await tester.tap(find.bySemanticsIdentifier('inspector-gap-show'));
+      await tester.pump();
+      expect(find.text('1 line with only whitespace changes'), findsOneWidget);
+      expect(find.text('new '), findsOneWidget);
 
       final int before = changes.diffs.length;
       row('diff-options-context-5').onSelected!();

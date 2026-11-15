@@ -183,6 +183,8 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
     let hunks = b.create_vector(&hunks);
     let (kind, from_path) = change_kind_offset(b, &f.kind);
     let fingerprint = b.create_string(&f.fingerprint);
+    let whitespace_lines: Vec<_> = f.whitespace_lines.iter().map(|l| line_offset(b, l)).collect();
+    let whitespace_lines = b.create_vector(&whitespace_lines);
     fbs::FileDiff::create(
         b,
         &fbs::FileDiffArgs {
@@ -196,6 +198,7 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
             removed: f.removed,
             added: f.added,
             fingerprint: Some(fingerprint),
+            whitespace_lines: Some(whitespace_lines),
         },
     )
 }
@@ -398,6 +401,12 @@ mod tests {
                 removed: f.removed(),
                 added: f.added(),
                 fingerprint: f.fingerprint().expect("fingerprint present").to_owned(),
+                whitespace_lines: f
+                    .whitespace_lines()
+                    .expect("whitespace_lines always present")
+                    .iter()
+                    .map(line_from_wire)
+                    .collect(),
             }
         };
         let files = diff
@@ -441,7 +450,21 @@ mod tests {
             removed: 0,
             added: 0,
             fingerprint: "f0".into(),
+            whitespace_lines: vec![],
         }
+    }
+
+    /// Story 10.41: a re-indented line outside the hunks.
+    fn reindented() -> HunkLine {
+        line(
+            HunkLineKind::Context,
+            (Some(30), Some(31)),
+            vec![
+                seg(SegmentKind::Equal, "  "),
+                seg(SegmentKind::Added, "  "),
+                seg(SegmentKind::Equal, "f();\n"),
+            ],
+        )
     }
 
     fn sample() -> RevisionDiff {
@@ -454,6 +477,7 @@ mod tests {
                 fingerprint: "0123abcd".into(),
                 binary: false,
                 mode_change: false,
+                whitespace_lines: vec![reindented()],
                 sections: vec![key(1, 2, 1, 3), key(9, 1, 10, 0), key(20, 0, 20, 4)],
                 hunks: vec![
                     Hunk {
@@ -712,6 +736,14 @@ mod tests {
         assert_eq!((lines.get(1).left_line(), lines.get(1).right_line()), (2, 2));
         assert_eq!((lines.get(2).left_line(), lines.get(2).right_line()), (3, 0));
         assert_eq!(lines.get(1).kind(), fbs::HunkLineKind::Changed);
+        // Story 10.41: the whitespace lines, written for every file (empty, not absent).
+        let ws = wire_files.get(0).whitespace_lines().expect("whitespace_lines present");
+        assert_eq!(ws.len(), 1);
+        assert_eq!((ws.get(0).left_line(), ws.get(0).right_line()), (30, 31));
+        assert_eq!(ws.get(0).kind(), fbs::HunkLineKind::Context);
+        assert_eq!(segments_from_wire(ws.get(0)), reindented().segments);
+        let empty = wire_files.get(1).whitespace_lines().expect("whitespace_lines present");
+        assert!(empty.is_empty());
     }
 
     /// One `DiffRequest`: `kind`, `revision`, `from`, `to`, `paths`, `context`, `whitespace`,

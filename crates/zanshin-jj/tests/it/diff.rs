@@ -186,6 +186,7 @@ fn summary_mode_drops_only_the_hunks() {
         .cloned()
         .map(|file| FileDiff {
             hunks: Vec::new(),
+            whitespace_lines: Vec::new(),
             ..file
         })
         .collect();
@@ -433,6 +434,23 @@ fn context_and_whitespace_reach_the_reader() {
     assert_eq!(exact.files[0].hunks.len(), 1);
     assert!(ignoring.files[0].hunks.is_empty());
     assert_ne!(ignoring.files[0].fingerprint, exact.files[0].fingerprint);
+    // The skipped whitespace-only line is listed at `-w`, never at exact or in summary mode.
+    let listed: Vec<_> = ignoring.files[0]
+        .whitespace_lines
+        .iter()
+        .map(|line| (line.left, line.right, line.text()))
+        .collect();
+    assert_eq!(listed, [(Some(2), Some(2), "B \n".to_owned())]);
+    assert!(exact.files[0].whitespace_lines.is_empty());
+    let summary = run(
+        &mut fx,
+        &DiffOptions {
+            whitespace: Whitespace::IgnoreAllSpace,
+            summary: true,
+            ..revision(&d)
+        },
+    );
+    assert!(summary.files[0].whitespace_lines.is_empty());
 }
 
 /// The git object at `id` (a hex id) removed from the internal git store.
@@ -724,6 +742,39 @@ fn an_interdiff_checks_the_parent_trees_for_unmatched_paths() {
     assert_eq!(warnings[0].kind, WarningKind::PathsUnmatched);
 }
 
+/// An interdiff's description block lists its whitespace-only line at `-w`, and not in summary
+/// mode, where the block keeps its hunks.
+#[test]
+fn an_interdiff_description_lists_whitespace_lines_except_in_summary_mode() {
+    let mut fx = init();
+    write(&fx.root, "f.txt", "f\n");
+    let (_, f) = commit(&mut fx, "a b\n");
+    fx.repo
+        .new_change(&[ChangeId("z".repeat(32))], &[], &[])
+        .expect("new on root");
+    write(&fx.root, "f.txt", "f\n");
+    let (_, t) = commit(&mut fx, "a  b\n");
+    let options = |summary: bool| DiffOptions {
+        revisions: DiffRevisions::Interdiff {
+            from: Some(f.0.clone()),
+            to: Some(t.0.clone()),
+        },
+        whitespace: Whitespace::IgnoreAllSpace,
+        summary,
+        ..DiffOptions::default()
+    };
+    let full = run(&mut fx, &options(false)).description.expect("a block");
+    let listed: Vec<_> = full
+        .whitespace_lines
+        .iter()
+        .map(|line| (line.left, line.right, line.text()))
+        .collect();
+    assert_eq!(listed, [(Some(1), Some(1), "a  b\n".to_owned())]);
+    let summary = run(&mut fx, &options(true)).description.expect("a block");
+    assert!(summary.whitespace_lines.is_empty());
+    assert_eq!(summary.hunks, full.hunks, "hunks kept");
+}
+
 /// An interdiff with neither side is refused with `Repo::interdiff`'s wording before the snapshot.
 #[test]
 fn an_interdiff_without_sides_is_refused_before_the_snapshot() {
@@ -851,6 +902,28 @@ fn the_description_block_takes_the_context_and_the_generic_symbol() {
     assert!(shown(&narrow) < shown(&wide), "{narrow:?} / {wide:?}");
     assert_eq!(narrow.hunks[0].symbol.as_deref(), Some("Title of the change"));
     assert_eq!(wide.hunks[0].symbol.as_deref(), Some("Title of the change"));
+    assert!(wide.whitespace_lines.is_empty());
+    // At `-w` the block lists its re-indented line too.
+    fx.repo
+        .describe(c.clone(), &format!("{}  seven\n", body.replace("  one", "    one")))
+        .expect("describe");
+    let (_, reindented) = wc(&fx.root);
+    let ignoring = DiffOptions {
+        revisions: DiffRevisions::Interdiff {
+            from: Some(after.0.clone()),
+            to: Some(reindented.0.clone()),
+        },
+        whitespace: Whitespace::IgnoreAllSpace,
+        ..DiffOptions::default()
+    };
+    let block = run(&mut fx, &ignoring).description.expect("a description block");
+    assert!(block.hunks.is_empty());
+    let listed: Vec<_> = block
+        .whitespace_lines
+        .iter()
+        .map(|line| (line.left, line.right, line.text()))
+        .collect();
+    assert_eq!(listed, [(Some(3), Some(3), "    one\n".to_owned())]);
 }
 
 /// A body-only describe: no file changes, the description block shows the changed lines; a

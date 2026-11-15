@@ -10,8 +10,8 @@ export interface DiffHunkProps {
   newStart?: number;
   /** enclosing scope, e.g. "class SwipeController" */
   context?: string;
-  /** color-words lines as in DiffView ("~13:13|  onEnd({+d+})", "+:14|  _commit();"), or git-sigil lines numbered from oldStart / newStart. Whitespace ignored (Story 10.33): a line object with `ws: "picked" | "opened"` changed only in whitespace (dimmed, tagged); `{ t: "fold", n }` folds a whitespace-only part of n lines into one row */
-  lines: Array<DiffLine | { t: "fold"; n: number }>;
+  /** color-words lines as in DiffView ("~13:13|  onEnd({+d+})", "+:14|  _commit();"), or git-sigil lines numbered from oldStart / newStart. Whitespace ignored (Story 10.41): exactly jj diff -w's lines, a whitespace-only line a context line with its marks (" 6:8|      {+  +}x,"); `{ t: "gap", n }` stands for n whitespace-only lines jj skips (open: they follow it; fixed: a pick keeps it open, no Show / Hide); `{ t: "fold", n }` is a whitespace-only part's run, closed one hatched row with its checkbox */
+  lines: Array<DiffLine | WhitespaceGap>;
   /** as DiffView's `wordMarks` (default true); a DiffView with wordMarks={false} turns them off for its hunks too */
   wordMarks?: boolean;
   mode?: "unified" | "split";
@@ -28,10 +28,20 @@ export interface DiffHunkProps {
   /** the picked parts; some of them → the header on --accent at 12 % and the hunk checkbox mixed */
   picked?: number[];
   onTogglePart?: (part: number) => void;
-  /** whitespace ignored (Story 10.33): a fold row `{ t: "fold", n }` (its part from `parts`) was clicked — open it */
-  onShow?: (part: number) => void;
-  /** whitespace ignored: an opened part's "whitespace only · Hide" was clicked — fold it again */
-  onHide?: (part: number) => void;
+  /** whitespace ignored (Story 10.41): a gap's Show (or a closed fold's row) was clicked — open it; `part` from `parts` */
+  onShow?: (row: WhitespaceGap, part: number | null) => void;
+  /** whitespace ignored: an open gap's Hide was clicked — close it */
+  onHide?: (row: WhitespaceGap, part: number | null) => void;
   className?: string;
+}
+/** Hidden whitespace-only lines in one row at their place (Story 10.41): a gap, or a whitespace-only part's fold. */
+export interface WhitespaceGap {
+  t: "gap" | "fold";
+  /** how many whitespace-only lines it stands for; identical lines between them (a blank line) open with them as plain context but do not count */
+  n: number;
+  /** its lines follow it; it reads "N lines with only whitespace changes" with Hide */
+  open?: boolean;
+  /** a pick keeps it open: no Show / Hide */
+  fixed?: boolean;
 }
 export declare function DiffHunk(props: DiffHunkProps): JSX.Element;

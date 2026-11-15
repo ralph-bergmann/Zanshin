@@ -1857,6 +1857,7 @@ fn compute_hunks_surface_resolves() {
             added: 1,
             lines: color_words_lines(),
         }],
+        whitespace_lines: Vec::new(),
     };
     assert_eq!(file.clone(), file);
     assert_eq!(file.hunks[0].lines[0].text(), "x");

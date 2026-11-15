@@ -2120,29 +2120,47 @@ abstract class AppLocalizations {
   /// **'Every diff follows these. A Context lines pick writes jj\'s diff.color-words.context to your user config, as Settings › General › Diffs does. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn\'t see.'**
   String get diffOptionsNote;
 
-  /// Pill on a line that changed only in whitespace, shown dimmed because its part is picked while the diff ignores whitespace.
+  /// Story 10.41: the row that stands for lines jj diff -w / -b skips because they changed only in whitespace, while they are hidden; its Show button reveals them below it.
   ///
   /// In en, this message translates to:
-  /// **'whitespace only'**
-  String get inspectorWhitespaceOnly;
+  /// **'{count, plural, =1{1 more line with only whitespace changes} other{{count} more lines with only whitespace changes}}'**
+  String inspectorGapClosed(int count);
 
-  /// Tooltip of the whitespace only pill on a picked part's line.
+  /// Story 10.41: the same row while its lines show below it; its Hide button hides them again (no button while a pick keeps them shown).
   ///
   /// In en, this message translates to:
-  /// **'Shown because its part is picked: a pick takes every line of its part'**
-  String get inspectorWhitespaceOnlyTooltip;
+  /// **'{count, plural, =1{1 line with only whitespace changes} other{{count} lines with only whitespace changes}}'**
+  String inspectorGapOpen(int count);
 
-  /// Button on a line that changed only in whitespace, shown because the user opened its folded part: folds it again.
+  /// Story 10.41: the button on a whitespace gap row that shows its hidden lines.
   ///
   /// In en, this message translates to:
-  /// **'whitespace only · Hide'**
-  String get inspectorWhitespaceOnlyHide;
+  /// **'Show'**
+  String get inspectorGapShow;
 
-  /// Tooltip of the whitespace only · Hide button.
+  /// Story 10.41: VoiceOver name of the gap row's Show button, with the number of lines it shows.
   ///
   /// In en, this message translates to:
-  /// **'Hide the whitespace-only lines again'**
-  String get inspectorWhitespaceHideTooltip;
+  /// **'{count, plural, =1{Show 1 line with only whitespace changes} other{Show {count} lines with only whitespace changes}}'**
+  String inspectorGapShowLabel(int count);
+
+  /// Story 10.41: VoiceOver name of the gap row's Hide button, with the number of lines it hides.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Hide 1 line with only whitespace changes} other{Hide {count} lines with only whitespace changes}}'**
+  String inspectorGapHideLabel(int count);
+
+  /// Story 10.41: the button on an open whitespace gap row that hides its lines again.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get inspectorGapHide;
+
+  /// Story 10.41: tooltip of the gap row's Hide button.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide these lines again'**
+  String get inspectorGapHideTooltip;
 
   /// The row a part made only of whitespace changes folds into while the diff ignores whitespace; a click shows its lines.
   ///
@@ -2150,7 +2168,7 @@ abstract class AppLocalizations {
   /// **'⋯ {count, plural, =1{1 line} other{{count} lines}} changed whitespace only · Show'**
   String inspectorFoldText(int count);
 
-  /// Tooltip of a folded whitespace-only row.
+  /// Tooltip of a folded whitespace-only row and of a gap row's Show button.
   ///
   /// In en, this message translates to:
   /// **'Show these lines'**
@@ -2161,6 +2179,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pick these whitespace-only lines'**
   String get inspectorFoldPick;
+
+  /// Story 10.41: VoiceOver name and tooltip of a picked whitespace-only part's checkbox on its open row: Commit / Split no longer takes the part's lines.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpick these whitespace-only lines'**
+  String get inspectorFoldUnpick;
 
   /// Operation toast after jj abandon; changes is a list of change ids.
   ///

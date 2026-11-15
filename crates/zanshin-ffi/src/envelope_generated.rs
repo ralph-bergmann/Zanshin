@@ -43250,6 +43250,16 @@ pub mod zanshin {
         /// `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
         /// change (a pure rename, an empty file added) shares one value, so a Viewed key combines it with
         /// the path.
+        ///
+        /// Story 10.41 appends `whitespace_lines`, always written: at `-w` / `-b` every line pair the
+        /// ignoring line diff matches whose bytes differ (the lines that changed only in whitespace,
+        /// inside or outside the hunks' context), in file order, each a `Context` line with both numbers
+        /// and the segments of jj-lib's word diff of that one pair, always inlined (the CLI diffs a
+        /// context run as one block, so its marks can differ under the alternation limit). It also holds
+        /// every identical line between two such pairs of one matched run, with ONE `Equal` segment, so a
+        /// run of listed lines has no number gap; a listed line with no `Added` / `Removed` segment is
+        /// such an identical line. Empty at exact, in summary mode, for binary content and under
+        /// `diff.color-words.conflict = "pair"` on a conflicted side.
         pub struct FileDiff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -43275,6 +43285,7 @@ pub mod zanshin {
             pub const VT_REMOVED: ::flatbuffers::VOffsetT = 18;
             pub const VT_ADDED: ::flatbuffers::VOffsetT = 20;
             pub const VT_FINGERPRINT: ::flatbuffers::VOffsetT = 22;
+            pub const VT_WHITESPACE_LINES: ::flatbuffers::VOffsetT = 24;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -43286,6 +43297,9 @@ pub mod zanshin {
                 args: &'args FileDiffArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<FileDiff<'bldr>> {
                 let mut builder = FileDiffBuilder::new(_fbb);
+                if let Some(x) = args.whitespace_lines {
+                    builder.add_whitespace_lines(x);
+                }
                 if let Some(x) = args.fingerprint {
                     builder.add_fingerprint(x);
                 }
@@ -43400,6 +43414,19 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(FileDiff::VT_FINGERPRINT, None)
                 }
             }
+            #[inline]
+            pub fn whitespace_lines(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine>>,
+                    >>(FileDiff::VT_WHITESPACE_LINES, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FileDiff<'_> {
@@ -43419,6 +43446,7 @@ pub mod zanshin {
      .visit_field::<u32>("removed", Self::VT_REMOVED, false)?
      .visit_field::<u32>("added", Self::VT_ADDED, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("fingerprint", Self::VT_FINGERPRINT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkLine>>>>("whitespace_lines", Self::VT_WHITESPACE_LINES, false)?
      .finish();
                 Ok(())
             }
@@ -43437,6 +43465,9 @@ pub mod zanshin {
             pub removed: u32,
             pub added: u32,
             pub fingerprint: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub whitespace_lines: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine<'a>>>>,
+            >,
         }
         impl<'a> Default for FileDiffArgs<'a> {
             #[inline]
@@ -43452,6 +43483,7 @@ pub mod zanshin {
                     removed: 0,
                     added: 0,
                     fingerprint: None,
+                    whitespace_lines: None,
                 }
             }
         }
@@ -43517,6 +43549,16 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_FINGERPRINT, fingerprint);
             }
             #[inline]
+            pub fn add_whitespace_lines(
+                &mut self,
+                whitespace_lines: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<HunkLine<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_WHITESPACE_LINES, whitespace_lines);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileDiffBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FileDiffBuilder {
@@ -43544,6 +43586,7 @@ pub mod zanshin {
                 ds.field("removed", &self.removed());
                 ds.field("added", &self.added());
                 ds.field("fingerprint", &self.fingerprint());
+                ds.field("whitespace_lines", &self.whitespace_lines());
                 ds.finish()
             }
         }

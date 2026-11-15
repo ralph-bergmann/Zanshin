@@ -1385,16 +1385,57 @@ class AppLocalizationsEn extends AppLocalizations {
       'Every diff follows these. A Context lines pick writes jj\'s diff.color-words.context to your user config, as Settings › General › Diffs does. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn\'t see.';
 
   @override
-  String get inspectorWhitespaceOnly => 'whitespace only';
+  String inspectorGapClosed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more lines with only whitespace changes',
+      one: '1 more line with only whitespace changes',
+    );
+    return '$_temp0';
+  }
 
   @override
-  String get inspectorWhitespaceOnlyTooltip => 'Shown because its part is picked: a pick takes every line of its part';
+  String inspectorGapOpen(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines with only whitespace changes',
+      one: '1 line with only whitespace changes',
+    );
+    return '$_temp0';
+  }
 
   @override
-  String get inspectorWhitespaceOnlyHide => 'whitespace only · Hide';
+  String get inspectorGapShow => 'Show';
 
   @override
-  String get inspectorWhitespaceHideTooltip => 'Hide the whitespace-only lines again';
+  String inspectorGapShowLabel(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Show $count lines with only whitespace changes',
+      one: 'Show 1 line with only whitespace changes',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String inspectorGapHideLabel(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Hide $count lines with only whitespace changes',
+      one: 'Hide 1 line with only whitespace changes',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get inspectorGapHide => 'Hide';
+
+  @override
+  String get inspectorGapHideTooltip => 'Hide these lines again';
 
   @override
   String inspectorFoldText(int count) {
@@ -1412,6 +1453,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inspectorFoldPick => 'Pick these whitespace-only lines';
+
+  @override
+  String get inspectorFoldUnpick => 'Unpick these whitespace-only lines';
 
   @override
   String toastAbandoned(String changes) {

@@ -163,7 +163,16 @@ void main() {
           everyElement(HunkLineKind.context),
           reason: '$ws shows a whitespace-only change as context',
         );
+        // Story 10.41: the whitespace-only pair with jj's marks.
+        final HunkLine pair = ignoring.files.single.whitespaceLines.single;
+        expect((pair.kind, pair.left, pair.right, pair.text), (HunkLineKind.context, 1, 1, 'x  y\n'));
+        expect(pair.segments.map((s) => (s.kind, s.text)), [
+          (SegmentKind.equal, 'x '),
+          (SegmentKind.added, ' '),
+          (SegmentKind.equal, 'y\n'),
+        ]);
       }
+      expect(exact.files.single.whitespaceLines, isEmpty);
 
       final Diff summary = await repo.diff(revision: at, summary: true);
       final FileDiff f = fileOf(summary, 'f.txt');

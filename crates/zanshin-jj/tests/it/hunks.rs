@@ -449,6 +449,21 @@ fn binary_content_is_marked_and_has_no_hunks() {
     assert_ne!(bin.fingerprint, file(&diffs, "binmode.dat").fingerprint);
 }
 
+/// Binary content lists no whitespace lines at `-w`, though its change is whitespace-only.
+#[test]
+fn binary_content_lists_no_whitespace_lines() {
+    let mut fx = init();
+    let root = fx.root.clone();
+    write(&root, "bin.dat", b"x\0a b\n");
+    let a = wc(&root);
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
+    write(&root, "bin.dat", b"x\0a  b\n");
+    let diffs = diff(&mut fx, None, Whitespace::IgnoreAllSpace);
+    let bin = file(&diffs, "bin.dat");
+    assert!(bin.binary, "{bin:?}");
+    assert!(bin.whitespace_lines.is_empty(), "{bin:?}");
+}
+
 /// A last line without `\n` keeps that state on both sides.
 #[test]
 fn a_last_line_without_a_newline_keeps_it() {
@@ -715,18 +730,23 @@ fn the_configured_context_is_the_default() {
 /// `X` (`c.txt` = `x`) against the X / Y merge left conflicted, the repo's
 /// `diff.color-words.conflict` set to `conflict` (`None` = the default, `materialize`).
 fn conflict_diff(conflict: Option<&str>) -> FileDiff {
+    conflict_diff_of(conflict, Whitespace::Exact, ["base\n", "x\n", "y\n"])
+}
+
+/// [`conflict_diff`] over `c.txt`'s (base, X, Y) texts at `whitespace`.
+fn conflict_diff_of(conflict: Option<&str>, whitespace: Whitespace, texts: [&str; 3]) -> FileDiff {
     let mut fx = init();
     if let Some(method) = conflict {
         add_repo_config(&fx, &format!("diff.color-words.conflict = \"{method}\"\n"));
     }
     let root = fx.root.clone();
-    write(&root, "c.txt", b"base\n");
+    write(&root, "c.txt", texts[0].as_bytes());
     let a = wc(&root);
     fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new x");
-    write(&root, "c.txt", b"x\n");
+    write(&root, "c.txt", texts[1].as_bytes());
     let x = wc(&root);
     fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new y");
-    write(&root, "c.txt", b"y\n");
+    write(&root, "c.txt", texts[2].as_bytes());
     let y = wc(&root);
     fx.repo.new_change(&[x.clone(), y], &[], &[]).expect("merge");
     let _ = fx.repo.take_warnings();
@@ -741,11 +761,27 @@ fn conflict_diff(conflict: Option<&str>) -> FileDiff {
             },
             to,
             context: None,
-            whitespace: Whitespace::Exact,
+            whitespace,
         })
         .expect("compute_hunks");
     assert_counts(&diffs);
     diffs.remove(diffs.iter().position(|file| file.path == "c.txt").expect("c.txt"))
+}
+
+/// At `-w` the marker text lists the line Y re-indented (X kept it); `pair` lists none, as its
+/// numbers count conflict-term lines.
+#[test]
+fn a_paired_conflict_lists_no_whitespace_lines() {
+    let texts = ["a b\n\n\n\nbase\n", "a b\n\n\n\nx\n", "a   b\n\n\n\ny\n"];
+    let materialized = conflict_diff_of(None, Whitespace::IgnoreAllSpace, texts);
+    let listed: Vec<_> = materialized
+        .whitespace_lines
+        .iter()
+        .map(|line| (line.left, line.right, line.text()))
+        .collect();
+    assert_eq!(listed, [(Some(1), Some(1), "a   b\n".to_owned())]);
+    let paired = conflict_diff_of(Some("pair"), Whitespace::IgnoreAllSpace, texts);
+    assert!(paired.whitespace_lines.is_empty(), "{paired:?}");
 }
 
 /// `materialize` (the default) diffs the conflict's marker text; `pair` diffs each conflict term

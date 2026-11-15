@@ -13,6 +13,7 @@ import 'package:zanshin_ui/zanshin_ui.dart'
         ZI,
         ZanshinIcon,
         ZsAppearance,
+        ZsCheckbox,
         ZsColors,
         ZsMenuButton,
         ZsMenuEntry,
@@ -114,6 +115,137 @@ FileDiff _file({List<Hunk> hunks = const <Hunk>[], bool binary = false, bool mod
   removed: 0,
   added: 0,
   fingerprint: 'f',
+);
+
+// Ralph's `text_field.dart` (Story 10.41): a `TextField` wrapped in `Semantics(`, as the pinned CLI prints it — old
+// lines 6-32 without their six spaces of indentation.
+const _textFieldFields = <String>[
+  'controller: controller,',
+  'enabled: enabled,',
+  'style: textStyle,',
+  'keyboardType: keyboardType,',
+  'textInputAction: textInputAction,',
+  'textCapitalization: textCapitalization,',
+  'autocorrect: autocorrect,',
+  'enableSuggestions: enableSuggestions,',
+  'focusNode: focusNode,',
+  'obscureText: obscureText,',
+  'decoration: InputDecoration(',
+  '  label: label,',
+  '  hintText: hintText,',
+  '  helperText: helperText,',
+  '  error: error,',
+  '  prefixIcon: prefixIcon != null ? Opacity(opacity: opacity, child: prefixIcon) : null,',
+  '  suffixIcon: _buildTrailing(),',
+  '  counterText: counterText,',
+  '  alignLabelWithHint: alignLabelWithHint,',
+  '),',
+  'onChanged: onChanged,',
+  'onSubmitted: onSubmitted,',
+  'autofocus: autofocus,',
+  'maxLength: maxLength,',
+  'minLines: minLines,',
+  'maxLines: maxLines,',
+  'buildCounter: buildCounter,',
+];
+
+String _num(int? number) => '${number ?? ''}'.padLeft(4);
+
+/// Field [i] moved right by two spaces: old 6 + [i] against new 8 + [i], the added spaces marked as jj marks them.
+HunkLine _textFieldMoved(String kind, int i) {
+  final String field = _textFieldFields[i];
+  final String rest = field.trimLeft();
+  return _line('$kind${_num(6 + i)} ${_num(8 + i)}|${' ' * (6 + field.length - rest.length)}{+  +}$rest');
+}
+
+const _textFieldSections = <HunkKey>[
+  HunkKey(oldStart: 4, oldCount: 20, newStart: 4, newCount: 30),
+  HunkKey(oldStart: 25, oldCount: 7, newStart: 35, newCount: 0),
+];
+
+List<HunkLine> _textFieldHead() => <HunkLine>[
+  _line('    1    1|  Widget build(BuildContext context) {'),
+  _line('    2    2|    final prefixIcon = this.prefixIcon;'),
+  _line('    3    3|    final opacity = enabled ? 1.0 : 0.38;'),
+  _line('    4    4|'),
+  _line('~   5    5|    return {+Semantics(+}'),
+  _line('+        6|{+      identifier: identifier,+}'),
+  _line('~   5    7|{+      child: +}TextField('),
+];
+
+List<HunkLine> _textFieldTail() => <HunkLine>[
+  _line('   33   36|    );'),
+  _line('   34   37|  }'),
+  _line('   35   38|}'),
+];
+
+/// The exact read: one hunk of two parts.
+FileDiff _textFieldFile() => FileDiff(
+  path: 'src/main.rs',
+  kind: FileChangeKind.modified,
+  fromPath: null,
+  binary: false,
+  modeChange: false,
+  sections: _textFieldSections,
+  hunks: <Hunk>[
+    Hunk(
+      before: (start: 0, end: 35),
+      after: (start: 0, end: 38),
+      symbol: null,
+      sections: _textFieldSections,
+      removed: 27,
+      added: 30,
+      lines: <HunkLine>[
+        ..._textFieldHead(),
+        for (var i = 0; i < 19; i++) _textFieldMoved('~', i),
+        for (var i = 19; i < 27; i++) _line('+     ${_num(8 + i)}|{+        ${_textFieldFields[i]}+}'),
+        _line('   25   35|      ),'),
+        for (var i = 20; i < 27; i++) _line('-${_num(6 + i)}     |[-      ${_textFieldFields[i]}-]'),
+        ..._textFieldTail(),
+      ],
+    ),
+  ],
+  removed: 27,
+  added: 30,
+  fingerprint: 'f',
+);
+
+/// The read at `-w`: its two hunks and the 27 lines that changed only in whitespace.
+FileDiff _textFieldIgnoring() => FileDiff(
+  path: 'src/main.rs',
+  kind: FileChangeKind.modified,
+  fromPath: null,
+  binary: false,
+  modeChange: false,
+  sections: _textFieldSections,
+  hunks: <Hunk>[
+    Hunk(
+      before: (start: 0, end: 8),
+      after: (start: 0, end: 10),
+      symbol: null,
+      sections: const <HunkKey>[],
+      removed: 1,
+      added: 3,
+      lines: <HunkLine>[..._textFieldHead(), for (var i = 0; i < 3; i++) _textFieldMoved(' ', i)],
+    ),
+    Hunk(
+      before: (start: 29, end: 35),
+      after: (start: 31, end: 38),
+      symbol: null,
+      sections: const <HunkKey>[],
+      removed: 0,
+      added: 1,
+      lines: <HunkLine>[
+        for (var i = 24; i < 27; i++) _textFieldMoved(' ', i),
+        _line('+       35|{+      ),+}'),
+        ..._textFieldTail(),
+      ],
+    ),
+  ],
+  removed: 1,
+  added: 4,
+  fingerprint: 'w',
+  whitespaceLines: <HunkLine>[for (var i = 0; i < 27; i++) _textFieldMoved(' ', i)],
 );
 
 void main() {
@@ -689,8 +821,9 @@ void main() {
     );
 
     test('a line belongs to the section whose range holds its number − 1; context to none', () {
-      expect(hunkLineParts(parts(const <HunkKey>[s1, s2, s3])), <int?>[null, 0, 0, null, 1, 1, 1, null, 2]);
-      expect(hunkLineParts(parts(const <HunkKey>[s1])), <int?>[null, 0, 0, null, null, null, null, null, null]);
+      List<int?> lineParts(Hunk hunk) => <int?>[for (final DiffRow row in exactRows(hunk)) (row as DiffLineRow).part];
+      expect(lineParts(parts(const <HunkKey>[s1, s2, s3])), <int?>[null, 0, 0, null, 1, 1, 1, null, 2]);
+      expect(lineParts(parts(const <HunkKey>[s1])), <int?>[null, 0, 0, null, null, null, null, null, null]);
     });
 
     Widget picks(
@@ -926,31 +1059,54 @@ void main() {
     });
   });
 
-  group('Story 10.33: whitespace ignored', () {
-    // The ignoring read's lines of one file, as `IgnoredLines.of` reads them.
-    IgnoredLines ignoring(List<String> specs) => IgnoredLines.of(
-      _file(
-        hunks: <Hunk>[
-          _hunk(<HunkLine>[for (final String spec in specs) _line(spec)]),
-        ],
-      ),
-    );
-    Hunk sectioned(List<String> specs, List<HunkKey> sections) => Hunk(
-      before: (start: 0, end: 10),
-      after: (start: 0, end: 10),
-      symbol: null,
-      sections: sections,
+  group('Story 10.33 / 10.41: whitespace ignored', () {
+    // The file as the ignoring read lists it: [specs]' lines in one hunk, and the whitespace-only lines.
+    FileDiff ignoring(List<String> specs, {List<String> spaces = const <String>[]}) => FileDiff(
+      path: 'src/main.rs',
+      kind: FileChangeKind.modified,
+      fromPath: null,
+      binary: false,
+      modeChange: false,
+      sections: const <HunkKey>[],
+      hunks: <Hunk>[
+        if (specs.isNotEmpty) _hunk(<HunkLine>[for (final String spec in specs) _line(spec)]),
+      ],
       removed: 0,
       added: 0,
-      lines: <HunkLine>[for (final String spec in specs) _line(spec)],
+      fingerprint: 'w',
+      whitespaceLines: <HunkLine>[for (final String spec in spaces) _line(spec)],
     );
-    // A row as `kind left right [dim]`, a fold as `fold part count`.
-    List<String> shape(List<DiffRow>? rows) => <String>[
-      for (final DiffRow row in rows ?? const <DiffRow>[])
+    Hunk sectioned(List<String> specs, List<HunkKey> sections, {({int start, int end}) before = (start: 0, end: 10)}) =>
+        Hunk(
+          before: before,
+          after: before,
+          symbol: null,
+          sections: sections,
+          removed: 0,
+          added: 0,
+          lines: <HunkLine>[for (final String spec in specs) _line(spec)],
+        );
+    FileDiff exactFile(List<Hunk> hunks) => FileDiff(
+      path: 'src/main.rs',
+      kind: FileChangeKind.modified,
+      fromPath: null,
+      binary: false,
+      modeChange: false,
+      sections: <HunkKey>[for (final Hunk hunk in hunks) ...hunk.sections],
+      hunks: hunks,
+      removed: 0,
+      added: 0,
+      fingerprint: 'f',
+    );
+    // A line row as `kind left right [pN]`, a gap as `gap count[+identical] [open] [fixed] [pN]`.
+    List<String> shape(List<DiffRow> rows) => <String>[
+      for (final DiffRow row in rows)
         switch (row) {
-          DiffLineRow(:final HunkLine line, :final bool whitespaceOnly) =>
-            '${line.kind.name} ${line.left} ${line.right}${whitespaceOnly ? ' dim' : ''}',
-          DiffFoldRow(:final int part, :final int count) => 'fold $part $count',
+          DiffLineRow(:final HunkLine line, :final int? part) =>
+            '${line.kind.name} ${line.left} ${line.right}${part == null ? '' : ' p$part'}',
+          DiffGapRow(:final List<HunkLine> lines, :final bool open, :final bool hideable, :final int? part) =>
+            'gap ${row.count}${lines.length == row.count ? '' : '+${lines.length - row.count}'}'
+                '${open ? ' open' : ''}${hideable ? '' : ' fixed'}${part == null ? '' : ' p$part'}',
         },
     ];
 
@@ -960,105 +1116,237 @@ void main() {
       expect(diffWhitespaceOf(DiffWhitespaceSetting.ignoreAll), DiffWhitespace.ignoreAllSpace);
     });
 
-    test('Padding wrap at -b: the re-indented lines give way to the ignoring read\'s context lines', () {
-      final Hunk hunk = _hunk(<HunkLine>[
-        _line('    4    4|build('),
-        _line('-   5     |[-  child: Foo(-]'),
-        _line('-   6     |[-    a: 1,-]'),
-        _line('+        5|{+  child: Padding(+}'),
-        _line('+        6|{+    padding: p,+}'),
-        _line('+        7|{+    child: Foo(+}'),
-        _line('+        8|{+      a: 1,+}'),
-        _line('    7    9|  ),'),
-      ]);
-      final IgnoredLines b = ignoring(<String>[
-        '+        5|{+  child: Padding(+}',
-        '+        6|{+    padding: p,+}',
-        '    5    7|    child: Foo(',
-        '    6    8|      a: 1,',
-      ]);
-      expect(shape(whitespaceRows(hunk, b)), <String>[
-        'context 4 4',
-        'added null 5',
-        'added null 6',
-        'context 5 7',
-        'context 6 8',
-        'context 7 9',
-      ]);
-      expect(shape(whitespaceRows(hunk, null)), hasLength(8), reason: 'without the ignoring read every line shows');
-    });
-
-    const s = HunkKey(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1);
-    final Hunk amount = sectioned(<String>['    1    1|x', '~   2    2|a{+ +} b', '    3    3|y'], const <HunkKey>[s]);
-
-    test('a b → a  b reads as unchanged under -b and -w: a whitespace-only part folds, picked or opened it shows '
-        'dimmed', () {
-      final IgnoredLines none = ignoring(<String>['    2    2|a  b']);
-      expect(shape(whitespaceRows(amount, none)), <String>['context 1 1', 'fold 0 1', 'context 3 3']);
-      expect(shape(whitespaceRows(amount, none, revealed: <HunkKey>{s})), <String>[
+    test('text_field at -w: one block, the exact range, +4 −1, the ignoring read\'s rows with one gap of 21, one '
+        'part', () {
+      final FileDiff read = _textFieldIgnoring();
+      final List<DiffBlock> blocks = diffBlocks(_textFieldFile(), read);
+      final DiffBlock block = blocks.single;
+      expect(hunkHeader(block.hunk), '@@ −1,35 +1,38 @@');
+      expect((block.hunk.added, block.hunk.removed), (4, 1));
+      // Old 26–32 (section 2) pair with new 28–34 (section 1): one part of both sections, one checkbox.
+      expect(block.parts, <List<HunkKey>>[_textFieldSections]);
+      expect(block.hunk.sections, _textFieldSections);
+      expect(block.hunk.lines, <HunkLine>[for (final Hunk hunk in read.hunks) ...hunk.lines]);
+      expect(block.foldParts, isEmpty);
+      final List<String> rows = shape(diffBlockRows(block));
+      expect(rows, <String>[
         'context 1 1',
-        'changed 2 2 dim',
+        'context 2 2',
         'context 3 3',
+        'context 4 4',
+        'changed 5 5 p0',
+        'added null 6 p0',
+        'changed 5 7 p0',
+        'context 6 8 p0',
+        'context 7 9 p0',
+        'context 8 10 p0',
+        'gap 21',
+        'context 30 32 p0',
+        'context 31 33 p0',
+        'context 32 34 p0',
+        'added null 35',
+        'context 33 36',
+        'context 34 37',
+        'context 35 38',
       ]);
+      expect(rows.where((row) => row.startsWith('removed')), isEmpty, reason: 'nothing removed below buildCounter');
     });
 
-    test('a b → ab: whitespace-only (folded) under -w, a real change under -b', () {
-      final Hunk removed = sectioned(<String>['    1    1|x', '~   2    2|a[- -]b'], const <HunkKey>[s]);
-      expect(shape(whitespaceRows(removed, ignoring(<String>['    2    2|ab']))), <String>['context 1 1', 'fold 0 1']);
-      expect(shape(whitespaceRows(removed, ignoring(<String>['~   2    2|a[- -]b']))), <String>[
-        'context 1 1',
-        'changed 2 2',
-      ]);
-    });
-
-    test('a mixed part: its re-indented line gives way to the context line unless the part is picked or opened', () {
-      const part = HunkKey(oldStart: 1, oldCount: 2, newStart: 1, newCount: 2);
-      final Hunk hunk = sectioned(
-        <String>[
-          '    1    1|x',
-          '-   2     |[-old();-]',
-          '+        2|{+new();+}',
-          '~   3    3|{+  +}keep();',
+    test('Show opens a gap: its row stays above old 9-29 / new 11-31; a pick opens every gap without Hide', () {
+      final DiffBlock block = diffBlocks(_textFieldFile(), _textFieldIgnoring()).single;
+      final List<DiffRow> open = diffBlockRows(block, opened: <int>{9});
+      final int at = open.indexWhere((row) => row is DiffGapRow);
+      expect(shape(open)[at], 'gap 21 open');
+      expect(
+        <(int?, int?)>[
+          for (final DiffRow row in open.skip(at + 1).take(21)) ((row as DiffLineRow).line.left, row.line.right),
         ],
-        const <HunkKey>[part],
+        <(int?, int?)>[for (var left = 9; left <= 29; left++) (left, left + 2)],
       );
-      final IgnoredLines w = ignoring(<String>[
-        '-   2     |[-old();-]',
-        '+        2|{+new();+}',
-        '    3    3|  keep();',
-      ]);
-      expect(shape(whitespaceRows(hunk, w)), <String>['context 1 1', 'removed 2 null', 'added null 2', 'context 3 3']);
-      expect(shape(whitespaceRows(hunk, w, revealed: <HunkKey>{part})), <String>[
-        'context 1 1',
-        'removed 2 null',
-        'added null 2',
-        'changed 3 3 dim',
+      expect(shape(open)[at + 22], 'context 30 32 p0');
+      expect(shape(diffBlockRows(block, opened: <int>{10})), contains('gap 21'), reason: 'keyed by its first line');
+      expect(shape(diffBlockRows(block, revealed: true))[at], 'gap 21 open fixed');
+    });
+
+    test('a mixed part: the rows are the ignoring lines, a re-indent far from the change hides in a gap, the counts '
+        'are the ignoring rows\'', () {
+      const part = HunkKey(oldStart: 0, oldCount: 10, newStart: 0, newCount: 10);
+      final List<DiffBlock> blocks = diffBlocks(
+        exactFile(<Hunk>[
+          sectioned(<String>['~   1    1|[-a-]{+A+}', '~   8    8|{+  +}h'], const <HunkKey>[part]),
+        ]),
+        ignoring(
+          <String>['~   1    1|[-a-]{+A+}', '    2    2|b', '    3    3|c', '    4    4|d'],
+          spaces: <String>['    8    8|{+  +}h'],
+        ),
+      );
+      final DiffBlock block = blocks.single;
+      expect((block.hunk.added, block.hunk.removed), (1, 1));
+      expect(shape(diffBlockRows(block)), <String>[
+        'changed 1 1 p0',
+        'context 2 2',
+        'context 3 3',
+        'context 4 4',
+        'gap 1',
       ]);
     });
 
-    test('a hunk left with context lines only goes; a line of no part without a context line shows nothing', () {
-      final Hunk hunk = _hunk(<HunkLine>[
-        _line('    1    1|x'),
-        _line('-   2     |[-  y-]'),
-        _line('+        2|{+y+}'),
+    // `a b` → `a  b` five lines below a change: a whitespace-only part.
+    const s1 = HunkKey(oldStart: 0, oldCount: 1, newStart: 0, newCount: 1);
+    const s2 = HunkKey(oldStart: 5, oldCount: 1, newStart: 5, newCount: 1);
+    final Hunk farHunk = sectioned(<String>['~   1    1|[-x-]{+X+}', '~   6    6|a{+ +} b'], const <HunkKey>[s1, s2]);
+
+    test('a whitespace-only part far from any change: its run is its fold, Show opens it', () {
+      final DiffBlock block = diffBlocks(
+        exactFile(<Hunk>[farHunk]),
+        ignoring(<String>['~   1    1|[-x-]{+X+}'], spaces: <String>['    6    6|a{+ +} b']),
+      ).single;
+      expect(block.hunk.sections, <HunkKey>[s1, s2]);
+      expect(block.foldParts, <int>{1});
+      expect(shape(diffBlockRows(block)), <String>['changed 1 1 p0', 'gap 1 p1']);
+      expect(shape(diffBlockRows(block, opened: <int>{6})), <String>[
+        'changed 1 1 p0',
+        'gap 1 open p1',
+        'context 6 6 p1',
       ]);
-      expect(whitespaceRows(hunk, ignoring(<String>['    2    2|y'])), isNull);
-      expect(whitespaceRows(hunk, ignoring(const <String>[])), isNull);
     });
 
-    test('a fold counts the larger of its distinct left and right numbers', () {
-      const part = HunkKey(oldStart: 0, oldCount: 2, newStart: 0, newCount: 3);
-      final Hunk hunk = sectioned(
-        <String>[
-          '-   1     |[-a-]',
-          '-   2     |[-b-]',
-          '+        1|{+ a+}',
-          '+        2|{+ b+}',
-          '+        3|{+ +}',
-        ],
-        const <HunkKey>[part],
+    test('a run splits where a whitespace-only part\'s lines start', () {
+      const mixed = HunkKey(oldStart: 0, oldCount: 5, newStart: 0, newCount: 5);
+      const only = HunkKey(oldStart: 5, oldCount: 1, newStart: 5, newCount: 1);
+      final DiffBlock block = diffBlocks(
+        exactFile(<Hunk>[
+          sectioned(
+            <String>['~   1    1|[-x-]{+X+}', '~   5    5|{+ +}e', '~   6    6|{+ +}f'],
+            const <HunkKey>[mixed, only],
+          ),
+        ]),
+        ignoring(<String>['~   1    1|[-x-]{+X+}'], spaces: <String>['    5    5|{+ +}e', '    6    6|{+ +}f']),
+      ).single;
+      expect(shape(diffBlockRows(block)), <String>['changed 1 1 p0', 'gap 1', 'gap 1 p1']);
+    });
+
+    // A change at line 1, then x and y re-indented far below it with a blank line between (Ralph, 2a).
+    const whole = HunkKey(oldStart: 0, oldCount: 40, newStart: 0, newCount: 40);
+    final FileDiff blankExact = exactFile(<Hunk>[
+      sectioned(<String>['~   1    1|[-a-]{+A+}'], const <HunkKey>[whole], before: (start: 0, end: 40)),
+    ]);
+    const blankSpaces = <String>['   10   10|{+  +}x', '   11   11|', '   12   12|{+  +}y'];
+
+    test('a blank line between re-indented lines is hidden with them, not counted, and shown by Show so the numbers '
+        'run on', () {
+      final DiffBlock block = diffBlocks(
+        blankExact,
+        ignoring(<String>['~   1    1|[-a-]{+A+}', '    2    2|b'], spaces: blankSpaces),
+      ).single;
+      expect(shape(diffBlockRows(block)), <String>['changed 1 1 p0', 'context 2 2', 'gap 2+1']);
+      expect(shape(diffBlockRows(block, opened: <int>{10})), <String>[
+        'changed 1 1 p0',
+        'context 2 2',
+        'gap 2+1 open',
+        'context 10 10 p0',
+        'context 11 11 p0',
+        'context 12 12 p0',
+      ]);
+    });
+
+    test('a hidden run of identical lines only gets no gap row', () {
+      // Its whitespace-only neighbours show (a context pair the CLI split over the alternation limit).
+      final DiffBlock block = diffBlocks(
+        blankExact,
+        ignoring(<String>['~   1    1|[-a-]{+A+}', '   10   10|{+  +}x', '   12   12|{+  +}y'], spaces: blankSpaces),
+      ).single;
+      expect(shape(diffBlockRows(block)), <String>['changed 1 1 p0', 'context 10 10 p0', 'context 12 12 p0']);
+    });
+
+    test('a listed line shows when an ignoring line has its left or its right number', () {
+      final DiffBlock block = diffBlocks(
+        blankExact,
+        ignoring(
+          <String>['~   1    1|[-a-]{+A+}', '   10     |x', '        10|{+  +}x', '   11   11|', '   12   12|{+  +}y'],
+          spaces: blankSpaces,
+        ),
+      ).single;
+      expect(diffBlockRows(block).whereType<DiffGapRow>(), isEmpty, reason: 'line 10 shows split, as left and right');
+    });
+
+    // A real change in section A; old 6–7 removed (B) pair with new 8–9 added (C): B and C are tied.
+    const sA = HunkKey(oldStart: 0, oldCount: 1, newStart: 0, newCount: 1);
+    const sB = HunkKey(oldStart: 5, oldCount: 2, newStart: 5, newCount: 0);
+    const sC = HunkKey(oldStart: 7, oldCount: 0, newStart: 7, newCount: 2);
+    final FileDiff tiedExact = exactFile(<Hunk>[
+      sectioned(
+        <String>['~   1    1|[-a-]{+A+}', '-   6     |[-  x-]', '-   7     |[-  y-]', '+        8|{+    x+}'],
+        const <HunkKey>[sA, sB, sC],
+        before: (start: 0, end: 20),
+      ),
+    ]);
+    final FileDiff tiedIgnoring = ignoring(
+      <String>['~   1    1|[-a-]{+A+}', '    2    2|b'],
+      spaces: <String>['    6    8|  {+  +}x', '    7    9|  {+  +}y'],
+    );
+
+    test('a listed pair whose sides lie in two sections ties them into one part', () {
+      final DiffBlock block = diffBlocks(tiedExact, tiedIgnoring).single;
+      expect(block.parts, <List<HunkKey>>[
+        <HunkKey>[sA],
+        <HunkKey>[sB, sC],
+      ]);
+      expect(block.hunk.sections, <HunkKey>[sA, sB, sC], reason: 'the hunk checkbox picks every part');
+      expect(block.foldParts, <int>{1});
+      expect(shape(diffBlockRows(block)), <String>['changed 1 1 p0', 'context 2 2', 'gap 2 p1']);
+    });
+
+    test('blocks place a line by its left number, an added line by its right, a header with the line before — with '
+        'old and new starts that differ', () {
+      const first = Hunk(
+        before: (start: 0, end: 4),
+        after: (start: 0, end: 6),
+        symbol: null,
+        sections: <HunkKey>[],
+        removed: 0,
+        added: 0,
+        lines: <HunkLine>[],
       );
-      expect(shape(whitespaceRows(hunk, ignoring(const <String>[]))), <String>['fold 0 3']);
+      const second = Hunk(
+        before: (start: 10, end: 14),
+        after: (start: 14, end: 18),
+        symbol: null,
+        sections: <HunkKey>[],
+        removed: 0,
+        added: 0,
+        lines: <HunkLine>[],
+      );
+      final List<DiffBlock> blocks = diffBlocks(
+        exactFile(<Hunk>[first, second]),
+        ignoring(<String>['+       12|{+n+}', '-  11     |[-o-]', '#         |%%%%%%%']),
+      );
+      expect(blocks.map((block) => block.exact), <Hunk>[first, second]);
+      expect(blocks[0].lines.map((line) => line.right), <int?>[12], reason: 'new 12 is before new 15');
+      expect(blocks[1].lines.map((line) => line.kind), <HunkLineKind>[
+        HunkLineKind.removed,
+        HunkLineKind.conflictHeader,
+      ], reason: 'old 11 is at or after old 11; the header follows it');
+    });
+
+    test('lines go to the last exact hunk starting at or before them; a block with nothing goes; none left when '
+        'only whitespace changed', () {
+      final Hunk first = sectioned(<String>['~   2    2|[-a-]{+A+}'], const <HunkKey>[], before: (start: 0, end: 4));
+      final Hunk second = sectioned(<String>['~  12   12|[-b-]{+B+}'], const <HunkKey>[], before: (start: 10, end: 14));
+      final Hunk third = sectioned(<String>['~  22   22|{+ +}c'], const <HunkKey>[], before: (start: 20, end: 24));
+      final List<DiffBlock> blocks = diffBlocks(
+        exactFile(<Hunk>[first, second, third]),
+        ignoring(<String>['~   2    2|[-a-]{+A+}', '~  12   12|[-b-]{+B+}'], spaces: <String>['   11   11|{+ +}z']),
+      );
+      expect(blocks.map((block) => block.exact), <Hunk>[first, second], reason: 'the third has nothing');
+      expect(blocks[1].whitespaceLines.single.left, 11);
+      expect(shape(diffBlockRows(blocks[1])), <String>['gap 1', 'changed 12 12']);
+      expect(diffBlocks(exactFile(<Hunk>[first]), ignoringOf('src/main.rs', null)), isEmpty);
+      expect(ignoringOf('src/main.rs', null).hunks, isEmpty);
+    });
+
+    test('without the ignoring read every exact line shows with its part', () {
+      expect(shape(exactRows(farHunk)), <String>['changed 1 1 p0', 'changed 6 6 p1']);
     });
 
     test('the options menu: whitespace rows with jj\'s commands, the context choices with an off-list value in order, '
@@ -1108,10 +1396,12 @@ void main() {
     });
 
     Widget wsView({
-      required Hunk hunk,
-      IgnoredLines? ignored,
+      Hunk? hunk,
+      FileDiff? exact,
+      FileDiff? ignoring,
       Set<HunkKey> picked = const <HunkKey>{},
       ValueChanged<HunkKey>? onPart,
+      ValueChanged<Hunk>? onHunk,
       DiffLayoutSetting layout = DiffLayoutSetting.unified,
       DiffWhitespaceSetting whitespace = DiffWhitespaceSetting.ignoreAll,
       int? context = 3,
@@ -1126,44 +1416,50 @@ void main() {
         width: 520,
         child: InspectorDiffView(
           path: 'src/main.rs',
-          diff: FileDiff(
-            path: 'src/main.rs',
-            kind: FileChangeKind.modified,
-            fromPath: null,
-            binary: false,
-            modeChange: false,
-            sections: hunk.sections,
-            hunks: <Hunk>[hunk],
-            removed: 1,
-            added: 1,
-            fingerprint: 'f',
-          ),
+          diff:
+              exact ??
+              FileDiff(
+                path: 'src/main.rs',
+                kind: FileChangeKind.modified,
+                fromPath: null,
+                binary: false,
+                modeChange: false,
+                sections: hunk!.sections,
+                hunks: <Hunk>[hunk],
+                removed: 1,
+                added: 1,
+                fingerprint: 'f',
+              ),
           error: null,
           layout: layout,
           onLayoutChanged: (_) {},
-          hunkPicked: picks ? (_) => picked.isNotEmpty : null,
-          onHunkToggled: (_) {},
+          hunkPicked: picks
+              ? (hunk) =>
+                    hunk.sections.every(picked.contains) ? true : (hunk.sections.any(picked.contains) ? null : false)
+              : null,
+          onHunkToggled: onHunk ?? (_) {},
           partPicked: picks ? picked.contains : null,
           onPartToggled: onPart ?? (_) {},
           whitespace: whitespace,
           onWhitespaceChanged: onWhitespace ?? (_) {},
-          ignored: ignored,
+          ignoring: whitespace == DiffWhitespaceSetting.showAll ? null : ignoring,
           contextLines: context,
           onContextLinesChanged: onContext ?? (_) {},
           lineMenu: lineMenu,
         ),
       ),
     );
-    final unchanged = IgnoredLines.of(null);
-    // Whether [text]'s line shows at .62.
-    bool dimmed(String text) => find
-        .ancestor(of: find.text(text), matching: find.byType(Opacity))
-        .evaluate()
-        .any((element) => (element.widget as Opacity).opacity == .62);
+    // `a b` → `a  b`: one part that changed only in whitespace; the ignoring read lists no line, only the pair.
+    const s = HunkKey(oldStart: 1, oldCount: 1, newStart: 1, newCount: 1);
+    final Hunk amount = sectioned(<String>['    1    1|x', '~   2    2|a{+ +} b', '    3    3|y'], const <HunkKey>[s]);
+    final FileDiff unchanged = ignoring(const <String>[], spaces: <String>['    2    2|a{+ +} b']);
+    // No text of a diff line is dimmed any more (Story 10.41).
+    bool anyDimmed() => find.byType(Opacity).evaluate().any((element) => (element.widget as Opacity).opacity == .62);
 
-    testWidgets('a folded part: one hatched row with its checkbox; Show opens it, Hide folds it again', (tester) async {
+    testWidgets('a whitespace-only part: one hatched row with its checkbox; Show opens it in place with Hide, still '
+        'hatched with the checkbox; Hide folds it again', (tester) async {
       final toggled = <HunkKey>[];
-      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, onPart: toggled.add));
+      await tester.pumpWidget(wsView(hunk: amount, ignoring: unchanged, onPart: toggled.add));
       expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
       expect(find.text('a  b'), findsNothing);
       expect(find.bySemanticsIdentifier('inspector-fold-check'), findsOneWidget);
@@ -1174,18 +1470,213 @@ void main() {
       await tester.tap(find.bySemanticsIdentifier('inspector-fold-show'));
       await tester.pump();
       expect(find.text('a  b'), findsOneWidget);
-      expect(dimmed('a  b'), isTrue);
-      expect(find.text('whitespace only · Hide'), findsOneWidget);
-      await tester.tap(find.bySemanticsIdentifier('inspector-whitespace-hide'));
+      expect(anyDimmed(), isFalse);
+      expect(find.text('1 line with only whitespace changes'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-fold-check'), findsOneWidget, reason: 'open, it keeps the checkbox');
+      expect(
+        tester.getTopLeft(find.text('1 line with only whitespace changes')).dy,
+        lessThan(tester.getTopLeft(find.text('a  b')).dy),
+        reason: 'the row stays above its lines',
+      );
+      await tester.tap(find.bySemanticsIdentifier('inspector-gap-hide'));
       await tester.pump();
       expect(find.text('a  b'), findsNothing);
       expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
 
       // Without picks the row has no checkbox; side by side it is a full-width row too.
       await tester.pumpWidget(
-        wsView(hunk: amount, ignored: unchanged, picks: false, layout: DiffLayoutSetting.sideBySide),
+        wsView(hunk: amount, ignoring: unchanged, picks: false, layout: DiffLayoutSetting.sideBySide),
       );
       expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-fold-check'), findsNothing);
+    });
+
+    testWidgets('text_field unified: the ignoring read\'s rows, one gap of 21 with Show, +4 −1, one checkbox; Show and '
+        'Hide', (tester) async {
+      await tester.pumpWidget(wsView(exact: _textFieldFile(), ignoring: _textFieldIgnoring()));
+      expect(find.text('@@ −1,35 +1,38 @@'), findsOneWidget);
+      expect(find.text('+4'), findsOneWidget);
+      expect(find.text('−1'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-hunk-check'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-part-check'), findsNothing, reason: 'one part: no part checkboxes');
+      expect(find.text('21 more lines with only whitespace changes'), findsOneWidget);
+      expect(find.text('        controller: controller,'), findsOneWidget, reason: 'in the context, marked');
+      expect(find.text('        focusNode: focusNode,'), findsNothing, reason: 'hidden in the gap');
+      expect(find.text('11'), findsNothing);
+      expect(find.text('      onChanged: onChanged,'), findsNothing, reason: 'no exact line mixed in');
+      expect(paintedWordMarks(tester, ZsColors.night)['        controller: controller,'], <String>['+  ']);
+      expect(anyDimmed(), isFalse);
+
+      await tester.tap(find.bySemanticsIdentifier('inspector-gap-show'));
+      await tester.pump();
+      expect(find.text('21 lines with only whitespace changes'), findsOneWidget);
+      expect(find.text('        focusNode: focusNode,'), findsOneWidget);
+      expect(find.text('11'), findsNWidgets(2), reason: 'new 11 (old 9) and old 11 (new 13), with both numbers');
+      await tester.tap(find.bySemanticsIdentifier('inspector-gap-hide'));
+      await tester.pump();
+      expect(find.text('21 more lines with only whitespace changes'), findsOneWidget);
+      expect(find.text('        focusNode: focusNode,'), findsNothing);
+    });
+
+    testWidgets('text_field: the one checkbox picks both tied sections; a pick opens the gap without Hide', (
+      tester,
+    ) async {
+      final toggled = <Hunk>[];
+      await tester.pumpWidget(wsView(exact: _textFieldFile(), ignoring: _textFieldIgnoring(), onHunk: toggled.add));
+      await tester.tap(find.bySemanticsIdentifier('inspector-hunk-check'));
+      await tester.pump();
+      expect(toggled.single.sections, _textFieldSections);
+      await tester.pumpWidget(
+        wsView(exact: _textFieldFile(), ignoring: _textFieldIgnoring(), picked: <HunkKey>{_textFieldSections.first}),
+      );
+      expect(find.text('21 lines with only whitespace changes'), findsOneWidget);
+      expect(find.text('        focusNode: focusNode,'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-gap-hide'), findsNothing);
+      expect(find.bySemanticsIdentifier('inspector-gap-show'), findsNothing);
+    });
+
+    testWidgets('text_field side by side after Show: a whitespace-only line is a pair, the right cell marks the two '
+        'spaces; the gap row is full width', (tester) async {
+      await tester.pumpWidget(
+        wsView(exact: _textFieldFile(), ignoring: _textFieldIgnoring(), layout: DiffLayoutSetting.sideBySide),
+      );
+      expect(find.byKey(const ValueKey<String>('inspector-gap-band')), findsOneWidget);
+      await tester.tap(find.bySemanticsIdentifier('inspector-gap-show'));
+      await tester.pump();
+      expect(find.text('      focusNode: focusNode,'), findsOneWidget, reason: 'the left cell');
+      expect(find.text('        focusNode: focusNode,'), findsOneWidget, reason: 'the right cell');
+      expect(paintedWordMarks(tester, ZsColors.night)['        focusNode: focusNode,'], <String>['+  ']);
+    });
+
+    testWidgets('a blank line inside a re-indented run: the gap counts 2, Show reveals x, the blank line and y with '
+        'numbers 10, 11, 12', (tester) async {
+      await tester.pumpWidget(
+        wsView(
+          exact: blankExact,
+          ignoring: ignoring(<String>['~   1    1|[-a-]{+A+}', '    2    2|b'], spaces: blankSpaces),
+          picks: false,
+        ),
+      );
+      expect(find.text('2 more lines with only whitespace changes'), findsOneWidget);
+      expect(find.bySemanticsLabel('Show 2 lines with only whitespace changes'), findsOneWidget);
+      expect(find.text('11'), findsNothing);
+      await tester.tap(find.bySemanticsIdentifier('inspector-gap-show'));
+      await tester.pump();
+      expect(find.text('2 lines with only whitespace changes'), findsOneWidget);
+      expect(find.bySemanticsLabel('Hide 2 lines with only whitespace changes'), findsOneWidget);
+      for (final number in <String>['10', '11', '12']) {
+        expect(find.text(number), findsNWidgets(2), reason: 'line $number with both numbers: no jump');
+      }
+      expect(find.text('  x'), findsOneWidget);
+      expect(find.text('  y'), findsOneWidget);
+    });
+
+    testWidgets('a tied part: its checkbox is three-state over its sections and toggles them together; two parts '
+        'show "2 parts"', (tester) async {
+      final toggled = <HunkKey>[];
+      bool? fold() => tester
+          .widget<ZsCheckbox>(find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == 'inspector-fold-check'))
+          .value;
+      await tester.pumpWidget(
+        wsView(exact: tiedExact, ignoring: tiedIgnoring, picked: <HunkKey>{sB}, onPart: toggled.add),
+      );
+      expect(find.text('2 parts'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-part-check'), findsOneWidget);
+      expect(fold(), isNull, reason: 'one of its two sections');
+      await tester.tap(find.bySemanticsIdentifier('inspector-fold-check'));
+      await tester.pump();
+      expect(toggled, <HunkKey>[sC], reason: 'mixed → all');
+
+      toggled.clear();
+      await tester.pumpWidget(wsView(exact: tiedExact, ignoring: tiedIgnoring, onPart: toggled.add));
+      expect(fold(), isFalse);
+      await tester.tap(find.bySemanticsIdentifier('inspector-fold-check'));
+      await tester.pump();
+      expect(toggled, <HunkKey>[sB, sC], reason: 'none → all');
+
+      toggled.clear();
+      await tester.pumpWidget(
+        wsView(exact: tiedExact, ignoring: tiedIgnoring, picked: <HunkKey>{sB, sC}, onPart: toggled.add),
+      );
+      expect(fold(), isTrue);
+      await tester.tap(find.bySemanticsIdentifier('inspector-fold-check'));
+      await tester.pump();
+      expect(toggled, <HunkKey>[sB, sC], reason: 'all → none');
+    });
+
+    testWidgets('a tied part with a real change: its part checkbox names its new-side lines, is three-state over its '
+        'sections and toggles them together', (tester) async {
+      // B (old 6–7 removed) and C (new 8–10 added) tie through the pairs 6↔8 and 7↔9; new 10 is a real change in C.
+      const sC3 = HunkKey(oldStart: 7, oldCount: 0, newStart: 7, newCount: 3);
+      final FileDiff exact = exactFile(<Hunk>[
+        sectioned(
+          <String>[
+            '~   1    1|[-a-]{+A+}',
+            '-   6     |[-  x-]',
+            '-   7     |[-  y-]',
+            '+        8|{+    x+}',
+            '+        9|{+    y+}',
+            '+       10|{+z+}',
+          ],
+          const <HunkKey>[sA, sB, sC3],
+          before: (start: 0, end: 20),
+        ),
+      ]);
+      final FileDiff ignoringFile = ignoring(
+        <String>['~   1    1|[-a-]{+A+}', '    2    2|b', '+       10|{+z+}'],
+        spaces: <String>['    6    8|  {+  +}x', '    7    9|  {+  +}y'],
+      );
+      final DiffBlock block = diffBlocks(exact, ignoringFile).single;
+      expect(block.parts, <List<HunkKey>>[
+        <HunkKey>[sA],
+        <HunkKey>[sB, sC3],
+      ]);
+      expect(block.foldParts, isEmpty, reason: 'the tied part holds a real change');
+
+      final toggled = <HunkKey>[];
+      final Finder tiedBox = find.byWidgetPredicate(
+        (w) => w is ZsCheckbox && w.identifier == 'inspector-part-check' && w.label == 'Pick lines 8–10',
+      );
+      await tester.pumpWidget(wsView(exact: exact, ignoring: ignoringFile, picked: <HunkKey>{sB}, onPart: toggled.add));
+      expect(find.text('2 parts'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-part-check'), findsNWidgets(2));
+      expect(tester.widget<ZsCheckbox>(tiedBox).value, isNull, reason: 'one of its two sections');
+      await tester.tap(tiedBox);
+      await tester.pump();
+      expect(toggled, <HunkKey>[sC3], reason: 'mixed → all');
+
+      toggled.clear();
+      await tester.pumpWidget(wsView(exact: exact, ignoring: ignoringFile, onPart: toggled.add));
+      expect(tester.widget<ZsCheckbox>(tiedBox).value, isFalse);
+      await tester.tap(tiedBox);
+      await tester.pump();
+      expect(toggled, <HunkKey>[sB, sC3], reason: 'none → all');
+    });
+
+    testWidgets('side by side with two parts: one gutter checkbox per part, Show adds none; a tap toggles its part', (
+      tester,
+    ) async {
+      final toggled = <HunkKey>[];
+      await tester.pumpWidget(
+        wsView(exact: tiedExact, ignoring: tiedIgnoring, onPart: toggled.add, layout: DiffLayoutSetting.sideBySide),
+      );
+      expect(find.text('2 parts'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-part-check'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-fold-check'), findsOneWidget);
+      await tester.tap(find.bySemanticsIdentifier('inspector-fold-show'));
+      await tester.pump();
+      expect(find.text('    x'), findsOneWidget, reason: 'the revealed pair, right cell');
+      expect(find.bySemanticsIdentifier('inspector-part-check'), findsOneWidget, reason: 'its part has its box');
+      await tester.tap(find.bySemanticsIdentifier('inspector-part-check'));
+      await tester.pump();
+      expect(toggled, <HunkKey>[sA]);
+    });
+
+    testWidgets('without picks (the operation view) gap rows have Show and no checkboxes', (tester) async {
+      await tester.pumpWidget(wsView(exact: _textFieldFile(), ignoring: _textFieldIgnoring(), picks: false));
+      expect(find.text('21 more lines with only whitespace changes'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-gap-show'), findsOneWidget);
+      expect(find.bySemanticsIdentifier('inspector-hunk-check'), findsNothing);
       expect(find.bySemanticsIdentifier('inspector-fold-check'), findsNothing);
     });
 
@@ -1213,7 +1704,7 @@ void main() {
         expect(find.byKey(const ValueKey<String>('inspector-line-pin')), findsNWidgets(3));
         expect(alphas(), everyElement(1.0), reason: '${theme.name}: the lines');
         expect(hatchedPins, findsNothing, reason: '${theme.name}: lines have no hatch');
-        await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, appearance: appearance));
+        await tester.pumpWidget(wsView(hunk: amount, ignoring: unchanged, appearance: appearance));
         expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
         expect(alphas(), everyElement(1.0), reason: '${theme.name}: the fold row');
         expect(hatchedPins, findsOneWidget, reason: '${theme.name}: the hatch runs under the fold row\'s pin too');
@@ -1236,7 +1727,7 @@ void main() {
         expect(find.text('Line row'), findsNothing);
       }
 
-      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, picks: false, lineMenu: menu));
+      await tester.pumpWidget(wsView(hunk: amount, ignoring: unchanged, picks: false, lineMenu: menu));
       await rightClick(find.text('⋯ 1 line changed whitespace only · Show'));
       await rightClick(find.byKey(const ValueKey<String>('inspector-hunk-header')));
       final Hunk end = _hunk(<HunkLine>[_line('+        1|{+end+}', newline: false)]);
@@ -1268,22 +1759,22 @@ void main() {
       );
     });
 
-    testWidgets('a picked part shows its whitespace-only line dimmed with the pill "whitespace only"', (tester) async {
-      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, picked: <HunkKey>{s}));
-      expect(find.text('a  b'), findsOneWidget);
-      expect(find.text('whitespace only'), findsOneWidget);
-      expect(find.text('⋯ 1 line changed whitespace only · Show'), findsNothing);
-      // Side by side: the cells dimmed, no pill.
-      await tester.pumpWidget(
-        wsView(hunk: amount, ignored: unchanged, picked: <HunkKey>{s}, layout: DiffLayoutSetting.sideBySide),
-      );
-      expect(find.text('whitespace only'), findsNothing);
-      expect(dimmed('a  b'), isTrue);
+    testWidgets('a picked whitespace-only part shows its line, its row open and checked, without Hide; nothing is '
+        'dimmed', (tester) async {
+      for (final DiffLayoutSetting layout in DiffLayoutSetting.values) {
+        await tester.pumpWidget(wsView(hunk: amount, ignoring: unchanged, picked: <HunkKey>{s}, layout: layout));
+        expect(find.text('a  b'), findsWidgets, reason: layout.name);
+        expect(find.text('1 line with only whitespace changes'), findsOneWidget, reason: layout.name);
+        expect(find.text('⋯ 1 line changed whitespace only · Show'), findsNothing, reason: layout.name);
+        expect(find.bySemanticsIdentifier('inspector-gap-hide'), findsNothing, reason: layout.name);
+        expect(find.bySemanticsLabel('Unpick these whitespace-only lines'), findsOneWidget, reason: layout.name);
+        expect(anyDimmed(), isFalse, reason: layout.name);
+      }
     });
 
-    testWidgets('a file left with no hunk reads "Only whitespace changed in this file."', (tester) async {
+    testWidgets('a file left with no block reads "Only whitespace changed in this file."', (tester) async {
       final Hunk hunk = _hunk(<HunkLine>[_line('-   2     |[-  y-]'), _line('+        2|{+y+}')]);
-      await tester.pumpWidget(wsView(hunk: hunk, ignored: unchanged, picks: false));
+      await tester.pumpWidget(wsView(hunk: hunk, ignoring: ignoring(const <String>[]), picks: false));
       expect(find.text('Only whitespace changed in this file.'), findsOneWidget);
       await tester.pumpWidget(wsView(hunk: hunk, picks: false, whitespace: DiffWhitespaceSetting.showAll));
       expect(find.text('Only whitespace changed in this file.'), findsNothing);
@@ -1340,7 +1831,7 @@ void main() {
       await settle();
       expect(contexts, <int>[10]);
 
-      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, context: 5));
+      await tester.pumpWidget(wsView(hunk: amount, ignoring: unchanged, context: 5));
       await tester.pumpAndSettle();
       expect(find.bySemanticsLabel('Diff options — Ignore all whitespace, 5 context lines'), findsOneWidget);
       expect(glyph(), ZsColors.night.accent);
@@ -1352,7 +1843,7 @@ void main() {
     testWidgets('side by side with picks, a folded part carries its checkbox; a tap toggles its part', (tester) async {
       final toggled = <HunkKey>[];
       await tester.pumpWidget(
-        wsView(hunk: amount, ignored: unchanged, onPart: toggled.add, layout: DiffLayoutSetting.sideBySide),
+        wsView(hunk: amount, ignoring: unchanged, onPart: toggled.add, layout: DiffLayoutSetting.sideBySide),
       );
       expect(find.bySemanticsIdentifier('inspector-fold-check'), findsOneWidget);
       await tester.tap(find.bySemanticsIdentifier('inspector-fold-check'));
@@ -1373,14 +1864,14 @@ void main() {
     });
 
     testWidgets('an opened fold folds again when the mode changes', (tester) async {
-      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, picks: false));
+      await tester.pumpWidget(wsView(hunk: amount, ignoring: unchanged, picks: false));
       await tester.tap(find.bySemanticsIdentifier('inspector-fold-show'));
       await tester.pump();
       expect(find.text('a  b'), findsOneWidget);
       await tester.pumpWidget(
         wsView(
           hunk: amount,
-          ignored: unchanged,
+          ignoring: unchanged,
           picks: false,
           whitespace: DiffWhitespaceSetting.ignoreChangesInAmount,
         ),

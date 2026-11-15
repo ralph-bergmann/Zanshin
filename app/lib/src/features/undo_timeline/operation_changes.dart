@@ -118,7 +118,7 @@ typedef OperationChangeLine = ({bool added, String text});
 /// block ([Diff.description] of [files]). Refusals are kept per read. The layout is `general.diffLayout` in
 /// [settings], written and followed; `general.diffWordMarks` ([wordMarks], Story 5.14) is followed and only changes
 /// how the loaded diffs are drawn. Story 10.33: `general.diffWhitespace` ([whitespace]) is written and followed — while
-/// it ignores whitespace the focused file is also read at `-b` / `-w` ([focusedIgnored]); the summary stays exact — and
+/// it ignores whitespace the focused file is also read at `-b` / `-w` ([focusedIgnoring]); the summary stays exact — and
 /// the diff options menu writes `diff.color-words.context` ([contextLines]) through the source.
 class OperationChangesModel extends ChangeNotifier {
   /// The view of [operation] (an id), reading through [_source].
@@ -152,7 +152,7 @@ class OperationChangesModel extends ChangeNotifier {
   DiffWhitespaceSetting _whitespace;
   DiffContext _context = (lines: 3, fromRepo: false);
   var _contextSerial = 0;
-  IgnoredLines? _focusedIgnored;
+  FileDiff? _focusedIgnoring;
   OpShow? _show;
   ZanshinFfiException? _error;
   var _summaries = const <String, ShowEntry>{};
@@ -202,8 +202,8 @@ class OperationChangesModel extends ChangeNotifier {
   /// How the focused diff treats whitespace: `general.diffWhitespace` in [settings] (Story 10.33).
   DiffWhitespaceSetting get whitespace => _whitespace;
 
-  /// What the read at [whitespace] says about [focusedDiff]'s file; null while whitespace shows.
-  IgnoredLines? get focusedIgnored => _focusedIgnored;
+  /// [focusedDiff]'s file as the read at [whitespace] lists it ([ignoringOf]); null while whitespace shows.
+  FileDiff? get focusedIgnoring => _focusedIgnoring;
 
   /// `diff.color-words.context` as `jj diff` in the workspace reads it; null when jj cannot read it.
   int? get contextLines => _context.lines;
@@ -440,7 +440,7 @@ class OperationChangesModel extends ChangeNotifier {
     _filesError = null;
     _focused = null;
     _focusedDiff = null;
-    _focusedIgnored = null;
+    _focusedIgnoring = null;
     _focusError = null;
     final int serial = ++_serial;
     final OpChangedCommit change = changes[index];
@@ -473,7 +473,7 @@ class OperationChangesModel extends ChangeNotifier {
     }
     _focused = path;
     _focusedDiff = null;
-    _focusedIgnored = null;
+    _focusedIgnoring = null;
     _focusError = null;
     final int serial = _serial;
     final int focusSerial = ++_focusSerial;
@@ -490,7 +490,7 @@ class OperationChangesModel extends ChangeNotifier {
         FileDiff? fileOf(Diff diff) => diff.files.where((file) => file.path == path).firstOrNull;
         if (current()) {
           _focusedDiff = fileOf(diffs.first);
-          _focusedIgnored = diffs.length > 1 ? IgnoredLines.of(fileOf(diffs.last)) : null;
+          _focusedIgnoring = diffs.length > 1 ? ignoringOf(path, fileOf(diffs.last)) : null;
           _notify();
         }
       } on ZanshinFfiException catch (error) {
@@ -867,7 +867,7 @@ class _Files extends StatelessWidget {
                       path: focused,
                       copyPath: model.absolutePath(focused),
                       diff: model.focusedDiff,
-                      ignored: model.focusedIgnored,
+                      ignoring: model.focusedIgnoring,
                       whitespace: model.whitespace,
                       onWhitespaceChanged: model.setWhitespace,
                       contextLines: model.contextLines,

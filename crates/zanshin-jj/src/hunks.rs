@@ -139,6 +139,17 @@ pub struct FileDiff {
     /// only — no path, no kind — so every content-less change (a pure rename, an empty file
     /// added) shares one value; a Viewed key combines it with the path.
     pub fingerprint: String,
+    /// At `-w` / `-b` (Story 10.41): every line pair the ignoring line diff matches whose bytes
+    /// differ — the lines that changed only in whitespace, inside or outside the hunks' context —
+    /// in file order. Each is [`HunkLineKind::Context`] with both numbers and the segments of
+    /// jj-lib's word diff of that one pair, always inlined (the CLI diffs a context run as one
+    /// block, so its marks can differ under the alternation limit). The list also holds every
+    /// identical line between two such pairs of one matched run, with ONE
+    /// [`SegmentKind::Equal`] segment, so a run of listed lines has no number gap; a listed line
+    /// with no added or removed segment is such an identical line. Empty at
+    /// [`Whitespace::Exact`], in [`DiffOptions::summary`] mode, for binary content and under
+    /// `diff.color-words.conflict = "pair"` on a conflicted side.
+    pub whitespace_lines: Vec<HunkLine>,
 }
 
 /// [`crate::Repo::diff`]'s arguments (Story 5.6) — `jj diff`'s.
@@ -447,14 +458,12 @@ pub(crate) fn diff(
         let mut files = reader
             .files(Diff::new(&from_tree, &to_tree), matcher.as_ref(), &records)
             .await?;
-        let description = reader.description(descriptions);
+        let mut description = reader.description(descriptions);
         let mut trees: Vec<&MergedTree> = unmatched_trees.iter().collect();
         trees.extend([&from_tree, &to_tree]);
         crate::mutate::warn_unmatched(workspace, sink, &options.paths, &trees)?;
         if options.summary {
-            for file in &mut files {
-                file.hunks.clear();
-            }
+            summarize(&mut files, description.as_mut());
         }
         Ok(RevisionDiff {
             operation_id: OperationId(readonly.op_id().hex()),
@@ -637,6 +646,7 @@ impl<'a> DiffReader<'a> {
             mode_change: false,
             sections: Vec::new(),
             fingerprint: fingerprint(Some(texts), self.options.mode, None, false),
+            whitespace_lines: whitespace_lines(texts, self.options),
             hunks,
             removed,
             added,
@@ -687,6 +697,14 @@ impl<'a> DiffReader<'a> {
         };
         let mode_change = file_like && executable.before != executable.after;
         let (removed, added) = totals(&hunks);
+        // Paired conflict hunks number conflict-term lines, which no line of the texts matches.
+        let paired = (conflicts.before.is_some() || conflicts.after.is_some())
+            && self.options.words.conflict == ConflictDiffMethod::Pair;
+        let whitespace_lines = if changed && !paired {
+            whitespace_lines(texts, self.options)
+        } else {
+            Vec::new()
+        };
         Ok(FileDiff {
             path: path.target().as_internal_file_string().to_owned(),
             kind,
@@ -699,6 +717,7 @@ impl<'a> DiffReader<'a> {
                 (binary && differ).then_some(texts),
                 mode_change,
             ),
+            whitespace_lines,
             hunks,
             removed,
             added,
@@ -779,6 +798,90 @@ fn fingerprint(
         parts.push(b"x".to_vec());
     }
     encode_hex(&blake2b_hash(&parts))
+}
+
+/// [`DiffOptions::summary`] mode: the files lose their hunks and whitespace lines; the description
+/// block keeps its hunks (`show_inter_diff`), not its whitespace lines.
+fn summarize(files: &mut [FileDiff], description: Option<&mut FileDiff>) {
+    for file in files {
+        file.hunks.clear();
+        file.whitespace_lines.clear();
+    }
+    if let Some(description) = description {
+        description.whitespace_lines.clear();
+    }
+}
+
+/// [`FileDiff::whitespace_lines`] of `texts` under `options`' line compare mode; empty when it
+/// is exact.
+fn whitespace_lines(texts: Diff<&[u8]>, options: WalkOptions) -> Vec<HunkLine> {
+    if options.mode == LineCompareMode::Exact {
+        return Vec::new();
+    }
+    // The CLI never prints a skipped pair, so its marks come from the word diff it runs for an
+    // in-context pair, inlined whatever the alternation limit says.
+    let mut scratch = Walk {
+        options: WalkOptions {
+            words: ColorWordsOptions {
+                max_inline_alternation: None,
+                ..options.words
+            },
+            mode: options.mode,
+        },
+        hunks: Vec::new(),
+        draft: Draft::default(),
+    };
+    let mut number = DiffLineNumber { left: 1, right: 1 };
+    let mut found = Vec::new();
+    for hunk in diff_by_line(texts.into_array(), &options.mode).hunks() {
+        // A line diff of two inputs has exactly two contents per hunk, so the indexing cannot panic.
+        let lines = |side: usize| bytes(hunk.contents[side]).split_inclusive(|byte| *byte == b'\n');
+        match hunk.kind {
+            // A matching hunk pairs its lines one to one: they compare equal under the mode.
+            DiffHunkKind::Matching => {
+                let pairs: Vec<(&[u8], &[u8])> = lines(0).zip(lines(1)).collect();
+                // Identical lines between the run's first and last differing pair are listed too,
+                // so a revealed gap holds every line it spans.
+                let first = pairs.iter().position(|(left, right)| left != right);
+                let last = pairs.iter().rposition(|(left, right)| left != right);
+                for (index, (left, right)) in pairs.into_iter().enumerate() {
+                    let segments = if left != right {
+                        Some(pair_segments(&mut scratch, Diff::new(left, right), number))
+                    } else if first.is_some_and(|first| first < index) && last.is_some_and(|last| index < last) {
+                        Some(segments([(SegmentKind::Equal, left)]))
+                    } else {
+                        None
+                    };
+                    if let Some(segments) = segments {
+                        found.push(HunkLine {
+                            kind: HunkLineKind::Context,
+                            left: Some(number.left),
+                            right: Some(number.right),
+                            segments,
+                        });
+                    }
+                    number.left += 1;
+                    number.right += 1;
+                }
+            }
+            DiffHunkKind::Different => {
+                number.left += to_u32(lines(0).count());
+                number.right += to_u32(lines(1).count());
+            }
+        }
+    }
+    found
+}
+
+/// The segments of jj-lib's word diff of one line pair at `number`, drafted by `scratch`.
+fn pair_segments(scratch: &mut Walk, pair: Diff<&[u8]>, number: DiffLineNumber) -> Vec<Segment> {
+    scratch.diff_lines(pair, number, ROLES, true);
+    let drafted = std::mem::take(&mut scratch.draft.lines);
+    segments(drafted.iter().flat_map(|line| {
+        line.segments
+            .iter()
+            .map(|segment| (segment.kind, segment.text.as_bytes()))
+    }))
 }
 
 /// A side's executable bit when it is file-like, as the builtin diff editor reads it
@@ -1374,8 +1477,8 @@ mod tests {
     use jj_lib::merge::{Diff, Merge, SameChange};
 
     use super::{
-        fingerprint, hunks_of, section_keys, totals, ColorWordsOptions, ConflictDiffMethod, ConflictTerms, Hunk,
-        HunkKey, HunkLine, HunkLineKind, SegmentKind, WalkOptions,
+        fingerprint, hunks_of, section_keys, totals, whitespace_lines, ColorWordsOptions, ConflictDiffMethod,
+        ConflictTerms, Hunk, HunkKey, HunkLine, HunkLineKind, SegmentKind, WalkOptions,
     };
     use crate::source_symbol::SourceLanguage;
 
@@ -2008,5 +2111,99 @@ mod tests {
             ]
         );
         assert_eq!(hunks.len(), 3);
+    }
+
+    /// Ralph's `text_field.dart` edit (Story 10.41): a `TextField` wrapped in `Semantics(`.
+    const TEXT_FIELD_OLD: &str = "  Widget build(BuildContext context) {\n    \
+        final prefixIcon = this.prefixIcon;\n    final opacity = enabled ? 1.0 : 0.38;\n\n    \
+        return TextField(\n      controller: controller,\n      enabled: enabled,\n      \
+        style: textStyle,\n      keyboardType: keyboardType,\n      textInputAction: textInputAction,\n      \
+        textCapitalization: textCapitalization,\n      autocorrect: autocorrect,\n      \
+        enableSuggestions: enableSuggestions,\n      focusNode: focusNode,\n      \
+        obscureText: obscureText,\n      decoration: InputDecoration(\n        label: label,\n        \
+        hintText: hintText,\n        helperText: helperText,\n        error: error,\n        \
+        prefixIcon: prefixIcon != null ? Opacity(opacity: opacity, child: prefixIcon) : null,\n        \
+        suffixIcon: _buildTrailing(),\n        counterText: counterText,\n        \
+        alignLabelWithHint: alignLabelWithHint,\n      ),\n      onChanged: onChanged,\n      \
+        onSubmitted: onSubmitted,\n      autofocus: autofocus,\n      maxLength: maxLength,\n      \
+        minLines: minLines,\n      maxLines: maxLines,\n      buildCounter: buildCounter,\n    );\n  }\n}\n";
+
+    /// [`TEXT_FIELD_OLD`] after the edit: every line from `controller:` to `buildCounter:` moved
+    /// right by two spaces.
+    fn text_field_new() -> String {
+        let lines: Vec<&str> = TEXT_FIELD_OLD.split_inclusive('\n').collect();
+        let mut new = lines[..4].concat();
+        new.push_str("    return Semantics(\n      identifier: identifier,\n      child: TextField(\n");
+        for line in &lines[5..32] {
+            new.push_str("  ");
+            new.push_str(line);
+        }
+        new.push_str("      ),\n");
+        new.push_str(&lines[32..].concat());
+        new
+    }
+
+    /// At `-w` and `-b` every re-indented `text_field.dart` line is listed, in file order, with
+    /// both numbers and the two added spaces marked; exact lists none.
+    #[test]
+    fn whitespace_lines_list_every_reindented_pair() {
+        let new = text_field_new();
+        let texts = Diff::new(TEXT_FIELD_OLD.as_bytes(), new.as_bytes());
+        for mode in [LineCompareMode::IgnoreAllSpace, LineCompareMode::IgnoreSpaceChange] {
+            let lines = whitespace_lines(texts, options(3, Some(3), mode));
+            assert_eq!(lines.len(), 27, "{mode:?}");
+            let numbers: Vec<(Option<u32>, Option<u32>)> = lines.iter().map(|line| (line.left, line.right)).collect();
+            let expected: Vec<(Option<u32>, Option<u32>)> = (6..=32).map(|left| (Some(left), Some(left + 2))).collect();
+            assert_eq!(numbers, expected, "{mode:?}");
+            assert!(lines.iter().all(|line| line.kind == HunkLineKind::Context));
+            assert_eq!(line(&lines[0]), "    6    8|      {+  +}controller: controller,");
+            assert_eq!(line(&lines[26]), "   32   34|      {+  +}buildCounter: buildCounter,");
+        }
+        let exact = options(3, Some(3), LineCompareMode::Exact);
+        assert!(whitespace_lines(texts, exact).is_empty());
+    }
+
+    /// A whitespace-only change the ignoring diff skips is still listed; an alternation limit of
+    /// 0 still inlines its marks.
+    #[test]
+    fn whitespace_lines_list_a_pair_in_a_skipped_range() {
+        let texts = Diff::new(&b"a b\nc\n"[..], &b"a  b\nc\n"[..]);
+        let lines = whitespace_lines(texts, options(3, Some(0), LineCompareMode::IgnoreAllSpace));
+        assert_eq!(lines.iter().map(line).collect::<Vec<_>>(), ["    1    1|a {+ +}b"]);
+        // A changed line between moves the numbers on.
+        let texts = Diff::new(&b"x\na b\n"[..], &b"y\nz\na  b\n"[..]);
+        let lines = whitespace_lines(texts, options(3, Some(3), LineCompareMode::IgnoreSpaceChange));
+        assert_eq!(lines.iter().map(line).collect::<Vec<_>>(), ["    2    3|a {+ +}b"]);
+    }
+
+    /// An identical line between two re-indented lines of one matched run is listed with one
+    /// equal segment; identical lines before the first or after the last such pair are not.
+    #[test]
+    fn whitespace_lines_list_identical_lines_between_pairs() {
+        let texts = Diff::new(&b"top\nx\n\ny\nend\n"[..], &b"top\n  x\n\n  y\nend\n"[..]);
+        let lines = whitespace_lines(texts, options(3, Some(3), LineCompareMode::IgnoreAllSpace));
+        assert_eq!(
+            lines.iter().map(line).collect::<Vec<_>>(),
+            ["    2    2|{+  +}x", "    3    3|", "    4    4|{+  +}y"]
+        );
+        let blank = &lines[1];
+        assert_eq!(blank.segments.len(), 1);
+        assert_eq!(blank.segments[0].kind, SegmentKind::Equal);
+        assert_eq!(blank.text(), "\n");
+    }
+
+    /// A pair that differs only in the file's missing final newline is listed with the newline as
+    /// a removed segment, so it counts as whitespace-only, not as identical.
+    #[test]
+    fn whitespace_lines_of_a_missing_final_newline() {
+        let texts = Diff::new(&b"a\nb\n"[..], &b"a\nb"[..]);
+        let lines = whitespace_lines(texts, options(3, Some(3), LineCompareMode::IgnoreAllSpace));
+        assert_eq!(lines.iter().map(line).collect::<Vec<_>>(), ["    2    2|b"]);
+        let kinds: Vec<_> = lines[0]
+            .segments
+            .iter()
+            .map(|segment| (segment.kind, segment.text.as_str()))
+            .collect();
+        assert_eq!(kinds, [(SegmentKind::Equal, "b"), (SegmentKind::Removed, "\n")]);
     }
 }

@@ -5,6 +5,7 @@
 // test-flutter. Since 10.12 the source lays out through the worker; [_Counting] records the requests.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -14,7 +15,7 @@ import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_stack_store.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart'
-    show DiffFoldRow, DiffLineRow, DiffRow, IgnoredLines, hunkLineParts, whitespaceRows;
+    show DiffBlock, DiffGapRow, DiffLineRow, DiffRow, diffBlockRows, diffBlocks, exactRows, ignoringOf;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/view_state_cleanup.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
@@ -65,8 +66,61 @@ Future<void> until(bool Function() done) async {
   expect(done(), isTrue);
 }
 
-/// What whitespace-ignoring rows show (Story 10.33): the changed rows' new texts, the dimmed ones', the folds.
-typedef _RowSummary = ({List<String> changed, List<String> dimmed, int folds});
+/// What whitespace-ignoring rows show (Story 10.41): the changed rows' new texts, the context rows', the gap rows and
+/// the whitespace-only parts' folds among them.
+typedef _RowSummary = ({List<String> changed, List<String> context, int gaps, int folds});
+
+/// Ralph's `text_field.dart` edit (Story 10.41): a `TextField` wrapped in `Semantics(`.
+const _textFieldOld =
+    '  Widget build(BuildContext context) {\n'
+    '    final prefixIcon = this.prefixIcon;\n'
+    '    final opacity = enabled ? 1.0 : 0.38;\n'
+    '\n'
+    '    return TextField(\n'
+    '      controller: controller,\n'
+    '      enabled: enabled,\n'
+    '      style: textStyle,\n'
+    '      keyboardType: keyboardType,\n'
+    '      textInputAction: textInputAction,\n'
+    '      textCapitalization: textCapitalization,\n'
+    '      autocorrect: autocorrect,\n'
+    '      enableSuggestions: enableSuggestions,\n'
+    '      focusNode: focusNode,\n'
+    '      obscureText: obscureText,\n'
+    '      decoration: InputDecoration(\n'
+    '        label: label,\n'
+    '        hintText: hintText,\n'
+    '        helperText: helperText,\n'
+    '        error: error,\n'
+    '        prefixIcon: prefixIcon != null ? Opacity(opacity: opacity, child: prefixIcon) : null,\n'
+    '        suffixIcon: _buildTrailing(),\n'
+    '        counterText: counterText,\n'
+    '        alignLabelWithHint: alignLabelWithHint,\n'
+    '      ),\n'
+    '      onChanged: onChanged,\n'
+    '      onSubmitted: onSubmitted,\n'
+    '      autofocus: autofocus,\n'
+    '      maxLength: maxLength,\n'
+    '      minLines: minLines,\n'
+    '      maxLines: maxLines,\n'
+    '      buildCounter: buildCounter,\n'
+    '    );\n'
+    '  }\n'
+    '}\n';
+
+/// [_textFieldOld] after the edit: old lines 6-32 moved right by two spaces inside `Semantics(child: …)`.
+String _textFieldNew() {
+  final List<String> lines = _textFieldOld.split('\n');
+  return <String>[
+    ...lines.take(4),
+    '    return Semantics(',
+    '      identifier: identifier,',
+    '      child: TextField(',
+    for (final String line in lines.sublist(5, 32)) '  $line',
+    '      ),',
+    ...lines.skip(32),
+  ].join('\n');
+}
 
 /// Lets the watcher's debounced events of what just ran arrive.
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 600));
@@ -499,7 +553,7 @@ void main() {
         final Hunk hunk = diff.hunks.single;
         expect(hunk.sections, hasLength(3));
         // The part of each changed line, by its new text.
-        final List<int?> parts = hunkLineParts(hunk);
+        final parts = <int?>[for (final DiffRow row in exactRows(hunk)) (row as DiffLineRow).part];
         final partOf = <String, int?>{
           for (var i = 0; i < hunk.lines.length; i++)
             if (hunk.lines[i].kind != HunkLineKind.context)
@@ -542,39 +596,42 @@ void main() {
       return (repo, model, at, (await repo.handle.show(revset: at)).single);
     }
 
-    /// What the inspector shows of `x.txt` at [commitId] with [mode] ignored: the exact read's hunks through
-    /// [whitespaceRows] over the read at [mode] — the inspector's two reads, through [RepoGraphDetails].
-    Future<({FileDiff exact, List<DiffRow> rows})> shown(
+    /// What the inspector shows of `x.txt` at [commitId] with [mode] ignored (Story 10.41): the exact read's hunks as
+    /// blocks over the read at [mode] — the inspector's two reads, through [RepoGraphDetails] — and their rows.
+    Future<({FileDiff exact, FileDiff ignoring, List<DiffBlock> blocks, List<DiffRow> rows})> shown(
       ProjectRepo repo,
       String commitId,
       DiffWhitespace mode, {
-      Set<HunkKey> revealed = const <HunkKey>{},
+      bool revealed = false,
     }) async {
       final details = RepoGraphDetails(repo, FakeProjectsEnvironment(), root: temp.path);
       final FileDiff exact = (await details.diff(commitId, paths: const <String>['x.txt'])).files.single;
-      final Diff ignoring = await details.diff(commitId, paths: const <String>['x.txt'], whitespace: mode);
-      final ignored = IgnoredLines.of(ignoring.files.where((file) => file.path == 'x.txt').firstOrNull);
+      final Diff read = await details.diff(commitId, paths: const <String>['x.txt'], whitespace: mode);
+      final FileDiff ignoring = ignoringOf('x.txt', read.files.where((file) => file.path == 'x.txt').firstOrNull);
+      final List<DiffBlock> blocks = diffBlocks(exact, ignoring);
       return (
         exact: exact,
-        rows: <DiffRow>[for (final Hunk hunk in exact.hunks) ...?whitespaceRows(hunk, ignored, revealed: revealed)],
+        ignoring: ignoring,
+        blocks: blocks,
+        rows: <DiffRow>[for (final DiffBlock block in blocks) ...diffBlockRows(block, revealed: revealed)],
       );
     }
 
     String newText(HunkLine line) =>
         line.segments.where((s) => s.kind != SegmentKind.removed).map((s) => s.text).join();
 
-    /// The new texts (trimmed) of the changed rows, and of the dimmed ones apart.
+    /// The new texts (trimmed) of the changed rows and of the context rows, the gap rows and the folds among them.
     _RowSummary summaryOf(List<DiffRow> rows) => (
       changed: <String>[
         for (final DiffRow row in rows)
-          if (row case DiffLineRow(:final HunkLine line, whitespaceOnly: false) when line.kind != HunkLineKind.context)
-            newText(line).trim(),
+          if (row case DiffLineRow(:final HunkLine line) when line.kind != HunkLineKind.context) newText(line).trim(),
       ],
-      dimmed: <String>[
+      context: <String>[
         for (final DiffRow row in rows)
-          if (row case DiffLineRow(:final HunkLine line, whitespaceOnly: true)) newText(line).trim(),
+          if (row case DiffLineRow(:final HunkLine line) when line.kind == HunkLineKind.context) newText(line).trim(),
       ],
-      folds: rows.whereType<DiffFoldRow>().length,
+      gaps: rows.whereType<DiffGapRow>().length,
+      folds: rows.whereType<DiffGapRow>().where((gap) => gap.part != null).length,
     );
 
     test(
@@ -585,7 +642,7 @@ void main() {
           'build(\n  child: Foo(\n    a: 1,\n  ),\n)\n',
           'build(\n  child: Padding(\n    padding: p,\n    child: Foo(\n      a: 1,\n    ),\n  ),\n)\n',
         );
-        final (:FileDiff exact, :List<DiffRow> rows) = await shown(
+        final (:FileDiff exact, ignoring: _, blocks: _, :List<DiffRow> rows) = await shown(
           repo,
           entry.change.commitId,
           DiffWhitespace.ignoreSpaceChange,
@@ -594,13 +651,63 @@ void main() {
         final List<String> changed = summaryOf(rows).changed;
         expect(changed, containsAll(<String>['child: Padding(', 'padding: p,']));
         expect(changed.toSet().difference(<String>{'child: Padding(', 'padding: p,', '),'}), isEmpty);
-        final context = <String>[
-          for (final DiffRow row in rows)
-            if (row case DiffLineRow(:final HunkLine line) when line.kind == HunkLineKind.context) newText(line).trim(),
-        ];
-        expect(context, containsAll(<String>['child: Foo(', 'a: 1,']), reason: 'the re-indented lines');
+        expect(summaryOf(rows).context, containsAll(<String>['child: Foo(', 'a: 1,']), reason: 'the re-indented lines');
       },
     );
+
+    test('Story 10.41: text_field.dart under -w shows exactly the ignoring read: one block, one gap of 21, +4 −1, one '
+        'part tying both exact sections; committing that part commits the new file whole', () async {
+      final (ProjectRepo repo, GraphViewModel model, String at, ShowEntry entry) = await rewriteRepo(
+        'text-field',
+        _textFieldOld,
+        _textFieldNew(),
+      );
+      final (:FileDiff exact, :FileDiff ignoring, :List<DiffBlock> blocks, :List<DiffRow> rows) = await shown(
+        repo,
+        entry.change.commitId,
+        DiffWhitespace.ignoreAllSpace,
+      );
+      final DiffBlock block = blocks.single;
+      expect(block.exact, same(exact.hunks.single));
+      expect((block.hunk.added, block.hunk.removed), (4, 1));
+      // Section 2 (old 26–32 removed) pairs with new 28–34 in section 1: tied into one part, one checkbox.
+      expect(exact.sections, hasLength(2));
+      expect(block.parts, <List<HunkKey>>[exact.sections]);
+      expect(block.hunk.sections, exact.sections);
+      // The line rows are the ignoring read's lines, in order; one gap stands for the 21 lines jj skips.
+      expect(
+        <HunkLine>[for (final DiffRow row in rows) ?(row is DiffLineRow ? row.line : null)],
+        <HunkLine>[for (final Hunk hunk in ignoring.hunks) ...hunk.lines],
+      );
+      final DiffGapRow gap = rows.whereType<DiffGapRow>().single;
+      expect((gap.count, gap.lines.length, gap.lines.first.left, gap.lines.first.right), (21, 21, 9, 11));
+      expect(
+        rows.whereType<DiffLineRow>().where((row) => row.line.kind == HunkLineKind.removed && row.line.left! > 25),
+        isEmpty,
+        reason: 'nothing removed below buildCounter',
+      );
+      expect(ignoring.whitespaceLines, hasLength(27));
+
+      // A pick opens the gap without Hide.
+      final DiffGapRow picked = diffBlockRows(block, revealed: true).whereType<DiffGapRow>().single;
+      expect((picked.open, picked.hideable), (true, false));
+
+      final GraphActionResult result = await model.run(
+        GraphCommit(
+          at,
+          message: const <String>['Wrap'],
+          hunks: HunkChoice(
+            left: entry.parentTreeIds,
+            files: <FileSelection>[FileSelection.hunks('x.txt', block.hunk.sections)],
+          ),
+        ),
+      );
+      expect(result, isA<GraphActionDone>(), reason: result is GraphActionRefused ? '${result.error}' : null);
+      final String committed = utf8.decode(
+        (await repo.handle.fileShow(paths: const <String>['x.txt'], revision: at)).files.single.content,
+      );
+      expect(committed, _textFieldNew(), reason: 'no field twice, balanced brackets');
+    });
 
     test('Story 10.33: a b → a  b folds under -b and -w; a b → ab folds under -w, stays changed under -b', () async {
       const lines = 'one\ntwo\na b\nfour\nfive\n';
@@ -635,7 +742,7 @@ void main() {
     });
 
     test(
-      'Story 10.33: under -w a picked part shows its re-indented line dimmed, and committing the part takes it',
+      'Story 10.41: under -w a re-indented line in the context shows with its marks, and committing the part takes it',
       () async {
         final (ProjectRepo repo, GraphViewModel model, String at, ShowEntry entry) = await rewriteRepo(
           'pick-reindent',
@@ -643,14 +750,20 @@ void main() {
           'a\nnew\n  keep\nb\nc\nd\ne\nf\ng\nh\n',
         );
         final String commitId = entry.change.commitId;
-        final (:FileDiff exact, :List<DiffRow> rows) = await shown(repo, commitId, DiffWhitespace.ignoreAllSpace);
+        final (:FileDiff exact, ignoring: _, blocks: _, :List<DiffRow> rows) = await shown(
+          repo,
+          commitId,
+          DiffWhitespace.ignoreAllSpace,
+        );
         final HunkKey part = exact.hunks.single.sections.single;
         expect(summaryOf(rows).changed, contains('new'));
-        expect(summaryOf(rows).changed, isNot(contains('keep')), reason: 'not picked: it reads as context');
-        final _RowSummary picked = summaryOf(
-          (await shown(repo, commitId, DiffWhitespace.ignoreAllSpace, revealed: <HunkKey>{part})).rows,
-        );
-        expect(picked.dimmed, contains('keep'));
+        expect(summaryOf(rows).changed, isNot(contains('keep')), reason: 'it reads as context');
+        final HunkLine keep = rows
+            .whereType<DiffLineRow>()
+            .map((row) => row.line)
+            .singleWhere((line) => line.text == '  keep\n');
+        expect(keep.segments.map((s) => (s.kind, s.text)), contains((SegmentKind.added, '  ')), reason: "jj's mark");
+        expect(summaryOf(rows).gaps, 0, reason: 'inside the context: no gap row');
 
         final GraphActionResult result = await model.run(
           GraphCommit(
@@ -669,7 +782,7 @@ void main() {
       },
     );
 
-    test('Story 10.33: under -w a whitespace-only part folds; picking its row commits its lines', () async {
+    test('Story 10.41: under -w a whitespace-only part folds; picking its row commits its lines', () async {
       final lines = <String>[for (var i = 1; i <= 30; i++) 'line $i\n'];
       final after = List<String>.of(lines)
         ..[1] = '    line 2\n'
@@ -679,7 +792,7 @@ void main() {
         lines.join(),
         after.join(),
       );
-      final (:FileDiff exact, :List<DiffRow> rows) = await shown(
+      final (exact: _, ignoring: _, :List<DiffBlock> blocks, :List<DiffRow> rows) = await shown(
         repo,
         entry.change.commitId,
         DiffWhitespace.ignoreAllSpace,
@@ -687,7 +800,9 @@ void main() {
       final _RowSummary summary = summaryOf(rows);
       expect(summary.folds, 1);
       expect(summary.changed, <String>['three']);
-      final HunkKey part = exact.hunks.first.sections[(rows.whereType<DiffFoldRow>().single).part];
+      // The fold is the first block's row; its part indexes that block's parts.
+      final List<HunkKey> part = blocks.first.parts[blocks.first.foldParts.single];
+      expect(diffBlockRows(blocks.first).whereType<DiffGapRow>().single.part, blocks.first.foldParts.single);
 
       final GraphActionResult result = await model.run(
         GraphCommit(
@@ -696,7 +811,7 @@ void main() {
           hunks: HunkChoice(
             left: entry.parentTreeIds,
             files: <FileSelection>[
-              FileSelection.hunks('x.txt', <HunkKey>[part]),
+              FileSelection.hunks('x.txt', part),
             ],
           ),
         ),

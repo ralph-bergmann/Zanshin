@@ -54,7 +54,7 @@ typedef InspectorDraft = ({String summary, String details});
 ///   `general.diffWordMarks` ([wordMarks], Story 5.14), which only changes how the loaded diff is drawn. The split
 ///   between files and diff takes its share per layout from `layout` in [settings] ([filesShare], Story 10.38).
 ///   Story 10.33: `general.diffWhitespace` ([whitespace]) is followed too; while it ignores whitespace the focused file
-///   is also read at `-b` / `-w` ([focusedIgnored]), and the diff options menu writes `diff.color-words.context`
+///   is also read at `-b` / `-w` ([focusedIgnoring]), and the diff options menu writes `diff.color-words.context`
 ///   ([contextLines]) through [details]. The summary and the Viewed fingerprints stay exact.
 /// - **Composer** (Story 10.25): the checked files of the selection — @ starts with all, another change with none,
 ///   reset on a selection change, kept to the still-listed paths on a reload — and a composer draft per change key;
@@ -121,8 +121,8 @@ class InspectorViewModel extends ChangeNotifier {
   String? _focused;
   FileDiff? _focusedDiff;
   FileDiff? _previousDiff;
-  IgnoredLines? _focusedIgnored;
-  IgnoredLines? _previousIgnored;
+  FileDiff? _focusedIgnoring;
+  FileDiff? _previousIgnoring;
   ZanshinFfiException? _focusError;
   var _focusSerial = 0;
 
@@ -191,11 +191,12 @@ class InspectorViewModel extends ChangeNotifier {
   /// its scroll offset); null once the new diff or a refusal arrives.
   FileDiff? get previousDiff => _previousDiff;
 
-  /// What the read at [whitespace] says about [focusedDiff]'s file; null while whitespace shows (Story 10.33).
-  IgnoredLines? get focusedIgnored => _focusedIgnored;
+  /// [focusedDiff]'s file as the read at [whitespace] lists it ([ignoringOf]); null while whitespace shows (Stories
+  /// 10.33, 10.41).
+  FileDiff? get focusedIgnoring => _focusedIgnoring;
 
-  /// [focusedIgnored] of [previousDiff].
-  IgnoredLines? get previousIgnored => _previousIgnored;
+  /// [focusedIgnoring] of [previousDiff].
+  FileDiff? get previousIgnoring => _previousIgnoring;
 
   /// The focused diff's refusal.
   ZanshinFfiException? get focusError => _focusError;
@@ -254,10 +255,10 @@ class InspectorViewModel extends ChangeNotifier {
   void _keepPrevious() {
     if (_focusedDiff != null) {
       _previousDiff = _focusedDiff;
-      _previousIgnored = _focusedIgnored;
+      _previousIgnoring = _focusedIgnoring;
     }
     _focusedDiff = null;
-    _focusedIgnored = null;
+    _focusedIgnoring = null;
   }
 
   /// Shows [path]'s diff (one read, two while whitespace is ignored); on the focused path after a refusal it reads
@@ -477,7 +478,7 @@ class InspectorViewModel extends ChangeNotifier {
     final String? commitId = _commitId;
     if (path == null || commitId == null || _summary == null) {
       _focusedDiff = null;
-      _focusedIgnored = null;
+      _focusedIgnoring = null;
       _focusError = null;
       return;
     }
@@ -491,9 +492,9 @@ class InspectorViewModel extends ChangeNotifier {
         FileDiff? fileOf(Diff diff) => diff.files.where((file) => file.path == path).firstOrNull;
         if (serial == _focusSerial) {
           _focusedDiff = fileOf(diffs.first);
-          _focusedIgnored = diffs.length > 1 ? IgnoredLines.of(fileOf(diffs.last)) : null;
+          _focusedIgnoring = diffs.length > 1 ? ignoringOf(path, fileOf(diffs.last)) : null;
           _previousDiff = null;
-          _previousIgnored = null;
+          _previousIgnoring = null;
           _focusError = null;
           _notify();
         }
@@ -501,9 +502,9 @@ class InspectorViewModel extends ChangeNotifier {
         _log.warning('diff refused: ${error.code}');
         if (serial == _focusSerial) {
           _focusedDiff = null;
-          _focusedIgnored = null;
+          _focusedIgnoring = null;
           _previousDiff = null;
-          _previousIgnored = null;
+          _previousIgnoring = null;
           _focusError = error;
           _notify();
         }
@@ -1053,8 +1054,8 @@ class InspectorViewModel extends ChangeNotifier {
     _focused = null;
     _focusedDiff = null;
     _previousDiff = null;
-    _focusedIgnored = null;
-    _previousIgnored = null;
+    _focusedIgnoring = null;
+    _previousIgnoring = null;
     _focusError = null;
     _focusSerial++;
   }
@@ -1097,8 +1098,8 @@ class InspectorViewModel extends ChangeNotifier {
         if (focused != _focused) {
           _focusedDiff = null;
           _previousDiff = null;
-          _focusedIgnored = null;
-          _previousIgnored = null;
+          _focusedIgnoring = null;
+          _previousIgnoring = null;
           _focusError = null;
         }
         _focused = focused;
@@ -3169,10 +3170,9 @@ class _ChangesState extends State<_Changes> {
                   null => null,
                 },
                 diff: model.focusedDiff ?? model.previousDiff,
-                // A file picked whole without part picks (a rename or copy) shows every line: the commit takes them all.
-                ignored: !pickHunks && model.isPicked(focused)
-                    ? null
-                    : (model.focusedDiff != null ? model.focusedIgnored : model.previousIgnored),
+                ignoring: model.focusedDiff != null ? model.focusedIgnoring : model.previousIgnoring,
+                // A file picked whole opens every gap: the commit takes every line.
+                revealAll: model.isPicked(focused),
                 whitespace: model.whitespace,
                 onWhitespaceChanged: model.setWhitespace,
                 contextLines: model.contextLines,

@@ -25183,6 +25183,16 @@ class HunkObjectBuilder extends fb.ObjectBuilder {
 ///  `ui.conflict-marker-style`. It covers content only (no path, no kind): every content-less
 ///  change (a pure rename, an empty file added) shares one value, so a Viewed key combines it with
 ///  the path.
+///
+///  Story 10.41 appends `whitespace_lines`, always written: at `-w` / `-b` every line pair the
+///  ignoring line diff matches whose bytes differ (the lines that changed only in whitespace,
+///  inside or outside the hunks' context), in file order, each a `Context` line with both numbers
+///  and the segments of jj-lib's word diff of that one pair, always inlined (the CLI diffs a
+///  context run as one block, so its marks can differ under the alternation limit). It also holds
+///  every identical line between two such pairs of one matched run, with ONE `Equal` segment, so a
+///  run of listed lines has no number gap; a listed line with no `Added` / `Removed` segment is
+///  such an identical line. Empty at exact, in summary mode, for binary content and under
+///  `diff.color-words.conflict = "pair"` on a conflicted side.
 class FileDiff {
   FileDiff._(this._bc, this._bcOffset);
   factory FileDiff(List<int> bytes) {
@@ -25205,10 +25215,12 @@ class FileDiff {
   int get removed => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 18, 0);
   int get added => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 20, 0);
   String? get fingerprint => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 22);
+  List<HunkLine>? get whitespaceLines =>
+      const fb.ListReader<HunkLine>(HunkLine.reader).vTableGetNullable(_bc, _bcOffset, 24);
 
   @override
   String toString() {
-    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}, kind: ${kind}, fromPath: ${fromPath}, removed: ${removed}, added: ${added}, fingerprint: ${fingerprint}}';
+    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}, kind: ${kind}, fromPath: ${fromPath}, removed: ${removed}, added: ${added}, fingerprint: ${fingerprint}, whitespaceLines: ${whitespaceLines}}';
   }
 }
 
@@ -25225,7 +25237,7 @@ class FileDiffBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(10);
+    fbBuilder.startTable(11);
   }
 
   int addPathOffset(int? offset) {
@@ -25278,6 +25290,11 @@ class FileDiffBuilder {
     return fbBuilder.offset;
   }
 
+  int addWhitespaceLinesOffset(int? offset) {
+    fbBuilder.addOffset(10, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -25294,6 +25311,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
   final int? _removed;
   final int? _added;
   final String? _fingerprint;
+  final List<HunkLineObjectBuilder>? _whitespaceLines;
 
   FileDiffObjectBuilder({
     String? path,
@@ -25306,6 +25324,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     int? removed,
     int? added,
     String? fingerprint,
+    List<HunkLineObjectBuilder>? whitespaceLines,
   }) : _path = path,
        _binary = binary,
        _modeChange = modeChange,
@@ -25315,7 +25334,8 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
        _fromPath = fromPath,
        _removed = removed,
        _added = added,
-       _fingerprint = fingerprint;
+       _fingerprint = fingerprint,
+       _whitespaceLines = whitespaceLines;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -25329,7 +25349,10 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_hunks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
     final int? fromPathOffset = _fromPath == null ? null : fbBuilder.writeString(_fromPath!);
     final int? fingerprintOffset = _fingerprint == null ? null : fbBuilder.writeString(_fingerprint!);
-    fbBuilder.startTable(10);
+    final int? whitespaceLinesOffset = _whitespaceLines == null
+        ? null
+        : fbBuilder.writeList(_whitespaceLines!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(11);
     fbBuilder.addOffset(0, pathOffset);
     fbBuilder.addBool(1, _binary);
     fbBuilder.addBool(2, _modeChange);
@@ -25340,6 +25363,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint32(7, _removed);
     fbBuilder.addUint32(8, _added);
     fbBuilder.addOffset(9, fingerprintOffset);
+    fbBuilder.addOffset(10, whitespaceLinesOffset);
     return fbBuilder.endTable();
   }
 

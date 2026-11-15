@@ -176,6 +176,7 @@ final class FileDiff {
     required this.removed,
     required this.added,
     required this.fingerprint,
+    this.whitespaceLines = const [],
   });
 
   /// The repo-relative path, in jj's internal `/`-separated form — a copy's or
@@ -221,6 +222,17 @@ final class FileDiff {
   /// pure rename, an empty file added) shares one value, so a Viewed key
   /// combines it with [path].
   final String fingerprint;
+
+  /// At `-w` / `-b` (Story 10.41): every line that changed only in whitespace,
+  /// inside or outside the hunks' context, in file order — a
+  /// [HunkLineKind.context] line with both numbers and the segments of jj's
+  /// word diff of that one pair, always inlined. It also holds every identical
+  /// line between two such lines of one matched run, with ONE
+  /// [SegmentKind.equal] segment, so a revealed run has no number gap; a line
+  /// with no added or removed segment is such an identical line. Empty at
+  /// exact, in summary mode, for binary content and under
+  /// `diff.color-words.conflict = "pair"` on a conflicted side.
+  final List<HunkLine> whitespaceLines;
 }
 
 /// A line-level diff between two revisions: `diff`'s files, in order, pinned
@@ -360,6 +372,7 @@ FileDiff _file(fbs.FileDiff file) => FileDiff(
   removed: file.removed,
   added: file.added,
   fingerprint: file.fingerprint ?? '',
+  whitespaceLines: [for (final fbs.HunkLine line in file.whitespaceLines ?? const []) _line(line)],
 );
 
 Hunk _hunk(fbs.Hunk hunk) => Hunk(

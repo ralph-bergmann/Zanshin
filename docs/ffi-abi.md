@@ -2484,7 +2484,8 @@ call's `CallReport` rides as `warnings` / `precondition` as on every envelope). 
 Diff     { files: [FileDiff], operation_id, commit_ids: [string], from_commit_id, // pins: Story 5.6
            description: FileDiff }                                         // 10.29 appended
 FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk],
-           kind: ChangeKind, from_path, removed, added, fingerprint }        // 5.6 appended
+           kind: ChangeKind, from_path, removed, added, fingerprint,         // 5.6 appended
+           whitespace_lines: [HunkLine] }                                  // 10.41 appended
 Hunk     { before_start, before_end, after_start, after_end, symbol,
            sections: [HunkKey], removed, added, lines: [HunkLine] }
 HunkLine { kind: HunkLineKind (Context | Removed | Added | Changed | ConflictHeader), text,
@@ -2516,6 +2517,17 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   `diff.color-words.max-inline-alternation` times (`-1` = always, `0` = never); otherwise it is its
   left lines, then its right lines, with block-wide word marks. `HunkLineKind`'s member order is
   the wire value — append only.
+- **Whitespace lines (10.41).** `whitespace_lines`, always written: at `-w` / `-b` every line pair
+  the ignoring line diff matches whose bytes differ — the lines that changed only in whitespace,
+  inside or outside the hunks' context — in file order. Each is a `Context` line with both numbers
+  and the segments of jj-lib's word diff of that one pair, always inlined (the CLI diffs a context
+  run as one block, so its marks can differ under the alternation limit), so a view can show a
+  whitespace-only line the CLI skips without comparing texts itself. The list also holds every
+  identical line between two such pairs of one matched run, with ONE `Equal` segment, so a revealed
+  run has no number gap; a listed line with no `Added` / `Removed` segment is such an identical
+  line. Empty at exact, in summary mode, for binary content and under
+  `diff.color-words.conflict = "pair"` on a conflicted side. The description block carries them
+  too.
 - **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
   their input order. `binary` and mode-only files carry no hunks; in summary mode no file does.
   `binary` = either side's content is binary (a NUL byte in its first 8000 bytes), checked before

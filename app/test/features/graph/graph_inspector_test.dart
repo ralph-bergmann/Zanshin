@@ -19,7 +19,7 @@ import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/immutable_reasons.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart'
-    show DiffWordMarks, IgnoredLines, InspectorDiffHunk, InspectorDiffView, diffNewLineAt;
+    show DiffWordMarks, InspectorDiffHunk, InspectorDiffView, diffNewLineAt;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/project_files.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
@@ -1866,10 +1866,10 @@ void main() {
         unorderedEquals(<DiffWhitespace>[DiffWhitespace.exact, DiffWhitespace.ignoreAllSpace]),
       );
       expect(details.diffs.where((d) => d.$3), hasLength(summaries), reason: 'the summary is not read again');
-      expect(inspector.focusedIgnored, isNotNull);
+      expect(inspector.focusedIgnoring, isNotNull);
       final InspectorDiffView view = tester.widget(find.byType(InspectorDiffView));
       expect(view.whitespace, DiffWhitespaceSetting.ignoreAll);
-      expect(view.ignored, same(inspector.focusedIgnored));
+      expect(view.ignoring, same(inspector.focusedIgnoring));
       expect(tester.widget<ZsMenuButton>(optionsMenu()).active, isTrue);
       expect(optionsRow(tester, 'diff-options-whitespace-ignoreAll').checked, isTrue);
 
@@ -1878,7 +1878,7 @@ void main() {
       inspector.setWhitespace(DiffWhitespaceSetting.showAll);
       await settle(tester);
       expect(details.modes.skip(again), <DiffWhitespace>[DiffWhitespace.exact]);
-      expect(inspector.focusedIgnored, isNull);
+      expect(inspector.focusedIgnoring, isNull);
       await unmount(tester);
     });
 
@@ -1896,10 +1896,37 @@ void main() {
     });
 
     testWidgets(
-      'Story 10.33: a file picked whole without part picks shows its exact lines while whitespace is ignored',
+      'Story 10.41: a file picked whole without part picks opens its whitespace gaps, without Hide',
       (
         tester,
       ) async {
+        // The ignoring read lists no changed line, only one that changed in whitespace.
+        details.ignoredDiffs[_mutable] = <FileDiff>[
+          const FileDiff(
+            path: 'src/a.dart',
+            kind: FileChangeKind.modified,
+            fromPath: null,
+            binary: false,
+            modeChange: false,
+            sections: <HunkKey>[],
+            hunks: <Hunk>[],
+            removed: 0,
+            added: 0,
+            fingerprint: 'w',
+            whitespaceLines: <HunkLine>[
+              HunkLine(
+                kind: HunkLineKind.context,
+                text: '  keep\n',
+                segments: <Segment>[
+                  Segment(kind: SegmentKind.added, text: '  '),
+                  Segment(kind: SegmentKind.equal, text: 'keep\n'),
+                ],
+                left: 2,
+                right: 2,
+              ),
+            ],
+          ),
+        ];
         await tester.runAsync(
           () => settings.update(
             (s) => s.copyWith(general: s.general.copyWith(diffWhitespace: DiffWhitespaceSetting.ignoreAll)),
@@ -1908,12 +1935,14 @@ void main() {
         await pump(tester);
         await settle(tester);
         expect(inspector.hunkable('src/a.dart'), isFalse, reason: 'no sections: it takes no part picks');
-        // The ignoring read reports nothing changed: every line reads as whitespace only.
-        expect(find.text('Only whitespace changed in this file.'), findsOneWidget);
+        expect(find.text('1 more line with only whitespace changes'), findsOneWidget);
+        expect(find.text('  keep'), findsNothing);
         inspector.togglePick('src/a.dart');
         await settle(tester);
-        expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).ignored, isNull);
-        expect(find.text('new a'), findsOneWidget, reason: 'the whole pick takes every line, so every line shows');
+        expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).revealAll, isTrue);
+        expect(find.text('1 line with only whitespace changes'), findsOneWidget);
+        expect(find.text('  keep'), findsOneWidget, reason: 'the whole pick takes every line, so every line shows');
+        expect(find.bySemanticsIdentifier('inspector-gap-hide'), findsNothing);
         await unmount(tester);
       },
     );
@@ -1928,7 +1957,7 @@ void main() {
       );
       await pump(tester);
       await settle(tester);
-      final IgnoredLines? before = tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).ignored;
+      final FileDiff? before = tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).ignoring;
       expect(before, isNotNull);
       details.holdDiff = true;
       inspector.configChanged();
@@ -1936,11 +1965,11 @@ void main() {
       expect(details.heldDiffs, hasLength(1));
       expect(inspector.focusedDiff, isNull);
       expect(inspector.previousDiff, isNotNull);
-      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).ignored, same(before));
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).ignoring, same(before));
       final (String key, List<String> paths, Completer<Diff> held) = details.heldDiffs.single;
       held.complete(details.diffOf(key, paths: paths));
       await settle(tester);
-      expect(inspector.focusedIgnored, isNotNull);
+      expect(inspector.focusedIgnoring, isNotNull);
       await unmount(tester);
     });
 

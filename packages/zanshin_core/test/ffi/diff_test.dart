@@ -226,6 +226,45 @@ void main() {
     ]);
   });
 
+  test('a file decodes its whitespace lines, an absent vector as none', () {
+    final Diff diff = decodeDiffEnvelope(
+      fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Diff,
+        data: fbs.DiffObjectBuilder(
+          files: [
+            fbs.FileDiffObjectBuilder(
+              path: 'text_field.dart',
+              whitespaceLines: [
+                fbs.HunkLineObjectBuilder(
+                  kind: fbs.HunkLineKind.Context,
+                  text: '    a\n',
+                  leftLine: 6,
+                  rightLine: 8,
+                  segments: [
+                    _segment(fbs.SegmentKind.Equal, '  '),
+                    _segment(fbs.SegmentKind.Added, '  '),
+                    _segment(fbs.SegmentKind.Equal, 'a\n'),
+                  ],
+                ),
+              ],
+            ),
+            fbs.FileDiffObjectBuilder(path: 'other.dart'),
+          ],
+        ),
+      ).toBytes(),
+    );
+
+    final HunkLine line = diff.files.first.whitespaceLines.single;
+    expect((line.kind, line.left, line.right, line.text), (HunkLineKind.context, 6, 8, '    a\n'));
+    expect(line.segments.map((s) => (s.kind, s.text)), [
+      (SegmentKind.equal, '  '),
+      (SegmentKind.added, '  '),
+      (SegmentKind.equal, 'a\n'),
+    ]);
+    expect(diff.files[1].whitespaceLines, isEmpty);
+  });
+
   test('absent files decode as an empty diff', () {
     final Diff diff = decodeDiffEnvelope(
       fbs.EnvelopeObjectBuilder(
