@@ -12954,24 +12954,25 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Scope.**
 1. **Rows.** While whitespace is ignored (`-b` or `-w`), a file's hunks and lines are the ignoring read's, exactly as `jj diff -w` / `-b` prints them (color-words, the effective context). Nothing of the exact read is mixed into the rows. Lines that differ only in whitespace are context lines with both numbers.
-2. **The count.** A hunk whose range holds lines that changed only in whitespace shows a pill in its header after the range: "N lines changed whitespace only · Show". N counts every such line of the hunk, also those outside the context.
-3. **Show / Hide.** Show brings every such line of that hunk back at its place, with both numbers: the changed whitespace marked (jj's segments: added indentation in the added word colour, removed in the removed one), the text dimmed. The pill then reads "· Hide". Per hunk, for the session, reset with the file and the mode, as 10.33's opened parts.
-4. **A part with only whitespace changes** (no line left under `-w`) keeps its fold row "⋯ N lines changed whitespace only · Show" (10.33); its Show reveals its lines in the same marked form as item 3.
-5. **Picks.** The checkboxes stay on jj's exact parts (`Hunk.sections`, the builtin diff editor's), since `jj split` has no `-w`: a part takes all its lines, whitespace included. Each shown row belongs to the exact part holding its line (a removed line by its left number, an added one by its right, a whitespace-only line by either); a part's checkbox sits on its first shown row; the hunk checkbox is three-state over the parts its rows touch. A picked part shows its hunk's whitespace-only lines as after Show (10.33's rule: a pick never takes a line you did not see). The per-line pill "whitespace only" of 10.33 goes.
-6. **Both layouts.** Side by side shows a whitespace-only line as a pair, marked as in item 3.
+2. **Marks, always.** A line that changed only in whitespace shows its changed whitespace marked (jj's segments: added indentation in the added word colour, removed in the removed one), in the default view too. Nothing is dimmed. *(Design change, Ralph 2026-11-15.)*
+3. **Gap row with Show / Hide.** Whitespace-only lines outside the effective context collapse, as in `jj diff -w`, into a gap row that names them: "N more lines with only whitespace changes" with a Show button. Show opens the gap: the row stays in place above the revealed lines and reads "N lines with only whitespace changes" with a Hide button. The revealed lines sit at their place with both numbers and the marks of item 2. Identical lines that lie between two whitespace-only lines of a gap (blank lines inside a re-indented block) are revealed with them as plain context, so the numbers never jump; the backend lists them too *(Ralph 2026-11-15, question 2a)*. Per gap, for the session, reset with the file and the mode, as 10.33's opened parts. The hunk header carries no pill; whitespace-only lines inside the context have no row and no button. *(Design change, Ralph 2026-11-15: the header bar may be rebuilt, so Show/Hide must not depend on it.)*
+4. **A part with only whitespace changes** (no line left under `-w`) keeps its fold row "⋯ N lines changed whitespace only · Show" (10.33); its Show reveals its lines in the same marked form as item 2.
+5. **Picks.** The checkboxes stay on jj's exact parts (`Hunk.sections`, the builtin diff editor's), since `jj split` has no `-w`: a part takes all its lines, whitespace included. Exact parts that one whitespace pair spans (its left line in one part, its right line in another) are tied into one pickable part, so a pick always commits a valid file *(Ralph 2026-11-15, question 1a; `text_field.dart`: exact section 1 = old 5–24 → new 5–34, section 2 = old 26–32 removed, whose lines pair under `-w` with new 28–34 in section 1)*. Each shown row belongs to the (tied) part holding its line (a removed line by its left number, an added one by its right, a whitespace-only line by either); a part's checkbox sits on its first shown row; the hunk checkbox is three-state over the parts its rows touch. A picked part reveals its hunk's whitespace-only lines as after Show (10.33's rule: a pick never takes a line you did not see). The per-line pill "whitespace only" of 10.33 goes.
+6. **Both layouts.** Side by side shows a whitespace-only line as a pair, marked as in item 2.
 7. **Rust stays the only place that compares lines.** The count and the whitespace-only lines (also outside the context) come from the backend with the ignoring read, if the current read does not carry them; the FFI and `docs/ffi-abi.md` grow as needed.
-8. **DS.** DiffHunk gets the header pill and the marked whitespace-only line (DESIGN-SYSTEM-SYNC entry); the publish waits for a console session.
+8. **DS.** DiffHunk gets the gap row with Show / Hide and the marked whitespace-only line (DESIGN-SYSTEM-SYNC entry); the publish waits for a console session.
 
 **Non-goals.** A change to the exact (Show all whitespace) view; `-w` for Split.
 
 **Depends on.** 10.33, 10.38, 10.40 (done).
 
 **Witnesses.**
-- `text_field.dart`'s case (old `return TextField(` … , new `return Semantics(` / `identifier` / `child: TextField(` … `),`) under `-w`: the rows equal `jj diff -w --color-words`; the header says 27 lines; no line shows as removed below `buildCounter`.
-- After Show: the 27 lines at their place, numbers 77 83 … 103 109, the two added spaces marked; Hide returns to the rows of `jj diff -w`.
-- The automation_overview_page.dart case (a part with a real change and re-indented lines): rows equal `jj diff -w`, the count in the header.
+- `text_field.dart`'s case (old `return TextField(` … , new `return Semantics(` / `identifier` / `child: TextField(` … `),`) under `-w`: the rows equal `jj diff -w --color-words`, the shown re-indented lines marked; the gap row says "21 more lines with only whitespace changes"; no line shows as removed below `buildCounter`.
+- After Show: the gap's lines at their place (with the context's, numbers 77 83 … 103 109), the two added spaces marked, the row above them offering Hide; Hide returns to the rows of `jj diff -w`.
+- A re-indented block with a blank line inside: after Show the blank line is there as context and the numbers run without a jump.
+- The automation_overview_page.dart case (a part with a real change and re-indented lines): rows equal `jj diff -w`, its gap row names the count.
 - A part with only whitespace changes keeps its fold row; picking it then splitting takes its lines.
-- Picking the `text_field.dart` part checks one box and Split takes the whole exact part.
+- Picking the `text_field.dart` change checks one box that takes both exact sections; Split commits a valid file (no field twice, balanced brackets).
 - Marionette, by the console session: both layouts against `design/Whitespace Study.html`.
 
 **Related:** 10.33, 10.38, 10.40.
