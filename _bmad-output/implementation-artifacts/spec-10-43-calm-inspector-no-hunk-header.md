@@ -5,7 +5,7 @@ created: '2026-11-15'
 status: 'done'
 baseline_revision: '3ced4808dc576278da3918182c8567b70a406d7d'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/.claude/skills/design-artifacts/SKILL.md'
@@ -159,6 +159,37 @@ deferred:
   - `[low]` `[patch]` (intent) gap expansion is tested in unified only — a side-by-side ↕ test added.
   - `[false]` `[reject]` (intent) the process rules (deferred mirror, verification notes) cannot be judged from the diff — the spec and deferred-work.md are committed with this run.
 
+### 2026-11-15 — Review pass (follow-up)
+- verdicts: 27 findings — high 0, medium 2, low 20, false 3, maybe-false 2
+- findings:
+  - `[low]` `[patch]` (blind) `left_line_count` counts the text's lines under `diff.color-words.conflict = "pair"` on a conflicted side, whose hunks number conflict-term lines, so the bottom gap's count is off — `hunks.rs` sets 0 when `paired` (as `whitespace_lines` already does); doc comment, schema, `docs/ffi-abi.md`, `zanshin_core` doc and codegen follow; `a_paired_conflict_lists_no_whitespace_lines` asserts 5 materialized, 0 paired.
+  - `[low]` `[reject]` (blind) the description block shows "N unchanged lines" rows with no controls — the spec says "without `readLines`, gap rows show their count but no controls"; the count is accurate (now pinned by tests, see the verification-gap row).
+  - `[low]` `[reject]` (blind) a non-FFI error in `_expand` still escapes `unawaited` as a zone error — the controls are freed (`finally`); the only such error is a closed handle, rare, and the zone handler logs it; a catch-all would hide programming errors.
+  - `[false]` `[reject]` (blind) the operation view can fill an open gap with another commit's lines after a selection switch — `_read` sets `_files` and `_focusedDiff` to null synchronously (`operation_changes.dart:503-508`), so the old diff unmounts and `_expand`'s `!mounted` drops the read.
+  - `[maybe-false]` `[defer]` (blind) carried — the inspector's gap read uses the current commit / mode, not the shown diff's; same claim and code as the first pass's deferred row; not deferred again.
+  - `[low]` `[patch]` (blind) carried — `OperationChangesModel.diffLines` copies `_diffOf`'s revision-form choice by hand; the code reads as logged, both branches tested in the first pass; no new action.
+  - `[low]` `[reject]` (blind) the hover bar follows the pointer only, not keyboard focus — the intent says "While the pointer is on a part's box".
+  - `[low]` `[reject]` (blind) "Show all" has no count in its VoiceOver label and no tooltip — the row's "N unchanged lines" text sits beside it and is read first; a counted label needs a new plural string for a small gain.
+  - `[low]` `[patch]` (blind) the DS prompt example's `parts={[null, 0]}` puts the checkbox on the context line 58 — `DiffHunk.prompt.md` now passes `parts={[null, null, 0]}` (the gap row, line 58, line 59).
+  - `[low]` `[reject]` (blind) no Rust test for a last line without `\n`, an empty left side or summary mode in `left_line_count` — `line_count` is one `split_inclusive` count; summary mode is checked end to end by the `zanshin_core` worker test through the cdylib.
+  - `[low]` `[patch]` (blind) `@inspectorFoldShowTooltip` still describes a folded row as a button; `inspectorFoldText` keeps its "⋯" — the ARB description now names the Show button (`flutter gen-l10n` rerun); the "⋯" stays, as the intent keeps `inspectorFoldText`'s text.
+  - `[low]` `[patch]` (edge) paired conflicts: `left_line_count` against conflict-term numbers — same root as the first blind row; fixed there.
+  - `[low]` `[reject]` (edge) carried — a read returning fewer lines than the gap opens it empty; same claim as the first pass's row for the no-commit case. The real short-read cause found in this pass is the whitespace-only row below.
+  - `[low]` `[reject]` (edge) carried — the view models return `[]` with no commit / selection; same claim and code as the first pass's row.
+  - `[low]` `[reject]` (edge) `_expand` lets a non-FFI error escape — same as the third blind row.
+  - `[false]` `[reject]` (edge) carried — the bottom gap of a last hunk with no rows is marked `top`; refuted in the first pass (blocks never come empty).
+  - `[medium]` `[patch]` (edge) the count is arithmetic, the rows are whatever the read returned — a short read shows fewer rows than the count opened; real for the whitespace-only case below (same root), fixed there.
+  - `[low]` `[patch]` (verification-gap) the description block's `left_line_count` and its count-only gap rows are unpinned — `an_interdiff_shows_a_changed_description` asserts 1, `a_created_commit_…` asserts 0; `operation_changes_test.dart` pins "11 unchanged lines" in the description block, no controls, no read.
+  - `[low]` `[patch]` (verification-gap) the `_hot` reset on a reload is untested — new `inspector_diff_test.dart` test hovers part 2, reloads with other parts and a new fingerprint, and asserts the new part 2 is not edged; it fails with the reset removed.
+  - `[low]` `[reject]` (verification-gap) the description block's count-only rows need an intent decision — same as the second blind row.
+  - `[low]` `[reject]` (intent) the app's whitespace Show / Hide keeps the 10.41 pill while the DS sync line calls it a flat button — "then the button" admits both; the console session's DS comparison settles the look.
+  - `[low]` `[reject]` (intent) only the focused file diff gets the reveal wrapper; the description block has no controls — same as the second blind row.
+  - `[low]` `[reject]` (intent) carried — the `-w` tied-part pick is tested at callback level, not through Split; same claim as the first pass's row.
+  - `[medium]` `[patch]` (intent) a file whose only change is whitespace, at `-w`: the ignoring read has no hunk, so `jj diff -w` prints no context and `diff_lines` returns nothing; opening its gap removed the row and showed no lines — `_DiffBody.build` passes `leftLineCount: 0` when the ignoring read has no hunk (no gaps, as "no hunks get no gap rows"); Rust test `diff_lines_of_a_whitespace_only_change_at_w_are_empty` demonstrates the empty read, widget test asserts no gap at `-w` and the 7-line gap exact.
+  - `[maybe-false]` `[defer]` (intent) carried — a commit switch that keeps the same file diff; same as the first pass's deferred row; not deferred again.
+  - `[low]` `[reject]` (intent) a non-FFI read error escapes — same as the third blind row.
+  - `[false]` `[reject]` (intent) extra changes (number width from `leftLineCount`, 4 px spacer, two DS files) — the width is the first pass's carried reject; the spacer keeps the scroll bar off the last row (its comment); the DS files follow the prop changes; no harm named.
+
 ## Design Notes
 
 - Gaps from the row walk, not from hunk ranges: under `-w` the rows are the ignoring read's (10.41), so holes appear inside blocks too; one rule covers exact hunks, blocks and their insides. The read returns what `jj diff -w` with more context prints there, so the opened lines stay "exactly as the CLI prints them".
@@ -186,6 +217,15 @@ deferred:
 - `app/`: `dart analyze` -- no issues; `dart format --set-exit-if-changed lib test widgetbook integration_test` -- 0 changed; `flutter test test/features/graph test/features/undo_timeline test/widgetbook test/l10n` -- 1600 passed; the added reset test (file / whitespace switch) -- passed.
 - After the review patches: `app/` `dart analyze` -- no issues; `dart format --set-exit-if-changed lib test widgetbook integration_test` -- 0 changed; `flutter test test/features/graph test/features/undo_timeline test/widgetbook test/l10n` -- 1612 passed; `node --check design_system/_ds_bundle.js` -- OK. The patches touched no Rust or `zanshin_core` code.
 - Not run: the full gate and the coverage ratchet (the story loop runs them at its end); Marionette (console session); the parity oracle (no jj verb changed: the new read is `jj diff` with more context).
+
+**Verification notes (follow-up review pass, 2026-11-15; gate rule: no full gate):**
+- `cargo fmt --all --check` -- clean. `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` -- clean.
+- `cargo test -p zanshin-jj --test it -- diff:: hunks:: api_stability::` -- 111 passed (the new `diff_lines_of_a_whitespace_only_change_at_w_are_empty` and the paired / description `left_line_count` assertions included).
+- `cargo test -p zanshin-ffi --test it -- diff_ffi:: ffi_abi_doc_sync::` -- 25 passed.
+- `cargo make codegen` -- exit 0; `envelope_generated.rs` and `envelope_zanshin.ffi_generated.dart` carry the schema comment change, committed.
+- `packages/zanshin_core`: `dart analyze` -- no issues; `dart format --set-exit-if-changed lib test` -- 0 changed; `flutter test test/ffi/diff_test.dart test/worker/diff_test.dart` -- 28 passed.
+- `app/`: `flutter gen-l10n` rerun; `dart analyze` -- no issues; `dart format --set-exit-if-changed lib test widgetbook integration_test` -- 0 changed; `flutter test test/features/graph test/features/undo_timeline test/widgetbook test/l10n` -- 1615 passed. The new hover-reload test fails with the `_hot` reset commented out (checked, then restored).
+- Not run: the full gate, the coverage ratchet, Marionette, the parity oracle (no jj verb changed).
 
 ## Auto Run Result
 
@@ -217,4 +257,24 @@ deferred:
 - Marionette against the study and the DS publish wait for the console session; the full gate and coverage ratchet run at the end of the story loop (new Rust lines in `hunks.rs`, `repo.rs`, `diff.rs` are tested but not measured here).
 - Each gap's first read diffs the whole file with unlimited context: fine for normal files, slower on very large ones.
 - The DS kit lost the hunk header's drag grip; Story 10.27 (drag files and hunks onto a change) must choose a hunk drag handle.
-- Conflict "pair" mode counts conflict terms in line numbers, so gap counts there may be off (edge case, not handled).
+- Conflict "pair" mode counts conflict terms in line numbers, so gap counts there may be off (edge case, not handled). The follow-up pass removed the bottom gap there (`left_line_count` 0); gaps between hunks still use the paired numbers, which the read uses too.
+
+### Follow-up review pass (2026-11-15)
+
+**Summary.** A second review of the finished story (baseline `3ced4808…` to `e95e3651…`). It found one real user-facing defect and closed it: a file whose only change is whitespace, viewed at `-w`, offered gap rows whose read returns nothing (`jj diff -w` prints no context for it), so opening one dropped the row and showed no lines. Such a file now gets no gap rows. Smaller fixes: `left_line_count` is 0 under paired conflicts, the DS prompt example's part index, an ARB description, and tests for the description block's count and the hover reset on reload.
+
+**Files changed.**
+- `crates/zanshin-jj/src/hunks.rs` -- `left_line_count` 0 under `diff.color-words.conflict = "pair"`; doc comment.
+- `schemas/envelope.fbs`, `docs/ffi-abi.md`, `packages/zanshin_core/lib/src/ffi/diff.dart`, generated `envelope_generated.rs` / `envelope_zanshin.ffi_generated.dart` -- the same rule in the docs.
+- `crates/zanshin-jj/tests/it/{diff.rs,hunks.rs}` -- whitespace-only `-w` read is empty; description and paired `left_line_count`.
+- `app/lib/src/features/graph/inspector_diff.dart` -- no gap rows when the ignoring read has no hunk.
+- `app/lib/l10n/app_en.arb` (+ `app_localizations.dart`) -- `@inspectorFoldShowTooltip` description.
+- `app/test/features/graph/inspector_diff_test.dart` -- whitespace-only `-w` file has no gap; hover reset on reload.
+- `app/test/features/undo_timeline/operation_changes_test.dart` -- description block count-only row.
+- `_bmad-output/implementation-artifacts/design_system/components/content/DiffHunk.prompt.md` -- example `parts={[null, null, 0]}`.
+
+**Review findings.** 27 findings (medium 2, low 20, false 3, maybe-false 2). Patched 6 entries: whitespace-only `-w` gaps (medium, with the short-read row), paired `left_line_count` (low, blind + edge), DS prompt part index, ARB description, and the two test gaps (description count, hover reset). Carried 7 rows from the first pass unchanged (the commit-switch deferral twice, the duplicated revision form, the short read, the empty no-commit read, the bottom-gap `top` false, the tied-part Split test). Rejected: 3 false (operation view clears its diff on a switch; bottom gap never mis-marked; extra changes with no harm) and 10 low (description count-only rows per the spec ×3, non-FFI read error ×3, keyboard hover by intent, "Show all" label, `left_line_count` edge tests, pill vs flat button). No new deferral.
+
+**Follow-up review recommendation:** false. A follow-up pass patched no high finding (medium 1 entry, low 5 entries).
+
+**Verification.** See the follow-up verification notes above: targeted Rust, codegen, `zanshin_core` and app checks pass.
