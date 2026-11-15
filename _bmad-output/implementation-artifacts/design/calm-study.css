@@ -1,0 +1,79 @@
+/* CALM INSPECTOR STUDY (2026-11-15). Builds on inspector-study.css (isd-*) and inspector.css (.gck). */
+html,body{overflow:auto}
+.cs-win{min-height:100%;box-sizing:border-box;padding:20px;background:var(--isd-win);color:var(--text)}
+.cs-head{max-width:1100px;margin:0 0 18px;font-size:13px;line-height:1.5;color:var(--text-dim)}
+.cs-head b{color:var(--text)}
+.cs-force{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px}
+.cs-force .isd-seg button{width:auto;padding:0 10px;font-size:11.5px}
+.cs-win h2{margin:0 0 8px;font-size:14px;font-weight:600}
+.cs-win section{margin-bottom:28px}
+.cs-note{margin:0 0 10px;font-size:12px;color:var(--text-dim)}
+
+/* the inspector: files beside the code */
+.cs-insp{display:flex;gap:14px;height:640px;max-width:1360px;padding:14px;box-sizing:border-box;border:1px solid var(--fl-border);border-radius:14px;background:var(--fl-panel,rgba(20,24,48,.72))}
+.cs-files{flex:0 0 300px;min-width:0;display:flex;flex-direction:column;outline:none}
+.cs-code{flex:1;outline:none}
+
+/* the checkbox column: always reserved, so nothing moves; a box shows while the pointer or the keyboard is in its
+   pane, or always when it is picked or half-picked */
+.cs-gut{display:grid;place-items:center;flex:0 0 22px;width:22px;align-self:stretch}
+.cs-gut .gck{width:13px;height:13px;border-radius:4px;transition:opacity 120ms,background 120ms,border-color 120ms}
+.cs-files .gck:not(.on):not(.mixed),.cs-code .gck:not(.on):not(.mixed){opacity:0}
+.cs-files:hover .gck,.cs-files:focus-within .gck,.force-files .cs-files .gck,
+.cs-code:hover .gck,.cs-code:focus-within .gck,.force-code .cs-code .gck{opacity:1 !important}
+
+/* files */
+.cs-fhd{display:flex;align-items:center;gap:6px;height:30px;margin-bottom:4px;font-size:12px;color:var(--text-dim);white-space:nowrap}
+.cs-ftitle{font-weight:600;color:var(--text)}
+.cs-fmeta{color:var(--text-faint)}
+.cs-fview{margin-left:auto}
+.cs-flist{flex:1;overflow:auto}
+.cs-row{display:flex;align-items:center;height:28px;border-radius:7px;font:11.5px var(--font-mono);color:var(--text);white-space:nowrap;cursor:default}
+.cs-row:hover{background:var(--fl-hover)}
+.cs-row.is-cur{background:var(--fl-on)}
+.cs-ind{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;padding-right:8px}
+.cs-ficon{display:grid;color:var(--text-faint);flex-shrink:0}
+.cs-row.is-dir .cs-ind{color:var(--text-muted)}
+.cs-name{overflow:hidden;text-overflow:ellipsis}
+.cs-new{font:10.5px var(--font-sans);color:var(--add);opacity:.85}
+.cs-dir{overflow:hidden;text-overflow:ellipsis;color:var(--text-faint)}
+
+/* code */
+.cs-line .isd-nums span{width:34px}
+.cs-line .cs-gut{background:var(--isd-code)}
+.cs-line.ka .cs-gut{background:linear-gradient(var(--add-bg),var(--add-bg)),var(--isd-code)}
+.cs-line.kr .cs-gut{background:linear-gradient(var(--rem-bg),var(--rem-bg)),var(--isd-code)}
+
+/* a gap between hunks: one quiet row; its controls show only while the pointer or the keyboard is in the code */
+.cs-gap{display:flex;align-items:center;height:26px;font:11.5px var(--font-sans);color:var(--text-faint);background:var(--fl-hover);border-block:1px solid color-mix(in oklch,var(--fl-border) 60%,transparent)}
+.cs-gnums{display:flex;align-items:center;justify-content:center;gap:4px;width:68px;flex-shrink:0}
+.cs-gtxt{padding-left:18px}
+.cs-gbtn,.cs-gall{border:0;background:transparent;color:var(--text-dim);cursor:pointer;border-radius:5px}
+.cs-gbtn{display:grid;place-items:center;width:24px;height:20px;padding:0}
+.cs-gbtn:hover,.cs-gall:hover{background:var(--fl-on);color:var(--text)}
+.cs-gall{margin-left:10px;padding:2px 7px;font:11.5px var(--font-sans)}
+.cs-gbtn,.cs-gall{visibility:hidden}
+.cs-code:hover .cs-gbtn,.cs-code:hover .cs-gall,.cs-code:focus-within .cs-gbtn,.cs-code:focus-within .cs-gall,
+.force-code .cs-gbtn,.force-code .cs-gall{visibility:visible}
+
+/* a part split by whitespace-only lines: one box takes all of it */
+.cs-wsdiff{max-width:1360px}
+.cs-mode{margin-left:auto;font:11px var(--font-mono);color:var(--text-faint);white-space:nowrap}
+.cs-wsmark{background:color-mix(in oklch,var(--add) 38%,transparent);border-radius:2px}
+/* hover and pick draw the same bar the app draws today: 2 px of --accent-line on the left edge */
+/* on the gutter: its background would cover a bar drawn on the row */
+.cs-line.is-hot>.cs-gut,.cs-gap.is-hot>.cs-gut,.cs-line.is-pick>.cs-gut,.cs-gap.is-pick>.cs-gut{box-shadow:inset 2px 0 0 var(--accent-line,var(--accent))}
+
+/* projects window excerpt */
+.cs-proj{max-width:760px;padding:8px;border:1px solid var(--fl-border);border-radius:14px;background:var(--fl-panel,rgba(20,24,48,.72))}
+.cs-group{display:flex;align-items:center;gap:9px;width:100%;height:34px;border:0;border-radius:8px;background:transparent;color:var(--text-muted);font:600 12px var(--font-sans);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;text-align:left}
+.cs-group:hover{background:var(--fl-hover)}
+.cs-group svg{color:var(--text-faint)}
+.cs-prow{display:flex;align-items:center;gap:12px;min-height:48px;border-radius:8px}
+.cs-prow:hover{background:var(--fl-hover)}
+.cs-dot{width:7px;height:7px;border-radius:50%;background:var(--text-faint);flex-shrink:0}
+.cs-dot.is-open{background:var(--gold,#e8b84a)}
+.cs-pname{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
+.cs-popen{font:600 10.5px var(--font-sans);letter-spacing:.06em;color:var(--gold,#e8b84a)}
+.cs-pbr{display:inline-flex;align-items:center;gap:4px;font:11.5px var(--font-mono);color:var(--text-dim)}
+.cs-ppath{font:11.5px var(--font-mono);color:var(--text-faint);margin-top:2px}

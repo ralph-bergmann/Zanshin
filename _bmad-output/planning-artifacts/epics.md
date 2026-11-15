@@ -12979,6 +12979,73 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 ---
 
+### Story 10.42: Calm inspector, part 1 — folders without chevrons, checkboxes on demand, no counts, no status letter [UI]
+*(Added 2026-11-15, Ralph — console session. Ralph found the inspector overloaded: the UI should be plain, show nothing twice and show controls only when they are needed — an idea from Superlist.)*
+
+**Design round: done.** `design/Calm Inspector Study.html` (`calm-study.jsx/.css`), approved by Ralph on 2026-11-15 ("Passt so"). Sections 1 (inspector) and 3 (Projects window) belong to this story; section 2 and the gap rows belong to 10.43.
+
+**Scope.**
+1. **Folders without chevrons.** A folder row shows open or closed through its icon only (open folder while expanded, closed folder while collapsed); the chevron goes. A click on the row, ←/→ and ↩ keep working as today.
+   - Inspector file tree (`graph_inspector.dart`): today a chevron plus a folder icon that never changes.
+   - Projects window (`features/projects/projects_tree.dart`): its folder icon already opens; only the chevron goes.
+2. **Checkboxes on demand.** In the inspector's files pane and code pane, a checkbox shows only while the pointer is in that pane or the keyboard focus is inside it. A checked or half-checked box always shows. The checkbox column stays reserved, so nothing moves when boxes appear; with the chevron gone it reads as margin. Applies to the files header's "pick all", folder and file rows, and every box in the code pane (part boxes; the hunk-header box until 10.43 removes it). A change that cannot be picked (immutable) shows no boxes, as today.
+3. **No +/− counts.** The line counts go from the files header, folder rows and file rows. *(Ralph: the change itself matters, not its line count.)*
+4. **No status letter for a plain modification.** The "M" badge goes; the row itself says the file changed. An added file gets a quiet "new" after its name (`--add`), a deleted file "deleted" (`--rem`), a renamed or copied file "from <old name>"; a mode or type change keeps its present wording if it has one. The folder rows' file count goes too (the study shows none).
+5. **The operation view** (`features/undo_timeline/operation_changes.dart`) uses the same file rows and diff: it follows items 1, 3 and 4 (it has no checkboxes).
+6. **DS.** FileRow (no status letter for M, the quiet word, no counts), the tree folder without chevron, checkbox-on-hover rule: DESIGN-SYSTEM-SYNC entry; the publish waits for a console session.
+
+**Non-goals.** The hunk header and the context rows (10.43); other trees or lists of the app.
+
+**Depends on.** 10.38, 10.39, 10.41 (done).
+
+**Witnesses.**
+- Inspector tree: no chevron; an expanded folder shows the open icon, a collapsed one the closed icon; click, ←, → and ↩ open and close.
+- Pointer outside both panes: no unchecked box visible; a half-picked folder and a picked file still show theirs. Pointer in the files pane: its boxes show, the code pane's stay hidden; the other way round in the code pane. Tab into the file list: its boxes show. No row shifts when boxes appear.
+- No +/− anywhere in the files pane; a modified file has no badge, an added one reads "new".
+- Projects window: groups without chevrons, open/closed icon, everything else unchanged.
+- Marionette, by the console session: both panes against `design/Calm Inspector Study.html`.
+
+**Related:** 10.38, 10.39, 10.43.
+
+---
+
+### Story 10.43: Calm inspector, part 2 — no hunk header: one checkbox per part, context opens in the gaps [UI/bridge]
+*(Added 2026-11-15, Ralph — console session, same design round as 10.42.)*
+
+**Design round: done.** `design/Calm Inspector Study.html`, sections 1 and 2, approved by Ralph on 2026-11-15. Ralph's refinements: a part that whitespace-only lines split keeps one checkbox that works like the old header box; hovering a checkbox draws the same pick bar the app draws today (2 px `--accent-line` on the left edge).
+
+**Scope.**
+1. **No hunk header.** The header row goes with all it carries: the `@@ −a,b +c,d @@` range, the symbol line (`Hunk.symbol`), the "N parts" pill, the +/− counts, and its pinned position (`DiffPin` keeps pinning the number columns only). *(Ralph: the `@@` numbers are for patch tools; the research found GUI viewers use that place for context controls, e.g. SemanticDiff, Sublime Merge.)*
+2. **One checkbox per part.** Every pickable part (an exact section, or the tied part of 10.41) has its checkbox on its first changed row, also when a hunk holds only one part. The box takes every line of its part, wherever they are: a part that whitespace-only lines and a gap row split (10.41) has one box, which works like the old header box. No other box in the code pane; a hunk with two parts takes two clicks (or the file's box).
+3. **The pick bar on hover.** While the pointer is on a part's checkbox, every line it would take — the gap row and the revealed whitespace lines included — shows the bar a picked part shows today (2 px `--accent-line`, the left edge, as in `inspector_diff.dart`'s `Border(left: …)`). Picked and hovered look the same. The bar sits on the gutter/number column so its backing does not hide it (found in the study).
+4. **Gap rows that open context.** Before the first hunk, between hunks and after the last, the hidden unchanged lines become one quiet row: "N unchanged lines". While the pointer is in the code pane (or the keyboard inside it), the row offers:
+   - ↓ "Show 20 lines below" (the lines right after the hunk above) and ↑ "Show 20 lines above" (right before the hunk below); the top gap only ↑, the bottom gap only ↓;
+   - "Show all";
+   - a gap of at most 20 lines only ↕ "Show N lines".
+   Revealed lines are plain context with both numbers; the count updates; a fully opened gap disappears and the hunks join. Per gap, for the session, reset with the file and the mode (like 10.41's whitespace gaps).
+5. **One gap row.** The whitespace gap row of 10.41 ("N more lines with only whitespace changes" · Show / Hide) takes the same shape, and its Show / Hide also shows only while the pointer or keyboard is in the code pane. *(Changes 10.41's always-visible Show.)*
+6. **The context-lines number leaves the file's options menu.** It stays the default in Settings › General › Diffs (jj's `diff.color-words.context`, written with `--user` as today). The options menu keeps Whitespace. *(Claude's proposal in the design round, approved with the study.)*
+7. **Backend.** The unchanged lines of a range (old and new numbers) come from Rust for the revision pair and file being shown (zanshin-jj, FFI, `packages/zanshin_core`, `docs/ffi-abi.md`); today `FileDiff` carries only the hunks. A range is read when a gap opens, not with every diff.
+8. **Both layouts.** Side by side follows the same rules: no header, the part box in the leading gutter, gap rows across both sides.
+9. **The operation view** (`operation_changes.dart`) uses the same diff: it gets items 1, 4, 5 and 8 (no checkboxes there).
+10. **DS.** DiffHunk without header, the part box, the hover bar, the gap row with ↑ / ↓ / ↕ / Show all: DESIGN-SYSTEM-SYNC entry; the publish waits for a console session.
+
+**Non-goals.** The function/symbol context in the gap row (dropped; can come back if Ralph misses it); changing which lines form a part.
+
+**Depends on.** 10.42 (checkboxes on demand), 10.41 (done).
+
+**Witnesses.**
+- `automation_overview_page.dart` (Ralph's WMMA-505 change): no `@@` row; the first hunk shows a box on line 1 and on line 6 (two parts); "7 unchanged lines" between the first two hunks; ↓ on a gap of 31 reveals 20 lines and the row then says 11.
+- Under `-w`, the hunk old 32–63 / new 46–91: one box on its first changed row; hovering it draws the bar down to its last line, across the whitespace gap row; checking it equals the old header box (Split commits the same file as before).
+- Show all and ↕ open a gap completely; switching file or whitespace mode closes every gap again.
+- Gap controls hidden with the pointer outside the code pane, visible inside; the same for the whitespace gap row's Show / Hide.
+- The options menu has no context-lines list; Settings still sets it.
+- Marionette, by the console session: both layouts against `design/Calm Inspector Study.html`.
+
+**Related:** 10.40, 10.41, 10.42.
+
+---
+
 ## Epic 11: Floating app shell (Flutter UI)
 
 > **Granularity:** backlog-level, like Epics 9 and 10. Full acceptance criteria are written per story (via `bmad-create-story`) when it is scheduled.
