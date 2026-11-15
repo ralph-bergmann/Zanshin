@@ -1,10 +1,10 @@
-<!-- @dsCard group="Components" viewport="700x760" name="Content" subtitle="FileRow (name first, the tree), DiffView (copyable path) + DiffHunk (the diff options menu, whitespace ignored as jj diff -w with marked lines, a gap row and a folded part, word marks on and off, parts with their checkboxes, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
+<!-- @dsCard group="Components" viewport="700x760" name="Content" subtitle="FileRow (name first, the tree, calm: quiet words, checkboxes on demand), DiffView (copyable path) + DiffHunk (the diff options menu, whitespace ignored as jj diff -w with marked lines, a gap row and a folded part, word marks on and off, parts with their checkboxes, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="../../styles.css"/>
-<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:16px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);width:78px;flex-shrink:0}.g{display:grid;grid-template-columns:270px minmax(0,1fr);gap:22px;align-items:start}.h{display:flex;align-items:center;gap:8px;padding:0 0 8px;font-size:12px;color:var(--text-dim)}.h b{font-size:12.5px;font-weight:600;color:var(--text)}.h .a{font:11px var(--font-mono);color:var(--add)}.h .r{font:11px var(--font-mono);color:var(--rem)}.list{display:flex;flex-direction:column;gap:1px;margin:0 -8px}.keys{display:flex;align-items:center;gap:4px;margin-top:16px;font-size:11px;color:var(--text-dim)}.tree{margin-top:18px;display:flex;flex-direction:column;gap:1px;padding:6px;border-radius:12px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border)}</style>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:16px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);width:78px;flex-shrink:0}.g{display:grid;grid-template-columns:270px minmax(0,1fr);gap:22px;align-items:start}.h{display:flex;align-items:center;gap:8px;padding:0 0 8px;font-size:12px;color:var(--text-dim)}.h b{font-size:12.5px;font-weight:600;color:var(--text)}.list{display:flex;flex-direction:column;gap:1px;margin:0 -8px}.keys{display:flex;align-items:center;gap:4px;margin-top:16px;font-size:11px;color:var(--text-dim)}.tree{margin-top:18px;display:flex;flex-direction:column;gap:1px;padding:6px;border-radius:12px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border)}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -49,18 +49,20 @@
     add(" 13:16|  }", null);
     if (ignoring) add({ t: "fold", n: 1, open: foldOpen || pickedAny, fixed: pickedAny }, 1);
     if (!ignoring || foldOpen || pickedAny) add(k + "17:20|  {+  +}static const x = 1;", 1);
-    const files = [["M", "lib/onboarding/swipe_controller.dart", 42, 7], ["A", "lib/onboarding/widgets/swipe_hint.dart", 88, 0], ["D", "lib/legacy/onboarding_pager.dart", 0, 131], ["M", "test/onboarding/swipe_controller_test.dart", 19, 2]];
+    const files = [["M", "lib/onboarding/swipe_controller.dart"], ["A", "lib/onboarding/widgets/swipe_hint.dart"], ["D", "lib/legacy/onboarding_pager.dart"], ["R", "lib/onboarding/pager.dart", "lib/legacy/pager.dart"], ["M", "test/onboarding/swipe_controller_test.dart"]];
     return (
       <div className="g">
-        <div>
-          <div className="h"><Checkbox mixed label="Select all"/><b>Changes</b><span>4 files</span><span className="a">+149</span><span className="r">−140</span></div>
-          <div className="list" role="list">{files.map(([s, p, a, r], i) => <FileRow key={p} status={s} path={p} added={a} removed={r} selected={sel === i} viewed={i === 3} selectable checked={i === 1} mixed={i === 0} onClick={() => setSel(i)}/>)}</div>
-          {/* Story 10.39: the tree — a joined folder row (mixed), a closed one, files by name under their folder */}
+        {/* Story 10.42: calm — no status letter, no counts, a quiet word after the name; unchecked boxes show only while the pointer
+            is over this pane or focus is inside it (.zs-check-reveal); picked and mixed always show. */}
+        <div className="zs-check-reveal">
+          <div className="h"><span className="zs-file-gut" style={{ marginLeft: -8 }}><Checkbox size="sm" mixed label="Select all"/></span><b>Changes</b><span>5 files</span></div>
+          <div className="list" role="list">{files.map(([s, p, from], i) => <FileRow key={p} status={s} path={p} from={from} selected={sel === i} viewed={i === 4} selectable checked={i === 1} mixed={i === 0} onClick={() => setSel(i)}/>)}</div>
+          {/* Story 10.39 / 10.42: the tree — a joined folder row (mixed, open glyph), a closed one, files by name under their folder */}
           <div className="list" role="tree" aria-label="Tree">
-            <FileRow open name="lib/onboarding" path="lib/onboarding" count={2} selectable mixed added={130} removed={7}/>
-            <FileRow tree depth={1} status="M" path="lib/onboarding/swipe_controller.dart" added={42} removed={7} selectable checked/>
-            <FileRow open={false} depth={1} name="widgets" path="lib/onboarding/widgets" count={1} selectable added={88}/>
-            <FileRow tree status="R" path="README.md" added={3} removed={1} selectable/>
+            <FileRow open name="lib/onboarding" path="lib/onboarding" selectable mixed/>
+            <FileRow tree depth={1} status="M" path="lib/onboarding/swipe_controller.dart" selectable checked/>
+            <FileRow open={false} depth={1} name="widgets" path="lib/onboarding/widgets" selectable/>
+            <FileRow tree status="A" path="README.md" selectable/>
           </div>
           <div className="tree" role="tree">
             <ProjectRow kind="group" name="Mobile" expanded count={3}/>
@@ -77,6 +79,7 @@
           <div className="keys"><span>Moving: into a group · between rows · in hand · naming a new group</span></div>
           <div className="keys"><Kbd>⌘</Kbd><Kbd>,</Kbd><span>Settings</span><span style={{ width: 10 }}></span><Kbd>⌘</Kbd><Kbd>↩</Kbd><span>Commit / Split</span></div>
         </div>
+        <div className="zs-check-reveal">
         <DiffView file={files[sel][1]} copyPath={"/Users/you/code/app/" + files[sel][1]} viewed={viewed} onViewedChange={setViewed}
           options={{ whitespace: ws, context: ctx }} onOption={(id) => (id.startsWith("ws:") ? setWs(id.slice(3)) : setCtx(Number(id.slice(4))))}
           tools={<Segmented size="sm" label="Diff layout" value={mode} onChange={setMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
@@ -133,6 +136,7 @@
             " 2455:2460|    lock.commit()",
           ]}/>
         </DiffView>
+        </div>
       </div>
     );
   }

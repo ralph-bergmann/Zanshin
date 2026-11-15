@@ -5,6 +5,7 @@ A repository (or group) in the Projects window's tree.
 <ProjectRow depth={2} name="MyApp" path="~/code/work/mobile/myapp" branch="feature/new-ui" status="dirty" ahead={6} lastOpened="now" open selected onSelect={select} onDoubleClick={openIt}/>
 ~~~
 
+- A group shows no chevron (Story 10.42): its folder glyph, open while expanded and closed while collapsed, tells the state; a project row has no chevron slot either.
 - Status dot leads (dirty yellow, ahead green, behind blue, diverged orange, conflict red, missing grey — the `--proj-*` tokens).
 - `open` = the repository in the project window: a saffron **OPEN** caps marker, never a filled pill.
 - Selection = `--accent-soft` (pressed: `--accent-soft-hi`). Hover `--fl-hover`, pressed `--fl-on`. Click selects, double-click / ↩ opens. `missing` strikes the name and path through. The ••• button shows on hover and whenever the row or the button has focus.
@@ -14,9 +15,9 @@ A repository (or group) in the Projects window's tree.
   <ProjectRow depth={1} name="dotfiles" path="~/dotfiles" status="clean" dragging/>
   ~~~
 - A click on the empty tree below the rows clears the selection (Finder).
-- **Naming a group** — `editing` turns a group row into its name field (TextField sm, focused, the text selected; chevron slot and folder stay). **New group** (header button) puts a field with no name where the group will be: the last row of the selected group, of the selected project's group, or of the top level. **Rename…** puts the field in the group's own row. ↩ commits, Esc cancels; a click elsewhere cancels a new group and keeps a rename; an empty name cancels (a rename keeps the old one).
+- **Naming a group** — `editing` turns a group row into its name field (TextField sm, focused, the text selected; the folder stays). **New group** (header button) puts a field with no name where the group will be: the last row of the selected group, of the selected project's group, or of the top level. **Rename…** puts the field in the group's own row. ↩ commits, Esc cancels; a click elsewhere cancels a new group and keeps a rename; an empty name cancels (a rename keeps the old one).
   ~~~jsx
   <ProjectRow kind="group" depth={1} editing name="" onCommit={create} onCancel={stop}/>
   ~~~
 - **The row menu** — ••• (`onMore`, below the button) or a right-click (at the pointer) selects the row and opens a `Menu`. A project: Open · Reveal in Finder · Move to group › · — · Remove from list (Open and Reveal disabled for a missing project, Remove for the open one; Remove takes it off the list, the folder stays). A group: Rename… · Move to group › · — · Delete group (its projects and groups move up into its place; nothing leaves the list). **Move to group ›**: Top level, then every group by its path ("Work / Mobile"), sorted, the current one checked (radio) — never the row itself or what is inside it — · — · **New group…**: a name field where the row is now; ↩ creates the group there and moves the row into it (Finder's New Folder with Selection).
-- Keyboard · VoiceOver · Reduce motion: the tree is **one Tab stop** — the selected row (`tabIndex`); ↑ ↓ move and select · Home End · → expands a group or steps into it · ← collapses or steps to the parent · ↩ opens a project (a group: toggles) · Tab from a row reaches its ••• · treeitem with level, expanded / collapsed, selected; the dot reads as its status · the chevron turns on `--dur-expand` (→ 0 under Reduce motion).
+- Keyboard · VoiceOver · Reduce motion: the tree is **one Tab stop** — the selected row (`tabIndex`); ↑ ↓ move and select · Home End · → expands a group or steps into it · ← collapses or steps to the parent · ↩ opens a project (a group: toggles) · Tab from a row reaches its ••• · treeitem with level, expanded / collapsed, selected; the dot reads as its status · the folder glyph swaps without motion.

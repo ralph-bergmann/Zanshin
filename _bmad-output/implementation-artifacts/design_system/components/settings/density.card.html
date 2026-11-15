@@ -42,9 +42,9 @@ body{margin:0;padding:22px 24px;background:var(--canvas);min-height:100vh;box-si
           <SettingsRow label="Layout"><Segmented variant="inset" label="Diff layout" value="unified" options={[{ value: "unified", label: "Unified" }, { value: "split", label: "Side by side" }]}/></SettingsRow>
         </SettingsGroup>
         <div className="box files">
-          <FileRow status="M" path="lib/src/graph/graph_view.dart" added={24} removed={6}/>
-          <FileRow status="A" path="lib/src/graph/density.dart" added={58}/>
-          <FileRow status="D" path="lib/src/graph/old_metrics.dart" removed={31}/>
+          <FileRow status="M" path="lib/src/graph/graph_view.dart"/>
+          <FileRow status="A" path="lib/src/graph/density.dart"/>
+          <FileRow status="D" path="lib/src/graph/old_metrics.dart"/>
         </div>
         <div className="graph" style={{ height: yC + hc + 14 }}>
           <ChangeCard detailed id="vtnoqyrv" subject="fix(ios): account for safe area" author="Ralph" date="3h" bookmarks={["ios-safe-area"]} style={{ left: 60, top: yD }}/>

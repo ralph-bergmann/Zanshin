@@ -3,9 +3,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show CheckedState;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:flutter/semantics.dart' show SemanticsAction, SemanticsData, SemanticsNode;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +20,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
 import 'package:zanshin/src/features/graph/immutable_reasons.dart';
+import 'package:zanshin/src/features/graph/inspector_check_reveal.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart'
     show DiffWordMarks, InspectorDiffHunk, InspectorDiffView, diffNewLineAt;
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
@@ -509,6 +512,7 @@ void main() {
     double width = 460,
     ProjectFiles? files,
     AppWindowActions? windowActions,
+    bool checksShown = false,
   }) async {
     // The group's tearDown deletes the folder after postTest; the writes must be done before then.
     addTearDown(() => settleSettingsWrites(tester, settings));
@@ -521,6 +525,13 @@ void main() {
       settings: settings,
       files: files,
     );
+    Widget body = GraphInspector(model: inspector);
+    if (windowActions != null) {
+      body = AppWindowActionsScope(actions: windowActions, child: body);
+    }
+    if (checksShown) {
+      body = InspectorChecksShown(child: body);
+    }
     await tester.pumpWidget(
       shellHost(
         ImmutableReasonScope(
@@ -530,12 +541,7 @@ void main() {
             child: SizedBox(
               width: width,
               height: 840,
-              child: windowActions == null
-                  ? GraphInspector(model: inspector)
-                  : AppWindowActionsScope(
-                      actions: windowActions,
-                      child: GraphInspector(model: inspector),
-                    ),
+              child: body,
             ),
           ),
         ),
@@ -1146,7 +1152,10 @@ void main() {
     expect(find.text('Changes'), findsOneWidget);
     expect(find.textContaining('2 files', findRichText: true), findsOneWidget);
     // Story 10.39: a rename shows its new name first, its folder after it, `old → new` as the tooltip.
-    expect(find.descendant(of: _fileRow('src/new.dart'), matching: find.text('new.dart')), findsOneWidget);
+    // Story 10.42: the quiet word "from old.dart" follows the name (same folder: the old name only).
+    final Finder name = find.descendant(of: _fileRow('src/new.dart'), matching: find.textContaining('new.dart'));
+    expect(name, findsOneWidget);
+    expect(tester.widget<Text>(name).textSpan!.toPlainText(), endsWith('from old.dart'));
     expect(find.descendant(of: _fileRow('src/new.dart'), matching: find.text('src/')), findsOneWidget);
     expect(
       tester
@@ -1156,7 +1165,7 @@ void main() {
     );
     final ZsColors colors = ZsColors.of(tester.element(_fileRow('src/a.dart')));
     expect(
-      tester.widget<Text>(find.descendant(of: _fileRow('src/new.dart'), matching: find.text('new.dart'))).style!.color,
+      tester.widget<Text>(name).style!.color,
       colors.text,
       reason: 'the name in --text',
     );
@@ -1489,7 +1498,7 @@ void main() {
 
   group('the diff (Story 10.24)', () {
     String meta(WidgetTester tester) =>
-        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-files-meta'))).textSpan!.toPlainText();
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-files-meta'))).data!;
 
     Future<void> settle(WidgetTester tester) async {
       for (var i = 0; i < 3; i++) {
@@ -1497,15 +1506,16 @@ void main() {
       }
     }
 
-    testWidgets('the header sums the summary, the rows show ±, the first file is focused with one read', (
+    testWidgets('the header counts the files, no row shows ±, the first file is focused with one read', (
       tester,
     ) async {
       await pump(tester);
       await settle(tester);
-      expect(meta(tester), '2 files  +5  −1');
-      expect(find.text('+3'), findsNWidgets(2), reason: 'the row and the hunk header');
-      expect(find.text('−1'), findsNWidgets(2));
-      expect(find.text('+2'), findsOneWidget, reason: "new.dart's row; its hunk does not show");
+      // Story 10.42: no `+N −M` in the header or on a row; the hunk header keeps its counts.
+      expect(meta(tester), '2 files');
+      expect(find.text('+3'), findsOneWidget, reason: 'the hunk header only');
+      expect(find.text('−1'), findsOneWidget);
+      expect(find.text('+2'), findsNothing, reason: "new.dart's row has no ±; its hunk does not show");
       expect(inspector.focusedPath, 'src/a.dart');
       expect(details.diffs.map((d) => '${d.$1} ${d.$2} ${d.$3}'), <String>[
         '$_mutable [] true',
@@ -2063,7 +2073,7 @@ void main() {
       details.refuseSummary = const ZanshinFfiException('jj.internal', 'no');
       await pump(tester);
       await settle(tester);
-      expect(meta(tester), '2 files');
+      expect(meta(tester), '2 files', reason: 'unchanged: the header never shows a total');
       expect(find.text('+3'), findsNothing);
       expect(find.byKey(const ValueKey<String>('inspector-diff')), findsNothing);
       expect(details.focusReads, isEmpty);
@@ -3058,6 +3068,270 @@ void main() {
       expect(graph.selected, isNull);
       await unmount(tester);
     });
+
+    group('Story 10.42: checkboxes on demand', () {
+      double opacity(WidgetTester tester, Finder box) =>
+          tester.widget<AnimatedOpacity>(find.ancestor(of: box, matching: find.byType(AnimatedOpacity)).first).opacity;
+
+      /// @ with b.sh and d.txt unpicked and a.txt's second hunk unpicked: some boxes off, some on, one mixed.
+      Future<void> mixed(WidgetTester tester) async {
+        await pump(tester, select: _at);
+        await settle(tester);
+        inspector
+          ..togglePick('b.sh')
+          ..togglePick('d.txt')
+          ..toggleHunk('a.txt', inspector.focusedDiff!.hunks[1]);
+        await settle(tester);
+      }
+
+      testWidgets('the pointer outside: unchecked boxes hidden, picked and half-picked shown, no row moves', (
+        tester,
+      ) async {
+        await mixed(tester);
+        expect(opacity(tester, fileBox('b.sh')), 0);
+        expect(opacity(tester, fileBox('d.txt')), 0);
+        expect(opacity(tester, fileBox('new.txt')), 1, reason: 'picked');
+        expect(state(tester, fileBox('a.txt')), isNull);
+        expect(opacity(tester, fileBox('a.txt')), 1, reason: 'half-picked');
+        expect(opacity(tester, checkbox('inspector-select-all')), 1, reason: 'the header is half-picked');
+        expect(opacity(tester, hunkBox(0)), 1);
+        expect(opacity(tester, hunkBox(1)), 0);
+        final Offset hiddenAt = tester.getCenter(fileBox('b.sh'));
+        final Finder name = find.descendant(of: _fileRow('b.sh'), matching: find.byType(Text)).first;
+        final Offset nameAt = tester.getTopLeft(name);
+
+        // Hovering the files pane reveals only its boxes.
+        final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        addTearDown(mouse.removePointer);
+        await mouse.moveTo(tester.getCenter(_fileRow('new.txt')));
+        await settle(tester);
+        expect(opacity(tester, fileBox('b.sh')), 1);
+        expect(opacity(tester, fileBox('d.txt')), 1);
+        expect(opacity(tester, hunkBox(1)), 0, reason: "the code pane's boxes stay hidden");
+        expect(tester.getCenter(fileBox('b.sh')), hiddenAt, reason: 'the box keeps its place');
+        expect(tester.getTopLeft(name), nameAt, reason: 'the name keeps its place');
+
+        // Hovering the code pane reveals only its boxes.
+        await mouse.moveTo(tester.getCenter(find.byKey(const ValueKey<String>('inspector-hunk-header')).at(1)));
+        await settle(tester);
+        expect(opacity(tester, hunkBox(1)), 1);
+        expect(opacity(tester, fileBox('b.sh')), 0);
+
+        // Out of both.
+        await mouse.moveTo(Offset.zero);
+        await settle(tester);
+        expect(opacity(tester, hunkBox(1)), 0);
+        expect(opacity(tester, fileBox('b.sh')), 0);
+        await unmount(tester);
+      });
+
+      /// The pane holding the primary focus: 'files', 'code', or null outside both.
+      String? focusedPane() {
+        final BuildContext? context = FocusManager.instance.primaryFocus?.context;
+        if (context == null || context.findAncestorWidgetOfExactType<InspectorCheckReveal>() == null) {
+          return null;
+        }
+        return context.findAncestorWidgetOfExactType<InspectorDiffView>() != null ? 'code' : 'files';
+      }
+
+      /// Tabs (at most 60 times) until focus is in [pane].
+      Future<void> tabInto(WidgetTester tester, String pane) async {
+        if (FocusManager.instance.primaryFocus == null) {
+          // Key events go to the focused node: start on the header's Abandon button, above both panes.
+          final Finder leaf = find
+              .descendant(of: _button('inspector-abandon'), matching: find.byWidgetPredicate((_) => true))
+              .last;
+          Focus.of(tester.element(leaf)).requestFocus();
+          await tester.pump();
+          expect(focusedPane(), isNull, reason: 'the start is outside both panes');
+        }
+        for (var i = 0; i < 60 && focusedPane() != pane; i++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+        }
+        expect(focusedPane(), pane, reason: 'Tab reaches the $pane pane');
+        await settle(tester);
+      }
+
+      testWidgets('Tab into the file list reveals its boxes only; Tab on into the code reveals its boxes only', (
+        tester,
+      ) async {
+        await mixed(tester);
+        expect(focusedPane(), isNull);
+        await tabInto(tester, 'files');
+        expect(opacity(tester, fileBox('b.sh')), 1, reason: 'focus inside the files pane');
+        expect(opacity(tester, hunkBox(1)), 0);
+        await tabInto(tester, 'code');
+        expect(opacity(tester, hunkBox(1)), 1, reason: 'focus inside the code pane');
+        expect(opacity(tester, fileBox('b.sh')), 0);
+        FocusManager.instance.primaryFocus?.unfocus();
+        await settle(tester);
+        expect(opacity(tester, hunkBox(1)), 0, reason: 'focus left');
+        await unmount(tester);
+      });
+
+      testWidgets('a hidden box keeps its semantics and its tap', (tester) async {
+        final SemanticsHandle semantics = tester.ensureSemantics();
+        await mixed(tester);
+        expect(opacity(tester, fileBox('b.sh')), 0);
+        // The checkbox's own node (the row's label node is its ancestor, not this one).
+        // The checkbox's own node below the row's: its identifier, its label and its checked state.
+        SemanticsNode? box;
+        tester.getSemantics(_fileRow('b.sh')).visitChildren((child) {
+          if (child.identifier == 'inspector-file-check') {
+            box = child;
+          }
+          return box == null;
+        });
+        expect(box, isNotNull, reason: 'VoiceOver still reaches it');
+        final SemanticsData data = box!.getSemanticsData();
+        expect(data.label, 'b.sh');
+        expect(data.flagsCollection.isChecked, CheckedState.isFalse);
+        expect(data.hasAction(SemanticsAction.tap), isTrue);
+        await tester.tap(fileBox('b.sh'));
+        await settle(tester);
+        expect(inspector.fileState('b.sh'), isTrue);
+        semantics.dispose();
+        await unmount(tester);
+      });
+
+      testWidgets('InspectorChecksShown shows every box (the catalogue)', (tester) async {
+        await pump(tester, select: _at, checksShown: true);
+        await settle(tester);
+        inspector
+          ..togglePick('b.sh')
+          ..toggleHunk('a.txt', inspector.focusedDiff!.hunks[1]);
+        await settle(tester);
+        for (final box in <Finder>[fileBox('b.sh'), hunkBox(1), checkbox('inspector-select-all')]) {
+          expect(opacity(tester, box), 1);
+        }
+        await unmount(tester);
+      });
+
+      testWidgets('an immutable change: no boxes, no check column', (tester) async {
+        details.files[_left] = const <FileChange>[FileChange(path: 'i.txt', kind: FileChangeKind.modified)];
+        await pump(tester, select: _left);
+        await settle(tester);
+        expect(
+          find.descendant(of: find.byKey(const ValueKey<String>('inspector-files')), matching: find.byType(ZsCheckbox)),
+          findsNothing,
+        );
+        expect(checkbox('inspector-select-all'), findsNothing);
+        expect(
+          tester.getTopLeft(find.descendant(of: _fileRow('i.txt'), matching: find.byType(Text)).first).dx -
+              tester.getTopLeft(_fileRow('i.txt')).dx,
+          8,
+          reason: 'left padding 8, as before',
+        );
+        await unmount(tester);
+      });
+    });
+  });
+
+  group('Story 10.42: quiet words, no status letter, no counts', () {
+    setUp(() {
+      details.files[_mutable] = const <FileChange>[
+        FileChange(path: 'a/x.dart', kind: FileChangeKind.modified),
+        FileChange(path: 'a/new.dart', kind: FileChangeKind.added),
+        FileChange(path: 'a/gone.dart', kind: FileChangeKind.removed),
+        FileChange(path: 'a/y.dart', kind: FileChangeKind.renamed, fromPath: 'a/w.dart'),
+        FileChange(path: 'b/z.dart', kind: FileChangeKind.renamed, fromPath: 'a/z.dart'),
+        FileChange(path: 'b/copy.dart', kind: FileChangeKind.copied, fromPath: 'a/orig.dart'),
+        FileChange(path: 'a/bare.dart', kind: FileChangeKind.renamed),
+      ];
+      details.fileDiffs[_mutable] = <FileDiff>[
+        fileDiff('a/x.dart', added: 3, removed: 1, fingerprint: 'fx'),
+        fileDiff('a/new.dart', kind: FileChangeKind.added, added: 2, fingerprint: 'fn'),
+      ];
+    });
+
+    for (final DiffFileListSetting list in DiffFileListSetting.values) {
+      testWidgets('${list.name}: "new", "deleted", "from <name>", "from <path>", nothing for a modification', (
+        tester,
+      ) async {
+        unawaited(settings.update((s) => s.copyWith.general(diffFileList: list)));
+        await pump(tester);
+        for (var i = 0; i < 3; i++) {
+          await tester.pump();
+        }
+        String name(String path) {
+          final String file = path.substring(path.lastIndexOf('/') + 1);
+          return tester
+              .widget<Text>(find.descendant(of: _fileRow(path), matching: find.textContaining(file)).first)
+              .textSpan!
+              .toPlainText();
+        }
+
+        expect(name('a/x.dart'), 'x.dart');
+        expect(name('a/new.dart'), endsWith('new'));
+        expect(name('a/gone.dart'), endsWith('deleted'));
+        expect(name('a/y.dart'), endsWith('from w.dart'), reason: 'same folder: the old name');
+        expect(name('b/z.dart'), endsWith('from a/z.dart'), reason: 'another folder: the old path');
+        expect(name('b/copy.dart'), endsWith('from a/orig.dart'), reason: 'a copy says where it came from too');
+        expect(name('a/bare.dart'), 'bare.dart', reason: 'a rename without its old path: no word');
+        for (final gone in <String>['M', 'A', 'D', 'R', '+3', '−1', '+2']) {
+          expect(
+            find.descendant(of: find.byKey(const ValueKey<String>('inspector-files')), matching: find.text(gone)),
+            findsNothing,
+            reason: gone,
+          );
+        }
+        final ZsColors colors = ZsColors.of(tester.element(_fileRow('a/new.dart')));
+        final InlineSpan word = tester
+            .widget<Text>(find.descendant(of: _fileRow('a/new.dart'), matching: find.textContaining('new.dart')).first)
+            .textSpan!;
+        TextSpan? quiet(InlineSpan span, String text) {
+          TextSpan? found;
+          span.visitChildren((child) {
+            if (child is TextSpan && child.text == text) {
+              found = child;
+              return false;
+            }
+            return true;
+          });
+          return found;
+        }
+
+        expect(quiet(word, 'new')!.style!.color, colors.add.withValues(alpha: colors.add.a * .85));
+        expect(quiet(word, 'new')!.style!.fontSize, 10.5);
+        await unmount(tester);
+      });
+    }
+
+    testWidgets('tree: every box sits centred in the 22 px check column; names line up by depth', (tester) async {
+      details.files[_mutable] = const <FileChange>[
+        FileChange(path: 'a/x.dart', kind: FileChangeKind.modified),
+        FileChange(path: 'a/b/y.dart', kind: FileChangeKind.modified),
+        FileChange(path: 'a/c/z.dart', kind: FileChangeKind.modified),
+        FileChange(path: 'top.dart', kind: FileChangeKind.modified),
+      ];
+      unawaited(settings.update((s) => s.copyWith.general(diffFileList: DiffFileListSetting.tree)));
+      await pump(tester);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      Finder folder(String path) => find.byKey(ValueKey<String>('inspector-folder $path'));
+      double nameLeft(Finder row) => tester.getTopLeft(find.descendant(of: row, matching: find.byType(Text)).first).dx;
+      for (final row in <Finder>[
+        folder('a'),
+        folder('a/b'),
+        _fileRow('a/x.dart'),
+        _fileRow('a/b/y.dart'),
+        _fileRow('top.dart'),
+      ]) {
+        expect(
+          tester.getCenter(find.descendant(of: row, matching: find.byType(ZsCheckbox))).dx - tester.getTopLeft(row).dx,
+          11,
+          reason: '$row: the check column is 22 px at the left edge',
+        );
+      }
+      // A file's name sits where a folder's name at its depth sits (the folder glyph 14 + 6).
+      expect(nameLeft(_fileRow('top.dart')), nameLeft(folder('a')), reason: 'depth 0');
+      expect(nameLeft(_fileRow('a/x.dart')), nameLeft(folder('a/b')), reason: 'depth 1');
+      expect(nameLeft(_fileRow('a/b/y.dart')) - nameLeft(_fileRow('a/x.dart')), 14, reason: 'one level deeper: 14');
+      await unmount(tester);
+    });
   });
 
   group('Squash into parent (Story 10.25)', () {
@@ -3728,6 +4002,35 @@ void main() {
       );
       await unmount(tester);
     });
+
+    testWidgets(
+      'Story 10.42: an unpicked part box hides with the pointer outside and shows while the code is hovered',
+      (
+        tester,
+      ) async {
+        threeParts();
+        await pump(tester, width: 1000);
+        await settle(tester);
+        inspector.togglePart('p.txt', s2);
+        await settle(tester);
+        double opacity(Finder box) => tester
+            .widget<AnimatedOpacity>(find.ancestor(of: box, matching: find.byType(AnimatedOpacity)).first)
+            .opacity;
+        expect(opacity(partBox(0)), 0, reason: 'unpicked');
+        expect(opacity(partBox(1)), 1, reason: 'picked');
+        expect(opacity(hunkBox), 1, reason: 'the hunk is mixed');
+        final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        addTearDown(mouse.removePointer);
+        await mouse.moveTo(tester.getCenter(find.text('c3')));
+        await settle(tester);
+        expect(opacity(partBox(0)), 1, reason: 'the code pane is hovered');
+        await mouse.moveTo(Offset.zero);
+        await settle(tester);
+        expect(opacity(partBox(0)), 0);
+        await unmount(tester);
+      },
+    );
   });
 
   test('the layout persists in the settings file and opens from it after a restart', () async {
@@ -3946,8 +4249,30 @@ void main() {
       await pump(tester);
       await settle(tester);
       final Finder folder = find.byKey(const ValueKey<String>('inspector-folder src'));
-      expect(tester.widget<InspectorFolderRow>(folder).added, 3, reason: "the files' summed ±");
       InspectorFolderRow row() => tester.widget<InspectorFolderRow>(folder);
+      String glyph() => tester
+          .widget<ZanshinIcon>(
+            find.descendant(of: folder, matching: find.byKey(const ValueKey<String>('inspector-folder-glyph'))),
+          )
+          .name;
+      // Story 10.42: open / closed in the glyph only — no chevron, no count, no ±.
+      expect(glyph(), ZI.folderOpen);
+      for (final gone in <String>[ZI.chevronDown, ZI.chevronRight]) {
+        expect(
+          find.descendant(of: folder, matching: find.byWidgetPredicate((w) => w is ZanshinIcon && w.name == gone)),
+          findsNothing,
+        );
+      }
+      expect(
+        find.descendant(of: folder, matching: find.text('3')),
+        findsNothing,
+        reason: 'no count pill',
+      );
+      expect(
+        find.descendant(of: folder, matching: find.text('+3')),
+        findsNothing,
+        reason: 'no summed ±',
+      );
       expect(row().folder.files, hasLength(3));
       // Mixed with one of three picked; a click picks all, the next none.
       inspector.togglePick('src/b.dart');
@@ -3979,9 +4304,11 @@ void main() {
       await settle(tester);
       expect(inspector.collapsed, <String>{'src'});
       expect(_fileRow('src/a.dart'), findsNothing);
+      expect(glyph(), ZI.folder, reason: 'collapsed: the closed folder');
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await settle(tester);
       expect(inspector.collapsed, isEmpty);
+      expect(glyph(), ZI.folderOpen);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await settle(tester);
       expect(inspector.focusedPath, 'src/a.dart', reason: '→ on an open folder: its first child');

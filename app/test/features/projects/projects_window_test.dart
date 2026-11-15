@@ -375,6 +375,15 @@ void main() {
     testWidgets('← collapses a group or steps to the parent; → expands or steps in; ↩ toggles a group', (tester) async {
       final rig = _Rig(tester);
       await rig.pump();
+      // Story 10.42: no chevron; the folder glyph alone tells open from closed.
+      Iterable<String> glyphs(Finder row) => tester
+          .widgetList<ZanshinIcon>(find.descendant(of: row, matching: find.byType(ZanshinIcon)))
+          .map((i) => i.name);
+      expect(
+        find.byWidgetPredicate((w) => w is ZanshinIcon && (w.name == ZI.chevronRight || w.name == ZI.chevronDown)),
+        findsNothing,
+      );
+      expect(glyphs(rig.row('MOBILE')), contains(ZI.folderOpen));
       await rig.focusSearch();
       await rig.key(LogicalKeyboardKey.arrowDown);
       expect(rig.focused, 'projects row group:g1', reason: 'without a selection the first row');
@@ -384,11 +393,13 @@ void main() {
       await rig.key(LogicalKeyboardKey.arrowLeft);
       expect(find.text('MyApp'), findsNothing, reason: '← collapses Mobile');
       expect(tester.getSemantics(rig.row('MOBILE')), isSemantics(isExpanded: false, hasExpandedState: true));
+      expect(glyphs(rig.row('MOBILE')), allOf(contains(ZI.folder), isNot(contains(ZI.folderOpen))));
       await rig.key(LogicalKeyboardKey.arrowLeft);
       expect(rig.focused, 'projects row group:g1', reason: 'collapsed: ← steps to the parent');
       await rig.key(LogicalKeyboardKey.arrowDown);
       await rig.key(LogicalKeyboardKey.arrowRight);
       expect(find.text('MyApp'), findsOneWidget, reason: '→ expands');
+      expect(glyphs(rig.row('MOBILE')), contains(ZI.folderOpen));
       await rig.key(LogicalKeyboardKey.enter);
       expect(find.text('MyApp'), findsNothing, reason: '↩ toggles a group');
       await rig.key(LogicalKeyboardKey.arrowDown);

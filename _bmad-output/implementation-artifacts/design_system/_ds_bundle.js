@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7a0975b1eb2b","components/brand/Icon.jsx":"3f1c816c4911","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"bb71231ed9ab","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"806cf81230d6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"cb9ce51e065b","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"81655b19787d","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7a0975b1eb2b","components/brand/Icon.jsx":"3f1c816c4911","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"bb71231ed9ab","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"12da377a4a0d","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"bb068d275c9d","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"0fc3f6c31697","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -317,7 +317,7 @@ const zsProjectStatus = {
 };
 
 // ProjectRow — one row of the Projects tree. kind "project": status dot, name, OPEN (the repo in this window), branch, ↑↓, path · last opened, ••• on hover.
-// kind "group": chevron, folder, CAPS name, count. depth indents 16px per level. Double-click (or ↩) opens a project.
+// kind "group": folder (open while expanded, closed while collapsed — no chevron since Story 10.42), CAPS name, count. depth indents 16px per level. Double-click (or ↩) opens a project.
 // Keyboard (a tree, one Tab stop — the selected row): ↑ ↓ move and select · Home End · → expands a group, or steps into it ·
 // ← collapses, or steps to the parent · ↩ opens a project (a group: toggles) · ••• is reachable with Tab from its row and shows with focus.
 // VoiceOver: tree item with level, expanded / collapsed, selected; the status dot reads as its label (clean, ahead …).
@@ -426,9 +426,7 @@ function ProjectRow({
       style: {
         "--depth": depth
       }
-    }, rest), /*#__PURE__*/React.createElement("span", {
-      className: "zs-proj-chev"
-    }), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    }, rest), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
       name: "folder",
       size: "md",
       className: "zs-proj-icon"
@@ -476,12 +474,7 @@ function ProjectRow({
         depth,
         onToggle: onToggle || onClick
       })
-    }, rest), /*#__PURE__*/React.createElement("span", {
-      className: "zs-proj-chev" + (expanded ? " is-open" : "")
-    }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-      name: "chevron-right",
-      size: "sm"
-    })), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    }, rest), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
       name: expanded ? "folder-open" : "folder",
       size: "md",
       className: "zs-proj-icon"
@@ -511,8 +504,6 @@ function ProjectRow({
       onOpen: onDoubleClick
     })
   }, rest), /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-chev"
-  }), /*#__PURE__*/React.createElement("span", {
     className: "zs-proj-dot",
     style: {
       background: s.color
@@ -1841,22 +1832,22 @@ Object.assign(__ds_scope, { zsDiffSides, DiffHunk });
 // components/content/FileRow.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// FileRow — one changed file in the inspector's Changes list (Story 10.39): the name first, then (flat) its folder dimmed and cut in its
-// middle — the head gives way first, then the last folder, then the name. Status M/R moon, A/C green, D red; +/− counts.
-// selectable adds a Checkbox (pick files for commit / split); viewed shows a green check and dims name and folder; lifted = being dragged.
-// tree: the name only, indented 8 + 14 × depth + 18. A folder row of the tree: pass open (and count) — chevron, three-state Checkbox,
-// folder glyph, name (a joined chain reads "a/b/c"), the count pill and the summed counts; indented 8 + 14 × depth.
+// FileRow — one changed file in the inspector's Changes list (Story 10.39, calmed in Story 10.42): the name first, then its quiet word —
+// "new" (A), "deleted" (D), "from <old>" (R / C with from: the old name, the old path when the folder changed), nothing for a
+// modification — then (flat) its folder dimmed and cut in its middle: the head gives way first, then the last folder, then the name
+// with its word. No status letter, no +/− counts. selectable reserves a 22 px check column at the row's left edge; inside a pane with
+// .zs-check-reveal its unchecked box shows only on hover or focus. viewed shows a green check and dims name and folder; lifted = being
+// dragged. tree: the name only, indented 14 × depth + 20 (after the check column, else after 8 px). A folder row of the tree: pass open —
+// the folder glyph open or closed (no chevron, no count), then the name (a joined chain reads "a/b/c"); indented 14 × depth.
 function FileRow({
   status = "M",
   path = "",
+  from,
   name,
   folder,
   tree = false,
   depth = 0,
   open,
-  count,
-  added,
-  removed,
   selected = false,
   viewed = false,
   lifted = false,
@@ -1872,15 +1863,21 @@ function FileRow({
   const file = name ?? path.split("/").pop();
   const dir = folder ?? (path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "");
   const cut = dir.lastIndexOf("/", dir.length - 2);
-  const pad = tree || isDir ? {
-    paddingLeft: 8 + depth * 14 + (isDir ? 0 : 18)
-  } : undefined;
+  // the folder of path itself, never the folder display prop: same folder → the old name only
+  const folderOf = p => p.includes("/") ? p.slice(0, p.lastIndexOf("/") + 1) : "";
+  const note = isDir ? null : status === "A" ? /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-note is-new"
+  }, "new") : status === "D" ? /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-note is-del"
+  }, "deleted") : (status === "R" || status === "C") && from ? /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-note is-from"
+  }, "from ", folderOf(from) === folderOf(path) ? from.split("/").pop() : from) : null;
+  const indent = isDir ? depth * 14 : tree ? depth * 14 + 20 : 0;
   return /*#__PURE__*/React.createElement("div", _extends({
     role: tree || isDir ? "treeitem" : "listitem",
     "aria-expanded": isDir ? open : undefined,
     tabIndex: 0,
-    style: pad,
-    className: ["zs-file", isDir && "is-dir", selected && "is-sel", viewed && "is-viewed", lifted && "is-lifted", className].filter(Boolean).join(" "),
+    className: ["zs-file", isDir && "is-dir", selectable && "has-gut", selected && "is-sel", viewed && "is-viewed", lifted && "is-lifted", className].filter(Boolean).join(" "),
     onClick: onClick,
     onKeyDown: e => {
       if (onClick && (e.key === "Enter" || e.key === " ")) {
@@ -1888,47 +1885,40 @@ function FileRow({
         onClick(e);
       }
     },
-    title: path || file
-  }, rest), isDir && /*#__PURE__*/React.createElement("span", {
-    className: "zs-file-chev"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: open ? "chevron-down" : "chevron-right",
-    size: "xs"
-  })), selectable && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
+    title: from ? from + " \u2192 " + path : path || file
+  }, rest), selectable && /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-gut"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
+    size: "sm",
     checked: checked,
     mixed: mixed,
     onChange: onCheck,
     label: "Select " + file
-  }), isDir ? /*#__PURE__*/React.createElement("span", {
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "zs-file-ind",
+    style: indent ? {
+      paddingLeft: indent
+    } : undefined
+  }, isDir && /*#__PURE__*/React.createElement("span", {
     className: "zs-file-fold"
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "folder",
-    size: "sm"
-  })) : /*#__PURE__*/React.createElement("span", {
-    className: "zs-file-status s-" + status
-  }, status), /*#__PURE__*/React.createElement("span", {
+    name: open ? "folder-open" : "folder",
+    size: "md"
+  })), /*#__PURE__*/React.createElement("span", {
     className: "zs-file-name"
-  }, file), !tree && !isDir && dir && /*#__PURE__*/React.createElement("span", {
+  }, file, note), !tree && !isDir && dir && /*#__PURE__*/React.createElement("span", {
     className: "zs-file-dir"
   }, /*#__PURE__*/React.createElement("span", {
     className: "h"
   }, dir.slice(0, cut + 1)), /*#__PURE__*/React.createElement("span", {
     className: "t"
-  }, dir.slice(cut + 1))), isDir && count !== undefined && /*#__PURE__*/React.createElement("span", {
-    className: "zs-file-count"
-  }, count), viewed && /*#__PURE__*/React.createElement("span", {
+  }, dir.slice(cut + 1)))), viewed && /*#__PURE__*/React.createElement("span", {
     className: "zs-file-vw",
     title: "Viewed"
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "check",
     size: "xs"
-  })), /*#__PURE__*/React.createElement("span", {
-    className: "zs-file-stat"
-  }, added > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "a"
-  }, "+", added), removed > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "r"
-  }, "\u2212", removed)));
+  })));
 }
 Object.assign(__ds_scope, { FileRow });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/FileRow.jsx", error: String((e && e.message) || e) }); }
@@ -12074,7 +12064,6 @@ try { (() => {
       return n;
     });
     const viewedN = files.filter(f => viewed[f.path]).length;
-    const tot = window.zkCount(files);
     const parents = [...c.parents, ...c.gapParents];
     // Picks by part (Story 10.38): a hunk of several parts keeps its picked parts here while only some are picked; all → the hunk's id
     // in `sel`, none → neither. The composer takes a partly picked hunk as picked.
@@ -12431,11 +12420,7 @@ try { (() => {
       className: "zk-ch-title"
     }, "Changes"), /*#__PURE__*/React.createElement("span", {
       className: "zk-ch-meta"
-    }, files.length, " ", files.length === 1 ? "file" : "files", /*#__PURE__*/React.createElement("span", {
-      className: "a"
-    }, "+", tot.a), /*#__PURE__*/React.createElement("span", {
-      className: "r"
-    }, "\u2212", tot.r)), viewedN > 0 && /*#__PURE__*/React.createElement("span", {
+    }, files.length, " ", files.length === 1 ? "file" : "files"), viewedN > 0 && /*#__PURE__*/React.createElement("span", {
       className: "zk-ch-viewed",
       title: viewedN + " of " + files.length + " files viewed"
     }, viewedN === files.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Icon, {
@@ -12464,8 +12449,7 @@ try { (() => {
       role: view === "tree" ? "tree" : "list"
     }, rows.map(r => {
       if (r.dir) {
-        const st = window.zkCount(r.files),
-          ids = r.files.flatMap(f => f.hunks.map(h => h.id)),
+        const ids = r.files.flatMap(f => f.hunks.map(h => h.id)),
           k = ids.filter(id => sel.has(id)).length;
         return /*#__PURE__*/React.createElement(FileRow, {
           key: "d:" + r.path,
@@ -12473,9 +12457,6 @@ try { (() => {
           name: r.name,
           path: r.path,
           depth: r.depth,
-          count: r.files.length,
-          added: st.a,
-          removed: st.r,
           selectable: mutable,
           checked: k > 0 && k === ids.length,
           mixed: k > 0 && k < ids.length,
@@ -12485,7 +12466,6 @@ try { (() => {
         });
       }
       const f = r.file,
-        st = window.zkCount([f]),
         state = fileState(f),
         lifted = liftSet && f.hunks.every(h => liftSet.has(h.id));
       return /*#__PURE__*/React.createElement(FileRow, {
@@ -12494,8 +12474,6 @@ try { (() => {
         path: f.path,
         tree: view === "tree",
         depth: r.depth,
-        added: st.a,
-        removed: st.r,
         selected: ff && ff.path === f.path,
         viewed: !!viewed[f.path],
         lifted: !!lifted,

@@ -678,6 +678,15 @@
     "description": "The number of changed files beside the Changes heading.",
     "placeholders": {"count": {"type": "int"}}
   },
+  "inspectorFileNew": "new",
+  "@inspectorFileNew": {"description": "The quiet word after the name of a file the change adds."},
+  "inspectorFileDeleted": "deleted",
+  "@inspectorFileDeleted": {"description": "The quiet word after the name of a file the change removes."},
+  "inspectorFileFrom": "from {old}",
+  "@inspectorFileFrom": {
+    "description": "The quiet word after the name of a renamed or copied file: the old file name, or the old path when the folder changed.",
+    "placeholders": {"old": {"type": "String"}}
+  },
   "inspectorEmptyWorkingCopy": "No changes yet — whatever you edit in your editor lands here.",
   "@inspectorEmptyWorkingCopy": {"description": "File list of an empty working copy."},
   "inspectorEmptyMerge": "A merge — no changes of its own.",

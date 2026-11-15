@@ -26,6 +26,7 @@ import 'graph_ports.dart';
 import 'graph_view_model.dart';
 import 'hatch_swatch.dart';
 import 'immutable_reasons.dart';
+import 'inspector_check_reveal.dart';
 import 'inspector_diff.dart';
 import 'inspector_file_tree.dart';
 import 'inspector_path_label.dart';
@@ -168,18 +169,6 @@ class InspectorViewModel extends ChangeNotifier {
 
   /// Whether the summary was read.
   bool get hasSummary => _summary != null;
-
-  /// The summary's totals: Σ added and Σ removed; null without a summary.
-  ({int added, int removed})? get totals {
-    final Iterable<FileDiff>? files = _summary?.values;
-    if (files == null) {
-      return null;
-    }
-    return (
-      added: files.fold(0, (sum, file) => sum + file.added),
-      removed: files.fold(0, (sum, file) => sum + file.removed),
-    );
-  }
 
   /// The path whose diff shows; null without files.
   String? get focusedPath => _focused;
@@ -512,7 +501,7 @@ class InspectorViewModel extends ChangeNotifier {
     }());
   }
 
-  /// The summary, or null when it is refused (rows without ±, no diff block).
+  /// The summary, or null when it is refused (no diff block).
   Future<Diff?> _summaryRead(String commitId) async {
     try {
       return await details.diff(commitId, summary: true);
@@ -1176,11 +1165,12 @@ class InspectorViewModel extends ChangeNotifier {
 ///   10.36) opens "Squash into parent" and "Absorb into ancestors", each row's command its hint and its tooltip the
 ///   reason it is off, else the command: Squash is disabled only with jj's refusal and opens the squash form when jj
 ///   would ask for a combined description (Story 10.25); Absorb with jj's refusal, or when no hunk is absorbable.
-/// - **Changes:** the files pane — the file count with the summary's totals, the viewed counter with Mark all / Reset,
-///   one row per file with its ± and ✓ in a scroll of its own (one Tab stop with Finder's keys: ↑ ↓ show the next
-///   file, Space picks, V marks Viewed) — and the focused file's diff block (Story 10.24) with a divider between them
-///   whose share is remembered per layout; or the empty, stale or refusal text. On a mutable change each row and the
-///   header have a checkbox, and a hunk of several parts a checkbox per part.
+/// - **Changes:** the files pane — the file count, the viewed counter with Mark all / Reset, one row per file with its
+///   quiet word and ✓ in a scroll of its own (one Tab stop with Finder's keys: ↑ ↓ show the next file, Space picks, V
+///   marks Viewed) — and the focused file's diff block (Story 10.24) with a divider between them whose share is
+///   remembered per layout; or the empty, stale or refusal text. On a mutable change each row and the header have a
+///   checkbox, and a hunk of several parts a checkbox per part; each pane shows its unpicked boxes only while the
+///   pointer or keyboard focus is in it (Story 10.42, [InspectorCheckReveal]).
 /// - **Composer** (Story 10.25; DS inspector.jsx:40-79, kit.css:129-144): at the island's bottom while composing.
 /// - **Esc:** the squash form closes; in a composer field with a draft it leaves the field; in a field with a changed
 ///   describe draft it leaves the field; else it closes the form, else on another change than @ it clears the picks
@@ -2923,7 +2913,6 @@ class _ChangesState extends State<_Changes> {
         return InspectorFileRow(
           key: ValueKey<String>('inspector-file ${file.path}'),
           file: file,
-          summary: model.summaryOf(file.path),
           focused: current,
           highlighted: false,
           ring: _focus.hasFocus && current,
@@ -2939,8 +2928,6 @@ class _ChangesState extends State<_Changes> {
         return InspectorFolderRow(
           key: ValueKey<String>('inspector-folder ${row.path}'),
           folder: row,
-          added: paths.fold(0, (sum, path) => sum + (model.summaryOf(path)?.added ?? 0)),
-          removed: paths.fold(0, (sum, path) => sum + (model.summaryOf(path)?.removed ?? 0)),
           current: current,
           ring: _focus.hasFocus && current,
           pickable: model.selectable,
@@ -2986,211 +2973,208 @@ class _ChangesState extends State<_Changes> {
       final tree = model.fileList == DiffFileListSetting.tree;
       final List<InspectorListRow> rows = _rowsOf(files);
       final int current = _currentOf(rows).clamp(0, rows.length - 1);
-      final ({int added, int removed})? totals = model.totals;
       final int viewed = model.viewedCount;
-      final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
       final String? focused = model.focusedPath;
       final bool pickHunks = focused != null && model.previousDiff == null && model.hunkable(focused);
-      final Widget filesPane = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              spacing: 10,
-              children: <Widget>[
-                if (model.selectable)
-                  ZsCheckbox(
-                    value: model.allState,
-                    tristate: true,
-                    onChanged: (_) => model.pickAll(),
-                    label: model.allPicked ? strings.inspectorDeselectAll : strings.inspectorSelectAll,
-                    size: ZsCheckboxSize.sm,
-                    identifier: 'inspector-select-all',
-                  ),
-                Text(
-                  strings.inspectorChanges,
-                  style: ZsType.secondary.copyWith(
-                    fontSize: ZsType.fsControl,
-                    fontWeight: FontWeight.w600,
-                    fontVariations: const <FontVariation>[FontVariation.weight(600)],
-                    color: colors.text,
-                  ),
-                ),
-                Expanded(
-                  child: Text.rich(
-                    key: const ValueKey<String>('inspector-files-meta'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    TextSpan(
-                      style: ZsType.secondary.copyWith(color: colors.textDim),
-                      children: <InlineSpan>[
-                        TextSpan(text: strings.inspectorFileCount(files.length)),
-                        if (totals != null) ...<InlineSpan>[
-                          TextSpan(
-                            text: '  +${totals.added}', // l10n-ignore: a count
-                            style: stat.copyWith(color: colors.add),
+      final Widget filesPane = InspectorCheckReveal(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                spacing: 10,
+                children: <Widget>[
+                  if (model.selectable)
+                    // In the rows' check column (design calm-study.jsx:214).
+                    SizedBox(
+                      width: inspectorCheckGutter,
+                      child: Center(
+                        child: InspectorCheck(
+                          value: model.allState,
+                          child: ZsCheckbox(
+                            value: model.allState,
+                            tristate: true,
+                            onChanged: (_) => model.pickAll(),
+                            label: model.allPicked ? strings.inspectorDeselectAll : strings.inspectorSelectAll,
+                            size: ZsCheckboxSize.sm,
+                            identifier: 'inspector-select-all',
                           ),
-                          TextSpan(
-                            text: '  −${totals.removed}', // l10n-ignore: a count
-                            style: stat.copyWith(color: colors.rem),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                if (viewed > 0) ...<Widget>[
-                  // It gives way before the buttons and the file list switch (Story 10.39).
-                  Flexible(
-                    child: ZsTooltip(
-                      message: strings.inspectorViewedCountTooltip(viewed, files.length),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        spacing: 6,
-                        children: <Widget>[
-                          if (viewed == files.length) ZanshinIcon(ZI.check, size: ZsIconSize.xs, color: colors.add),
-                          Flexible(
-                            child: Text(
-                              viewed == files.length
-                                  ? strings.inspectorAllViewed
-                                  : strings.inspectorViewedCount(viewed, files.length),
-                              maxLines: 1,
-                              softWrap: false,
-                              overflow: TextOverflow.ellipsis,
-                              style: ZsType.secondary.copyWith(fontSize: 11.5, color: colors.textDim),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
+                  Text(
+                    strings.inspectorChanges,
+                    style: ZsType.secondary.copyWith(
+                      fontSize: ZsType.fsControl,
+                      fontWeight: FontWeight.w600,
+                      fontVariations: const <FontVariation>[FontVariation.weight(600)],
+                      color: colors.text,
+                    ),
                   ),
-                  if (viewed == files.length)
-                    InspectorTextButton(
-                      label: strings.inspectorResetViewed,
-                      identifier: 'inspector-viewed-reset',
-                      onPressed: model.resetViewed,
-                    )
-                  else
-                    InspectorTextButton(
-                      label: strings.inspectorMarkAllViewed,
-                      identifier: 'inspector-viewed-all',
-                      onPressed: model.markAll,
+                  Expanded(
+                    child: Text(
+                      strings.inspectorFileCount(files.length),
+                      key: const ValueKey<String>('inspector-files-meta'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ZsType.secondary.copyWith(color: colors.textDim),
                     ),
-                ],
-                ZsSegmented<DiffFileListSetting>(
-                  size: ZsSegmentedSize.sm,
-                  label: strings.inspectorFileList,
-                  identifier: 'inspector-file-list',
-                  value: model.fileList,
-                  onChanged: model.setFileList,
-                  segments: <ZsSegment<DiffFileListSetting>>[
-                    ZsSegment(
-                      value: DiffFileListSetting.flat,
-                      icon: ZI.listFlat,
-                      tooltip: strings.inspectorFileListFlat,
-                    ),
-                    ZsSegment(
-                      value: DiffFileListSetting.tree,
-                      icon: ZI.listTree,
-                      tooltip: strings.inspectorFileListTree,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Focus(
-              focusNode: _focus,
-              onKeyEvent: (node, event) => _onKey(node, event, rows),
-              child: Semantics(
-                container: true,
-                label: strings.inspectorChanges,
-                child: ZsMenuAnchor(
-                  controller: _menu,
-                  entries: _menuEntries(context),
-                  semanticLabel: _menuRow?.path,
-                  identifier: 'inspector-files-menu',
-                  maxWidth: inspectorMenuMaxWidth,
-                  cmdMaxWidth: inspectorMenuHintMaxWidth,
-                  builder: (context, _) => ZsScrollArea(
-                    key: _list,
-                    controller: _files,
-                    identifier: 'inspector-files-list',
-                    child: SingleChildScrollView(
-                      controller: _files,
-                      child: Column(
-                        key: const ValueKey<String>('inspector-files'),
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        spacing: 1,
-                        children: <Widget>[
-                          for (var i = 0; i < rows.length; i++)
-                            GestureDetector(
-                              key: _rowKey(_keyOf(rows[i])),
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () {
-                                _focus.requestFocus();
-                                setState(() => _select(rows[i]));
-                                if (rows[i] case InspectorFolderListRow(:final String path, :final bool open)) {
-                                  model.setCollapsed(path, collapsed: open);
-                                }
-                              },
-                              onSecondaryTapUp: (details) => _openMenu(rows[i], details.globalPosition),
-                              child: _row(rows[i], current: i == current, tree: tree),
+                  ),
+                  if (viewed > 0) ...<Widget>[
+                    // It gives way before the buttons and the file list switch (Story 10.39).
+                    Flexible(
+                      child: ZsTooltip(
+                        message: strings.inspectorViewedCountTooltip(viewed, files.length),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          spacing: 6,
+                          children: <Widget>[
+                            if (viewed == files.length) ZanshinIcon(ZI.check, size: ZsIconSize.xs, color: colors.add),
+                            Flexible(
+                              child: Text(
+                                viewed == files.length
+                                    ? strings.inspectorAllViewed
+                                    : strings.inspectorViewedCount(viewed, files.length),
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: ZsType.secondary.copyWith(fontSize: 11.5, color: colors.textDim),
+                              ),
                             ),
-                        ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (viewed == files.length)
+                      InspectorTextButton(
+                        label: strings.inspectorResetViewed,
+                        identifier: 'inspector-viewed-reset',
+                        onPressed: model.resetViewed,
+                      )
+                    else
+                      InspectorTextButton(
+                        label: strings.inspectorMarkAllViewed,
+                        identifier: 'inspector-viewed-all',
+                        onPressed: model.markAll,
+                      ),
+                  ],
+                  ZsSegmented<DiffFileListSetting>(
+                    size: ZsSegmentedSize.sm,
+                    label: strings.inspectorFileList,
+                    identifier: 'inspector-file-list',
+                    value: model.fileList,
+                    onChanged: model.setFileList,
+                    segments: <ZsSegment<DiffFileListSetting>>[
+                      ZsSegment(
+                        value: DiffFileListSetting.flat,
+                        icon: ZI.listFlat,
+                        tooltip: strings.inspectorFileListFlat,
+                      ),
+                      ZsSegment(
+                        value: DiffFileListSetting.tree,
+                        icon: ZI.listTree,
+                        tooltip: strings.inspectorFileListTree,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Focus(
+                focusNode: _focus,
+                onKeyEvent: (node, event) => _onKey(node, event, rows),
+                child: Semantics(
+                  container: true,
+                  label: strings.inspectorChanges,
+                  child: ZsMenuAnchor(
+                    controller: _menu,
+                    entries: _menuEntries(context),
+                    semanticLabel: _menuRow?.path,
+                    identifier: 'inspector-files-menu',
+                    maxWidth: inspectorMenuMaxWidth,
+                    cmdMaxWidth: inspectorMenuHintMaxWidth,
+                    builder: (context, _) => ZsScrollArea(
+                      key: _list,
+                      controller: _files,
+                      identifier: 'inspector-files-list',
+                      child: SingleChildScrollView(
+                        controller: _files,
+                        child: Column(
+                          key: const ValueKey<String>('inspector-files'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          spacing: 1,
+                          children: <Widget>[
+                            for (var i = 0; i < rows.length; i++)
+                              GestureDetector(
+                                key: _rowKey(_keyOf(rows[i])),
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {
+                                  _focus.requestFocus();
+                                  setState(() => _select(rows[i]));
+                                  if (rows[i] case InspectorFolderListRow(:final String path, :final bool open)) {
+                                    model.setCollapsed(path, collapsed: open);
+                                  }
+                                },
+                                onSecondaryTapUp: (details) => _openMenu(rows[i], details.globalPosition),
+                                child: _row(rows[i], current: i == current, tree: tree),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
       final Widget diffPane = focused != null && model.hasSummary
           // While another file's diff loads the previous one stays, dimmed.
           ? Opacity(
               opacity: model.previousDiff != null ? ZsMetrics.of(context).disabledOpacity : 1,
-              child: InspectorDiffView(
-                // Keyed by the change too: another change's diff of the same path starts at the top and the left.
-                key: ValueKey<String>(widget.data.key),
-                path: model.previousDiff?.path ?? focused,
-                copyPath: model.files?.absolute(model.previousDiff?.path ?? focused),
-                lineMenu: switch (model.files) {
-                  final ProjectFiles files => (context, line) => inspectorPathMenu(
-                    context,
-                    files,
-                    path: model.previousDiff?.path ?? focused,
-                    onDisk: files.exists(model.previousDiff?.path ?? focused),
-                    workingCopy: widget.data.isWorkingCopy,
-                    line: line,
-                  ),
-                  null => null,
-                },
-                diff: model.focusedDiff ?? model.previousDiff,
-                ignoring: model.focusedDiff != null ? model.focusedIgnoring : model.previousIgnoring,
-                // A file picked whole opens every gap: the commit takes every line.
-                revealAll: model.isPicked(focused),
-                whitespace: model.whitespace,
-                onWhitespaceChanged: model.setWhitespace,
-                contextLines: model.contextLines,
-                contextFromRepo: model.contextFromRepo,
-                onContextLinesChanged: (lines) => unawaited(model.setContextLines(lines)),
-                wordMarks: model.wordMarks,
-                error: model.focusError,
-                viewed: model.isViewed(focused),
-                onViewedChanged: (viewed) => model.setViewed(focused, viewed),
-                layout: model.layout,
-                onLayoutChanged: model.setLayout,
-                // The dimmed previous file's diff takes no picks: they would land on the focused path.
-                hunkPicked: pickHunks ? (hunk) => model.hunkState(focused, hunk) : null,
-                onHunkToggled: (hunk) => model.toggleHunk(focused, hunk),
-                partPicked: pickHunks ? (part) => model.partPicked(focused, part) : null,
-                onPartToggled: (part) => model.togglePart(focused, part),
-                modePicked: pickHunks ? model.modePicked(focused) : null,
-                onModeToggled: () => model.toggleMode(focused),
+              child: InspectorCheckReveal(
+                child: InspectorDiffView(
+                  // Keyed by the change too: another change's diff of the same path starts at the top and the left.
+                  key: ValueKey<String>(widget.data.key),
+                  path: model.previousDiff?.path ?? focused,
+                  copyPath: model.files?.absolute(model.previousDiff?.path ?? focused),
+                  lineMenu: switch (model.files) {
+                    final ProjectFiles files => (context, line) => inspectorPathMenu(
+                      context,
+                      files,
+                      path: model.previousDiff?.path ?? focused,
+                      onDisk: files.exists(model.previousDiff?.path ?? focused),
+                      workingCopy: widget.data.isWorkingCopy,
+                      line: line,
+                    ),
+                    null => null,
+                  },
+                  diff: model.focusedDiff ?? model.previousDiff,
+                  ignoring: model.focusedDiff != null ? model.focusedIgnoring : model.previousIgnoring,
+                  // A file picked whole opens every gap: the commit takes every line.
+                  revealAll: model.isPicked(focused),
+                  whitespace: model.whitespace,
+                  onWhitespaceChanged: model.setWhitespace,
+                  contextLines: model.contextLines,
+                  contextFromRepo: model.contextFromRepo,
+                  onContextLinesChanged: (lines) => unawaited(model.setContextLines(lines)),
+                  wordMarks: model.wordMarks,
+                  error: model.focusError,
+                  viewed: model.isViewed(focused),
+                  onViewedChanged: (viewed) => model.setViewed(focused, viewed),
+                  layout: model.layout,
+                  onLayoutChanged: model.setLayout,
+                  // The dimmed previous file's diff takes no picks: they would land on the focused path.
+                  hunkPicked: pickHunks ? (hunk) => model.hunkState(focused, hunk) : null,
+                  onHunkToggled: (hunk) => model.toggleHunk(focused, hunk),
+                  partPicked: pickHunks ? (part) => model.partPicked(focused, part) : null,
+                  onPartToggled: (part) => model.togglePart(focused, part),
+                  modePicked: pickHunks ? model.modePicked(focused) : null,
+                  onModeToggled: () => model.toggleMode(focused),
+                ),
               ),
             )
           : const SizedBox.shrink();
@@ -3259,19 +3243,27 @@ class _ChangesState extends State<_Changes> {
   }
 }
 
-/// One file (DS components/content/FileRow; content.css:2-18; Story 10.39, design inspector-study.css:106-126): 28
-/// high; the checkbox, the 17 px status badge, the file's **name** in `--text`, then (flat only) its **folder** with
-/// its `/` in `--text-faint` — the folder's head gives way first, then its last folder, then the name
-/// ([InspectorPathLabel]) — then ✓ when viewed (name and folder at .55) and the summary's ± at the right. A rename or
-/// copy shows its new path; the tooltip is the full path, `old → new` for a rename or copy. The focused row (its diff
-/// shows) is on `--fl-on` (in the inspector with the current row's [ring] while the list has focus), a highlight on
-/// `--fl-hover`. In the [tree] it shows the name only, indented 8 + 14 × [depth] + 18. Story 10.29's operation view
-/// reuses it flat, without Viewed and checkboxes.
+/// The width of the file and folder rows' check column (Story 10.42; design calm-study.css `.cs-gut`).
+const double inspectorCheckGutter = 22;
+
+/// The space between a row's glyph, name and quiet word (design calm-study.css `.cs-ind`).
+const double _rowGap = 6;
+
+/// One file (DS components/content/FileRow; content.css:2-18; Story 10.39, design inspector-study.css:106-126; Story
+/// 10.42, design calm-study.jsx:234-243): 28 high; when [pickable] the 22 px check column at the left edge, its box
+/// shown on demand ([InspectorCheck]); then the file's **name** in `--text` and its quiet word — "new" in `--add`,
+/// "deleted" in `--rem` (both at .85), "from …" in `--text-faint` for a rename or copy (the old name, the old path
+/// when the folder changed), nothing for a modification — then (flat only) its **folder** with its `/` in
+/// `--text-faint` — the folder's head gives way first, then its last folder, then the name with its word
+/// ([InspectorPathLabel]) — then ✓ when viewed (name and folder at .55). A rename or copy shows its new path; the
+/// tooltip is the full path, `old → new` for a rename or copy. The focused row (its diff shows) is on `--fl-on` (in the
+/// inspector with the current row's [ring] while the list has focus), a highlight on `--fl-hover`. In the [tree] it
+/// shows the name only, indented 14 × [depth] + 20 after the check column (else after 8 px). Story 10.29's operation
+/// view reuses it flat, without Viewed and checkboxes.
 class InspectorFileRow extends StatelessWidget {
   /// The row of [file].
   const InspectorFileRow({
     required this.file,
-    required this.summary,
     required this.focused,
     required this.highlighted,
     this.ring = false,
@@ -3292,9 +3284,6 @@ class InspectorFileRow extends StatelessWidget {
 
   /// The file.
   final FileChange file;
-
-  /// Its summary entry (±), when read.
-  final FileDiff? summary;
 
   /// Whether its diff shows.
   final bool focused;
@@ -3321,31 +3310,54 @@ class InspectorFileRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ZsColors colors = ZsColors.of(context);
     final metrics = ZsMetrics.of(context);
-    final (String letter, Color ink, Color fill) = switch (file.kind) {
-      FileChangeKind.added => ('A', colors.add, colors.addBg), // l10n-ignore: jj's status letter
-      FileChangeKind.modified => ('M', colors.accent, colors.accentSoft), // l10n-ignore: jj's status letter
-      FileChangeKind.removed => ('D', colors.rem, colors.remBg), // l10n-ignore: jj's status letter
-      FileChangeKind.renamed => ('R', colors.accent, colors.accentSoft), // l10n-ignore: jj's status letter
-      FileChangeKind.copied => ('C', colors.add, colors.addBg), // l10n-ignore: jj's status letter
-    };
+    final AppLocalizations strings = context.l10n;
     final String? from = file.fromPath;
-    final FileDiff? summary = this.summary;
-    final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
+    final TextStyle quiet = ZsType.secondary.copyWith(fontSize: 10.5);
+    final TextSpan? word = switch (file.kind) {
+      FileChangeKind.added => TextSpan(
+        text: strings.inspectorFileNew,
+        style: quiet.copyWith(color: colors.add.withValues(alpha: colors.add.a * .85)),
+      ),
+      FileChangeKind.removed => TextSpan(
+        text: strings.inspectorFileDeleted,
+        style: quiet.copyWith(color: colors.rem.withValues(alpha: colors.rem.a * .85)),
+      ),
+      FileChangeKind.renamed || FileChangeKind.copied when from != null => TextSpan(
+        text: strings.inspectorFileFrom(inspectorRenameSource(from, file.path)),
+        style: quiet.copyWith(color: colors.textFaint),
+      ),
+      _ => null,
+    };
+    final TextSpan? note = word == null
+        ? null
+        : TextSpan(
+            children: <InlineSpan>[
+              const WidgetSpan(child: SizedBox(width: _rowGap)),
+              word,
+            ],
+          );
     final ({String name, String head, String tail}) parts = inspectorPathParts(file.path);
     final TextStyle nameStyle = ZsType.id.copyWith(color: colors.text);
     final Widget label = tree
-        ? Text(parts.name, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis, style: nameStyle)
+        ? Text.rich(
+            TextSpan(text: parts.name, children: <InlineSpan>[?note]),
+            style: nameStyle,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+          )
         : InspectorPathLabel(
             name: parts.name,
             head: parts.head,
             tail: parts.tail,
             nameStyle: nameStyle,
             folderStyle: ZsType.id.copyWith(color: colors.textFaint),
+            note: note,
           );
     final Widget row = Container(
       // 28 high, plus the density's step (DS density.css .zs-file).
       constraints: BoxConstraints(minHeight: 28 + metrics.rowStep),
-      padding: EdgeInsets.only(left: tree ? 8 + 14.0 * depth + 18 : 8, right: 8),
+      padding: EdgeInsets.only(left: pickable ? 0 : 8, right: 8),
       decoration: BoxDecoration(
         color: focused
             ? colors.flOn
@@ -3360,38 +3372,31 @@ class InspectorFileRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(metrics.radiusMd),
       ),
       child: Row(
-        spacing: 8,
         children: <Widget>[
           if (pickable)
-            ZsCheckbox(
-              value: picked,
-              tristate: true,
-              onChanged: (_) => onPick?.call(),
-              label: file.path,
-              size: ZsCheckboxSize.sm,
-              identifier: 'inspector-file-check',
-            ),
-          _StatusBadge(letter: letter, ink: ink, fill: fill),
+            _CheckGutter(value: picked, onPick: onPick, label: file.path, identifier: 'inspector-file-check'),
           Expanded(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Opacity(opacity: viewed ? .55 : 1, child: label),
+            child: Padding(
+              padding: EdgeInsets.only(left: tree ? 14.0 * depth + 14 + _rowGap : 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Opacity(opacity: viewed ? .55 : 1, child: label),
+              ),
             ),
           ),
           if (viewed)
-            Semantics(
-              label: context.l10n.inspectorViewed,
-              child: ZanshinIcon(
-                ZI.check,
-                size: ZsIconSize.xs,
-                color: colors.add,
-                key: const ValueKey<String>('inspector-file-viewed'),
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Semantics(
+                label: strings.inspectorViewed,
+                child: ZanshinIcon(
+                  ZI.check,
+                  size: ZsIconSize.xs,
+                  color: colors.add,
+                  key: const ValueKey<String>('inspector-file-viewed'),
+                ),
               ),
             ),
-          if (summary != null && summary.added > 0)
-            Text('+${summary.added}', style: stat.copyWith(color: colors.add)), // l10n-ignore: a count
-          if (summary != null && summary.removed > 0)
-            Text('−${summary.removed}', style: stat.copyWith(color: colors.rem)), // l10n-ignore: a count
         ],
       ),
     );
@@ -3402,42 +3407,49 @@ class InspectorFileRow extends StatelessWidget {
   }
 }
 
-/// A file's status letter (design inspector-study.css:114-116): 17 px square, radius 4, 700 10 px mono.
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.letter, required this.ink, required this.fill});
+/// What a rename or copy's "from" names (Story 10.42): [from]'s file name while the folder stays, else its whole path.
+String inspectorRenameSource(String from, String path) {
+  final ({String name, String head, String tail}) old = inspectorPathParts(from);
+  final ({String name, String head, String tail}) now = inspectorPathParts(path);
+  return old.head + old.tail == now.head + now.tail ? old.name : from;
+}
 
-  final String letter;
-  final Color ink;
-  final Color fill;
+/// A row's check column (design calm-study.css `.cs-gut`): 22 px at the row's left edge, the box centred and shown on
+/// demand.
+class _CheckGutter extends StatelessWidget {
+  const _CheckGutter({required this.value, required this.onPick, required this.label, required this.identifier});
+
+  final bool? value;
+  final VoidCallback? onPick;
+  final String label;
+  final String identifier;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 17,
-    height: 17,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(4)),
-    child: Text(
-      letter,
-      style: ZsType.id.copyWith(
-        fontSize: 10,
-        height: 1,
-        fontWeight: FontWeight.w700,
-        fontVariations: const <FontVariation>[FontVariation.weight(700)],
-        color: ink,
+  Widget build(BuildContext context) => SizedBox(
+    width: inspectorCheckGutter,
+    child: Center(
+      child: InspectorCheck(
+        value: value,
+        child: ZsCheckbox(
+          value: value,
+          tristate: true,
+          onChanged: (_) => onPick?.call(),
+          label: label,
+          size: ZsCheckboxSize.sm,
+          identifier: identifier,
+        ),
       ),
     ),
   );
 }
 
-/// A folder in the tree (Story 10.39; design inspector-study.css:123-126): indented 8 + 14 × depth; the chevron, the
-/// three-state checkbox (mutable: picks or unpicks every file below; mixed when some), the folder glyph, its name,
-/// a 10 px count pill on `--fl-hover` in `--text-dim`, and its files' summed ± at the right. Current like a file row.
+/// A folder in the tree (Story 10.39; Story 10.42, design calm-study.jsx:224-231): when pickable the 22 px check column
+/// (mutable: picks or unpicks every file below; mixed when some), then indented 14 × depth the folder glyph — open
+/// while expanded, closed while collapsed, no chevron — and its name, 6 apart. Current like a file row.
 class InspectorFolderRow extends StatelessWidget {
   /// The row of [folder].
   const InspectorFolderRow({
     required this.folder,
-    required this.added,
-    required this.removed,
     required this.current,
     this.ring = false,
     this.pickable = false,
@@ -3448,12 +3460,6 @@ class InspectorFolderRow extends StatelessWidget {
 
   /// The folder.
   final InspectorFolderListRow folder;
-
-  /// Its files' summed ±.
-  final int added;
-
-  /// See [added].
-  final int removed;
 
   /// Whether it is the list's current row (`--fl-on`).
   final bool current;
@@ -3474,10 +3480,9 @@ class InspectorFolderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ZsColors colors = ZsColors.of(context);
     final metrics = ZsMetrics.of(context);
-    final TextStyle stat = ZsType.id.copyWith(fontSize: ZsType.fsSm);
     final Widget row = Container(
       constraints: BoxConstraints(minHeight: 28 + metrics.rowStep),
-      padding: EdgeInsets.only(left: 8 + 14.0 * folder.depth, right: 8),
+      padding: EdgeInsets.only(left: pickable ? 0 : 8, right: 8),
       decoration: BoxDecoration(
         color: current ? colors.flOn : colors.flOn.withValues(alpha: 0),
         borderRadius: BorderRadius.circular(metrics.radiusMd),
@@ -3487,57 +3492,27 @@ class InspectorFolderRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(metrics.radiusMd),
       ),
       child: Row(
-        spacing: 8,
         children: <Widget>[
-          SizedBox(
-            width: 12,
-            child: ZanshinIcon(
-              folder.open ? ZI.chevronDown : ZI.chevronRight,
-              size: ZsIconSize.xs,
-              color: colors.textFaint,
-            ),
-          ),
           if (pickable)
-            ZsCheckbox(
-              value: picked,
-              tristate: true,
-              onChanged: (_) => onPick?.call(),
-              label: folder.path,
-              size: ZsCheckboxSize.sm,
-              identifier: 'inspector-folder-check',
-            ),
-          ZanshinIcon(ZI.folder, size: ZsIconSize.sm, color: colors.textFaint),
-          // The name takes all the room up to its width; the pill follows it.
+            _CheckGutter(value: picked, onPick: onPick, label: folder.path, identifier: 'inspector-folder-check'),
+          SizedBox(width: 14.0 * folder.depth),
+          ZanshinIcon(
+            folder.open ? ZI.folderOpen : ZI.folder,
+            // 14 px, so a file's name below lines up at 14 + 6 (design calm-study.jsx:230).
+            size: ZsIconSize.md,
+            color: colors.textFaint,
+            key: const ValueKey<String>('inspector-folder-glyph'),
+          ),
+          const SizedBox(width: _rowGap),
           Expanded(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 8,
-              children: <Widget>[
-                Flexible(
-                  child: Text(
-                    folder.name,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: ZsType.id.copyWith(color: colors.text),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(
-                    color: colors.flHover,
-                    borderRadius: BorderRadius.circular(metrics.radiusPill),
-                  ),
-                  child: Text(
-                    '${folder.files.length}', // l10n-ignore: a count
-                    style: ZsType.secondary.copyWith(fontSize: 10, color: colors.textDim),
-                  ),
-                ),
-              ],
+            child: Text(
+              folder.name,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: ZsType.id.copyWith(color: colors.text),
             ),
           ),
-          if (added > 0) Text('+$added', style: stat.copyWith(color: colors.add)), // l10n-ignore: a count
-          if (removed > 0) Text('−$removed', style: stat.copyWith(color: colors.rem)), // l10n-ignore: a count
         ],
       ),
     );

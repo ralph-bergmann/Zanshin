@@ -168,7 +168,6 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
   const [viewed, setViewedMap] = React.useState(() => VIEWED.get(c.id) || {});
   const setViewed = (p, v) => setViewedMap((o) => { const n = { ...o, [p]: v }; VIEWED.set(c.id, n); return n; });
   const viewedN = files.filter((f) => viewed[f.path]).length;
-  const tot = window.zkCount(files);
   const parents = [...c.parents, ...c.gapParents];
   // Picks by part (Story 10.38): a hunk of several parts keeps its picked parts here while only some are picked; all → the hunk's id
   // in `sel`, none → neither. The composer takes a partly picked hunk as picked.
@@ -323,7 +322,7 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
             <div className="zk-ch-hd">
               {mutable && <Checkbox checked={allState === "all"} mixed={allState === "some"} onChange={() => { setSel(allState === "all" ? new Set() : new Set(allIds)); setPartSel({}); }} label={allState === "all" ? "Deselect all" : "Select all"}/>}
               <span className="zk-ch-title">Changes</span>
-              <span className="zk-ch-meta">{files.length} {files.length === 1 ? "file" : "files"}<span className="a">+{tot.a}</span><span className="r">−{tot.r}</span></span>
+              <span className="zk-ch-meta">{files.length} {files.length === 1 ? "file" : "files"}</span>
               {viewedN > 0 && (
                 <span className="zk-ch-viewed" title={viewedN + " of " + files.length + " files viewed"}>
                   {viewedN === files.length ? <><Icon name="check" size="xs"/>all viewed</> : <>{viewedN}/{files.length} viewed</>}
@@ -336,13 +335,13 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
             <div className="zk-ch-files" role={view === "tree" ? "tree" : "list"}>
               {rows.map((r) => {
                 if (r.dir) {
-                  const st = window.zkCount(r.files), ids = r.files.flatMap((f) => f.hunks.map((h) => h.id)), k = ids.filter((id) => sel.has(id)).length;
-                  return <FileRow key={"d:" + r.path} open={r.open} name={r.name} path={r.path} depth={r.depth} count={r.files.length} added={st.a} removed={st.r}
+                  const ids = r.files.flatMap((f) => f.hunks.map((h) => h.id)), k = ids.filter((id) => sel.has(id)).length;
+                  return <FileRow key={"d:" + r.path} open={r.open} name={r.name} path={r.path} depth={r.depth}
                     selectable={mutable} checked={k > 0 && k === ids.length} mixed={k > 0 && k < ids.length} onCheck={() => toggle(ids)}
                     onClick={() => toggleDir(r.path)} onContextMenu={(e) => openMenu(e, r)}/>;
                 }
-                const f = r.file, st = window.zkCount([f]), state = fileState(f), lifted = liftSet && f.hunks.every((h) => liftSet.has(h.id));
-                return <FileRow key={f.path} status={f.status} path={f.path} tree={view === "tree"} depth={r.depth} added={st.a} removed={st.r} selected={ff && ff.path === f.path} viewed={!!viewed[f.path]} lifted={!!lifted}
+                const f = r.file, state = fileState(f), lifted = liftSet && f.hunks.every((h) => liftSet.has(h.id));
+                return <FileRow key={f.path} status={f.status} path={f.path} tree={view === "tree"} depth={r.depth} selected={ff && ff.path === f.path} viewed={!!viewed[f.path]} lifted={!!lifted}
                   selectable={mutable} checked={state === "all"} mixed={state === "some"} onCheck={() => toggle(f.hunks.map((h) => h.id))}
                   onClick={() => setFocus(f.path)} onPointerDown={mutable ? (e) => dragFile(e, f) : undefined} onContextMenu={(e) => openMenu(e, r)}
                   title={mutable ? f.path + " — drag onto a change to move it there" : f.path}/>;

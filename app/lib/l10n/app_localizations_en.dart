@@ -1141,6 +1141,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get inspectorFileNew => 'new';
+
+  @override
+  String get inspectorFileDeleted => 'deleted';
+
+  @override
+  String inspectorFileFrom(String old) {
+    return 'from $old';
+  }
+
+  @override
   String get inspectorEmptyWorkingCopy => 'No changes yet — whatever you edit in your editor lands here.';
 
   @override

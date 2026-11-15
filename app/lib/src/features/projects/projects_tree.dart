@@ -20,7 +20,7 @@ import 'tree_drop.dart';
 /// components/content/ProjectRow.{jsx,prompt.md}; content.css:66-95), over [projects] as [projectsTree] projects it.
 ///
 /// **Rows.** 28 high for a group, 44 for a project, 1 apart, indented 16 per level from 8; radius `--radius-md`. A group
-/// shows the chevron (sm in a 14 box, turning on `--dur-expand`), the folder (open while expanded), its name in caps
+/// shows no chevron (Story 10.42): its folder glyph, open while expanded, tells open from closed; then its name in caps
 /// (`--fs-sm` 600, tracked .08em, `--text-muted`) and the count mono `--fs-xs` `--text-faint`. A project shows its 7 px
 /// status dot (none before its first reading; Claude's proposal), its name (13/500), the saffron caps OPEN on the open
 /// project, its bookmark label (mono `--fs-xs` `--text-dim` after the xs `branch` glyph, ProjectRow.jsx:66; none
@@ -39,7 +39,7 @@ import 'tree_drop.dart';
 /// is — a group's never itself or a group inside it — then — · New group… (item 6).
 ///
 /// **Naming** (item 4; DS ProjectRow.prompt.md:17): New group's field and Rename…'s are one field (TextField sm in a
-/// 34 row, the chevron slot and the folder before it). ↩ commits, Esc cancels; focus leaving keeps a rename and cancels
+/// 34 row, the folder before it). ↩ commits, Esc cancels; focus leaving keeps a rename and cancels
 /// a new group; an empty name cancels (a rename keeps its old name).
 ///
 /// **Keys** (decision 16.43; DS ProjectRow.prompt.md:11): one Tab stop — the selected row, else the first; focus that
@@ -1249,33 +1249,6 @@ class _RowBox extends StatelessWidget {
 TextStyle _weighted(TextStyle style, FontWeight weight) =>
     style.copyWith(fontWeight: weight, fontVariations: <FontVariation>[FontVariation.weight(weight.value.toDouble())]);
 
-/// The chevron box: 14 × 14, the sm chevron turning a quarter on `--dur-expand` (`--ease-glide`).
-class _Chevron extends StatelessWidget {
-  const _Chevron({required this.expanded});
-
-  final bool? expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool? open = expanded;
-    if (open == null) {
-      return const SizedBox.square(dimension: 14);
-    }
-    final ZsMotion motion = ZsMotion.of(context);
-    return SizedBox.square(
-      dimension: 14,
-      child: AnimatedRotation(
-        turns: open ? .25 : 0,
-        duration: motion.durExpand,
-        curve: motion.easeGlide,
-        child: Center(
-          child: ZanshinIcon(ZI.chevronRight, size: ZsIconSize.sm, color: ZsColors.of(context).textDim),
-        ),
-      ),
-    );
-  }
-}
-
 /// A group row's content.
 class _GroupFace extends StatelessWidget {
   const _GroupFace({
@@ -1310,7 +1283,6 @@ class _GroupFace extends StatelessWidget {
               child: Row(
                 spacing: 8,
                 children: <Widget>[
-                  _Chevron(expanded: expanded),
                   ZanshinIcon(expanded ? ZI.folderOpen : ZI.folder, size: ZsIconSize.md, color: colors.textDim),
                   // The count sits at the row's end (`.zs-proj-count{margin-left:auto}`, DS content.css:87).
                   Expanded(
@@ -1388,7 +1360,6 @@ class _ProjectFace extends StatelessWidget {
       child: Row(
         spacing: 8,
         children: <Widget>[
-          const _Chevron(expanded: null),
           Padding(
             padding: const EdgeInsets.only(right: 2),
             child: projectStatus == null
@@ -1576,7 +1547,6 @@ class _NameField extends StatelessWidget {
       child: Row(
         spacing: 8,
         children: <Widget>[
-          const _Chevron(expanded: null),
           ZanshinIcon(ZI.folder, size: ZsIconSize.md, color: colors.textDim),
           Expanded(
             child: Focus(

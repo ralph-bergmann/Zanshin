@@ -159,9 +159,9 @@ h1{margin:0 0 4px;font:600 17px/1.3 var(--font-sans);letter-spacing:-.01em}
   const h = React.createElement;
   const Diff = () => h(React.Fragment, null,
     h("div", { className: "dv-files", role: "list" },
-      h(FileRow, { status: "M", path: "lib/swipe/controller.dart", added: 12, removed: 3, selected: true, selectable: true, checked: true }),
-      h(FileRow, { status: "A", path: "lib/swipe/velocity.dart", added: 40, selectable: true, checked: true }),
-      h(FileRow, { status: "D", path: "lib/legacy_swipe.dart", removed: 18, selectable: true })),
+      h(FileRow, { status: "M", path: "lib/swipe/controller.dart", selected: true, selectable: true, checked: true }),
+      h(FileRow, { status: "A", path: "lib/swipe/velocity.dart", selectable: true, checked: true }),
+      h(FileRow, { status: "D", path: "lib/legacy_swipe.dart", selectable: true })),
     h("div", null,
       h(DiffHunk, { selected: true, selectable: true, className: "st-focus", range: "@@ −12,6 +12,9 @@", context: "class Swipe", lines: ["+  final v = velocity(dx);", "   return v;"] }),
       h(DiffHunk, { selectable: true, range: "@@ −40,3 +43,4 @@", context: "build()", lines: ["-  legacy();", "+  next();"] })));

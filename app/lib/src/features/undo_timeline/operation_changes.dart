@@ -906,7 +906,6 @@ class _FileRow extends StatelessWidget {
     semantics: SemanticsProperties(button: true, selected: focused, label: file.path),
     builder: (context, status) => InspectorFileRow(
       file: FileChange(path: file.path, kind: file.kind, fromPath: file.fromPath),
-      summary: file,
       focused: focused,
       highlighted: status.hovered,
     ),

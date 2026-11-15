@@ -179,6 +179,34 @@ void main() {
     });
   });
 
+  testWidgets('Story 10.42: file rows show the quiet word, no status letter, no ±, no checkbox', (tester) async {
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_abandonedChange()]),
+      diff: (call) => Diff(
+        files: <FileDiff>[
+          testFileDiff('gone.txt', kind: FileChangeKind.removed),
+          testFileDiff('born.txt', kind: FileChangeKind.added),
+        ],
+        operationId: 'op',
+        commitIds: const <String>[],
+      ),
+    );
+    await withView(tester, changes, () async {
+      String row(int i) => tester
+          .widget<Text>(find.descendant(of: _id('operation-changes-file-$i'), matching: find.byType(Text)).first)
+          .textSpan!
+          .toPlainText();
+      expect(row(0), endsWith('deleted'));
+      expect(row(1), endsWith('new'));
+      for (final i in <int>[0, 1]) {
+        for (final gone in <String>['D', 'A', '+1', '−1']) {
+          expect(find.descendant(of: _id('operation-changes-file-$i'), matching: find.text(gone)), findsNothing);
+        }
+        expect(find.descendant(of: _id('operation-changes-file-$i'), matching: find.byType(ZsCheckbox)), findsNothing);
+      }
+    });
+  });
+
   testWidgets('Story 10.39: with the workspace root the diff header copies the absolute path', (tester) async {
     final copied = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {

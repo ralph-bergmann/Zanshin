@@ -20,20 +20,28 @@ import 'package:flutter/widgets.dart';
 /// A path drawn name first (Story 10.39; design inspector-study.css:116-122): the `name`, then [gap], then the folder
 /// as its `head` and `tail`. Each gets its whole width while there is room; short of room the head gives way first,
 /// then the tail, then the name — each ending in its own ellipsis, so the folder is cut in its middle. The three are
-/// one-line texts, laid out with their max intrinsic widths: Flex has no shrink factors for this order.
+/// one-line texts, laid out with their max intrinsic widths: Flex has no shrink factors for this order. An optional
+/// `note` (Story 10.42: "new", "deleted", "from …") follows the name inside its part and gives way with it.
 class InspectorPathLabel extends MultiChildRenderObjectWidget {
-  /// The label of `name`, `head` and `tail` in `nameStyle` and `folderStyle`.
+  /// The label of `name`, `head` and `tail` in `nameStyle` and `folderStyle`, `note` after the name.
   InspectorPathLabel({
     required String name,
     required String head,
     required String tail,
     required TextStyle nameStyle,
     required TextStyle folderStyle,
+    InlineSpan? note,
     this.gap = 8,
     super.key,
   }) : super(
          children: <Widget>[
-           _part(name, nameStyle),
+           Text.rich(
+             TextSpan(text: name, children: <InlineSpan>[?note]),
+             style: nameStyle,
+             maxLines: 1,
+             softWrap: false,
+             overflow: TextOverflow.ellipsis,
+           ),
            _part(head, folderStyle),
            _part(tail, folderStyle),
          ],

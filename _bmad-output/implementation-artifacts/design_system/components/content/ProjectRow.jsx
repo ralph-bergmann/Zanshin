@@ -16,7 +16,7 @@ export const zsProjectStatus = {
 };
 
 // ProjectRow — one row of the Projects tree. kind "project": status dot, name, OPEN (the repo in this window), branch, ↑↓, path · last opened, ••• on hover.
-// kind "group": chevron, folder, CAPS name, count. depth indents 16px per level. Double-click (or ↩) opens a project.
+// kind "group": folder (open while expanded, closed while collapsed — no chevron since Story 10.42), CAPS name, count. depth indents 16px per level. Double-click (or ↩) opens a project.
 // Keyboard (a tree, one Tab stop — the selected row): ↑ ↓ move and select · Home End · → expands a group, or steps into it ·
 // ← collapses, or steps to the parent · ↩ opens a project (a group: toggles) · ••• is reachable with Tab from its row and shows with focus.
 // VoiceOver: tree item with level, expanded / collapsed, selected; the status dot reads as its label (clean, ahead …).
@@ -52,7 +52,6 @@ export function ProjectRow({ kind = "project", name, path, branch, status = "cle
     const decide = (el, keep) => { el.dataset.done = "1"; const v = el.value.trim(); if (keep && v) onCommit && onCommit(v); else onCancel && onCancel(); };
     return (
       <div role="treeitem" aria-level={depth + 1} className={["zs-proj is-group is-editing", className].filter(Boolean).join(" ")} style={{ "--depth": depth }} {...rest}>
-        <span className="zs-proj-chev"></span>
         <Icon name="folder" size="md" className="zs-proj-icon" />
         <TextField size="sm" className="zs-proj-field" defaultValue={name} placeholder="Group name" aria-label={fresh ? "New group" : "Rename group"}
           inputRef={(el) => { if (el && !el.dataset.ready) { el.dataset.ready = "1"; el.focus(); el.select(); } }}
@@ -66,7 +65,6 @@ export function ProjectRow({ kind = "project", name, path, branch, status = "cle
       <div role="treeitem" aria-expanded={expanded} aria-level={depth + 1} aria-selected={selected} tabIndex={tabIndex != null ? tabIndex : selected ? 0 : -1}
         className={["zs-proj is-group", selected && "is-sel", ...moving, className].filter(Boolean).join(" ")} style={{ "--depth": depth }} onClick={onClick} onFocus={focus}
         onKeyDown={(e) => zsTreeKeys(e, { group: true, expanded, depth, onToggle: onToggle || onClick })} {...rest}>
-        <span className={"zs-proj-chev" + (expanded ? " is-open" : "")}><Icon name="chevron-right" size="sm" /></span>
         <Icon name={expanded ? "folder-open" : "folder"} size="md" className="zs-proj-icon" />
         <span className="zs-proj-name">{name}</span>
         <span className="zs-proj-count">{count}{groups > 0 ? " · " + groups + (groups === 1 ? " group" : " groups") : ""}</span>
@@ -80,7 +78,6 @@ export function ProjectRow({ kind = "project", name, path, branch, status = "cle
       className={["zs-proj", selected && "is-sel", open && "is-open", status === "missing" && "is-missing", ...moving, className].filter(Boolean).join(" ")}
       style={{ "--depth": depth }} onClick={onClick} onDoubleClick={onDoubleClick} onFocus={focus} title={path}
       onKeyDown={(e) => zsTreeKeys(e, { group: false, depth, onOpen: onDoubleClick })} {...rest}>
-      <span className="zs-proj-chev"></span>
       <span className="zs-proj-dot" style={{ background: s.color }} title={s.label}></span>
       <div className="zs-proj-text">
         <div className="zs-proj-l1">

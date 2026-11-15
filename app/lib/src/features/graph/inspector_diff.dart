@@ -14,6 +14,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import 'hatch_swatch.dart';
+import 'inspector_check_reveal.dart';
 import 'inspector_path_label.dart';
 import 'project_files.dart' show announceCopied;
 
@@ -1023,12 +1024,15 @@ class InspectorDiffView extends StatelessWidget {
               padding: const EdgeInsets.only(left: 10),
               child: Row(
                 children: <Widget>[
-                  ZsCheckbox(
+                  InspectorCheck(
                     value: modePicked,
-                    onChanged: (_) => onModeToggled?.call(),
-                    label: strings.inspectorModeCheck,
-                    size: ZsCheckboxSize.sm,
-                    identifier: 'inspector-mode-check',
+                    child: ZsCheckbox(
+                      value: modePicked,
+                      onChanged: (_) => onModeToggled?.call(),
+                      label: strings.inspectorModeCheck,
+                      size: ZsCheckboxSize.sm,
+                      identifier: 'inspector-mode-check',
+                    ),
                   ),
                   Expanded(child: _note(context, strings.inspectorDiffModeChange)),
                 ],
@@ -1664,13 +1668,16 @@ class InspectorDiffHunk extends StatelessWidget {
         spacing: 8,
         children: <Widget>[
           if (selectable)
-            ZsCheckbox(
+            InspectorCheck(
               value: picked,
-              tristate: true,
-              onChanged: (_) => onToggle?.call(),
-              label: strings.inspectorHunkCheck(hunkHeader(hunk)),
-              size: ZsCheckboxSize.sm,
-              identifier: 'inspector-hunk-check',
+              child: ZsCheckbox(
+                value: picked,
+                tristate: true,
+                onChanged: (_) => onToggle?.call(),
+                label: strings.inspectorHunkCheck(hunkHeader(hunk)),
+                size: ZsCheckboxSize.sm,
+                identifier: 'inspector-hunk-check',
+              ),
             ),
           Text(hunkHeader(hunk), style: head.copyWith(color: chosen ? colors.text : colors.hunk)),
           if (parts)
@@ -1746,15 +1753,18 @@ class InspectorDiffHunk extends StatelessWidget {
     final int end = spans.map((span) => span.$1 + span.$2).reduce(math.max);
     final int count = spans.fold(0, (sum, span) => sum + span.$2);
     return Center(
-      child: ZsCheckbox(
+      child: InspectorCheck(
         value: on,
-        tristate: parts != null,
-        onChanged: (_) => _togglePart(part),
-        label: on ?? false
-            ? strings.inspectorPartUnpick(count, start + 1, end)
-            : strings.inspectorPartPick(count, start + 1, end),
-        size: ZsCheckboxSize.sm,
-        identifier: 'inspector-part-check',
+        child: ZsCheckbox(
+          value: on,
+          tristate: parts != null,
+          onChanged: (_) => _togglePart(part),
+          label: on ?? false
+              ? strings.inspectorPartUnpick(count, start + 1, end)
+              : strings.inspectorPartPick(count, start + 1, end),
+          size: ZsCheckboxSize.sm,
+          identifier: 'inspector-part-check',
+        ),
       ),
     );
   }
@@ -1800,13 +1810,16 @@ class InspectorDiffHunk extends StatelessWidget {
   Widget _foldBox(BuildContext context, int part) {
     final bool? on = _partState(part);
     return Center(
-      child: ZsCheckbox(
+      child: InspectorCheck(
         value: on,
-        tristate: true,
-        onChanged: (_) => _togglePart(part),
-        label: on ?? false ? context.l10n.inspectorFoldUnpick : context.l10n.inspectorFoldPick,
-        size: ZsCheckboxSize.sm,
-        identifier: 'inspector-fold-check',
+        child: ZsCheckbox(
+          value: on,
+          tristate: true,
+          onChanged: (_) => _togglePart(part),
+          label: on ?? false ? context.l10n.inspectorFoldUnpick : context.l10n.inspectorFoldPick,
+          size: ZsCheckboxSize.sm,
+          identifier: 'inspector-fold-check',
+        ),
       ),
     );
   }

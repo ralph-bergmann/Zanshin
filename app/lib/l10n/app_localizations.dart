@@ -1742,6 +1742,24 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 file} other{{count} files}}'**
   String inspectorFileCount(int count);
 
+  /// The quiet word after the name of a file the change adds.
+  ///
+  /// In en, this message translates to:
+  /// **'new'**
+  String get inspectorFileNew;
+
+  /// The quiet word after the name of a file the change removes.
+  ///
+  /// In en, this message translates to:
+  /// **'deleted'**
+  String get inspectorFileDeleted;
+
+  /// The quiet word after the name of a renamed or copied file: the old file name, or the old path when the folder changed.
+  ///
+  /// In en, this message translates to:
+  /// **'from {old}'**
+  String inspectorFileFrom(String old);
+
   /// File list of an empty working copy.
   ///
   /// In en, this message translates to:

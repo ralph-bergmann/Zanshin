@@ -1,27 +1,37 @@
 /* FileRow — Changes list in the inspector. Neutral: hover --fl-hover · pressed --fl-on · on (its diff shows) --fl-on → hover --fl-on-hover → pressed --fl-press */
-.zs-file{display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:28px;padding:0 8px;border:0;border-radius:var(--radius-md);background:transparent;color:var(--text);text-align:left;cursor:default;outline:none;transition:background var(--dur-hover) var(--ease-state),opacity var(--dur-hover) var(--ease-state)}
+.zs-file{display:flex;align-items:center;gap:0;width:100%;min-width:0;min-height:28px;padding:0 8px;border:0;border-radius:var(--radius-md);background:transparent;color:var(--text);text-align:left;cursor:default;outline:none;transition:background var(--dur-hover) var(--ease-state),opacity var(--dur-hover) var(--ease-state)}
 .zs-file:hover,.zs-file.st-hover{background:var(--fl-hover)}
 .zs-file:active,.zs-file.st-press{background:var(--fl-on)}
 .zs-file.is-sel{background:var(--fl-on)}
 .zs-file.is-sel:hover,.zs-file.is-sel.st-hover{background:var(--fl-on-hover)}
 .zs-file.is-sel:active,.zs-file.is-sel.st-press{background:var(--fl-press)}
+/* the status letter left the file row in Story 10.42; DragGhost's card still shows one */
 .zs-file-status{display:grid;place-items:center;flex-shrink:0;width:17px;height:17px;border-radius:4px;font:700 10px var(--font-mono)}
 .zs-file-status.s-M,.zs-file-status.s-R{background:var(--accent-soft);color:var(--accent)}
 .zs-file-status.s-A,.zs-file-status.s-C{background:var(--add-bg);color:var(--add)}
 .zs-file-status.s-D{background:var(--rem-bg);color:var(--rem)}
+/* Story 10.42: a pickable row reserves a 22px check column at its left edge; the indent (glyph, name, word 6 apart) follows it */
+.zs-file.has-gut{padding-left:0}
+.zs-file-gut{display:grid;place-items:center;flex:0 0 22px;width:22px;align-self:stretch}
+.zs-file-ind{flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden}
 /* Story 10.39: the name first — it gives way last; the folder gives way first, cut in its middle (head, then its last folder) */
 .zs-file-name{flex:0 1 auto;min-width:0;font:var(--fs-id) var(--font-mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.zs-file-dir{flex:0 1000 auto;min-width:0;display:flex;font:var(--fs-id) var(--font-mono);color:var(--text-faint);white-space:nowrap}
+.zs-file-dir{flex:0 1000 auto;min-width:0;display:flex;margin-left:2px;font:var(--fs-id) var(--font-mono);color:var(--text-faint);white-space:nowrap}
 .zs-file-dir .h{flex:0 1000 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .zs-file-dir .t{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* Story 10.42: the quiet word after the name, inside it, so it gives way with the name: new · deleted · from <old> */
+.zs-file-note{margin-left:6px;font:10.5px var(--font-sans)}
+.zs-file-note.is-new{color:var(--add);opacity:.85}
+.zs-file-note.is-del{color:var(--rem);opacity:.85}
+.zs-file-note.is-from{color:var(--text-faint)}
 .zs-file.is-viewed .zs-file-name,.zs-file.is-viewed .zs-file-dir{opacity:.55}
-.zs-file-vw{display:grid;color:var(--add);flex-shrink:0}
-/* the tree's folder row: chevron, check, folder glyph, name, count pill */
-.zs-file-chev{display:grid;place-items:center;width:12px;flex-shrink:0;color:var(--text-faint)}
+.zs-file-vw{display:grid;color:var(--add);flex-shrink:0;margin-left:8px}
+/* the tree's folder row: the folder glyph — open or closed, no chevron, no count (Story 10.42) — then the name */
 .zs-file-fold{display:grid;flex-shrink:0;color:var(--text-faint)}
-.zs-file-count{flex-shrink:0;padding:0 6px;border-radius:var(--radius-pill);background:var(--fl-hover);font:10px var(--font-sans);color:var(--text-dim)}
-.zs-file-stat{display:flex;gap:6px;flex-shrink:0;margin-left:auto;padding-left:6px;font:var(--fs-sm) var(--font-mono)}
-.zs-file-stat .a{color:var(--add)}.zs-file-stat .r{color:var(--rem)}
+/* Story 10.42: checkboxes on demand — inside a pane marked .zs-check-reveal an unchecked box shows only while the pointer is over
+   the pane or focus is inside it; picked and mixed boxes always show. Hidden by opacity alone: the box keeps its place, focus and click */
+.zs-check-reveal .zs-check:not(.is-on):not(.is-mixed){opacity:0;transition:opacity var(--dur-hover) var(--ease-state)}
+.zs-check-reveal:is(:hover,:focus-within,.is-revealed) .zs-check:not(.is-on):not(.is-mixed){opacity:1}
 .zs-file.is-lifted{opacity:.38;outline:1.5px dashed var(--accent-line);outline-offset:-1.5px}
 
 /* DiffView — the quiet code surface */
@@ -142,11 +152,9 @@ button.zs-ws-tag:hover{color:var(--text);background:var(--fl-on)}
 .zs-proj:is(.is-drop-after,.is-drop-end)::before{bottom:-2px}
 .zs-proj.is-drop-end::before{left:8px}
 .zs-proj.is-drop-into,.zs-proj.is-drop-into:hover{background:var(--accent-soft);border-color:var(--accent-live-line)}
-/* a group's name typed in place: the row keeps its indent, chevron slot and folder; the field takes the rest */
+/* a group's name typed in place: the row keeps its indent and folder; the field takes the rest (no chevron since Story 10.42) */
 .zs-proj.is-editing,.zs-proj.is-editing:hover,.zs-proj.is-editing:active{padding-top:2px;padding-bottom:2px;background:transparent}
 .zs-proj-field{flex:1;min-width:0}
-.zs-proj-chev{width:14px;height:14px;display:grid;place-items:center;flex-shrink:0;color:var(--text-dim);transition:transform var(--dur-expand) var(--ease-glide)}
-.zs-proj-chev.is-open{transform:rotate(90deg)}
 .zs-proj .zs-proj-icon{color:var(--text-dim)}
 .zs-proj.is-group .zs-proj-name{overflow:visible;flex-shrink:0;font-size:var(--fs-sm);font-weight:600;letter-spacing:var(--tracking-pill);text-transform:uppercase;color:var(--text-muted)}
 .zs-proj-count{margin-left:auto;font:var(--fs-xs) var(--font-mono);color:var(--text-faint);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}

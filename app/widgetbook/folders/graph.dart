@@ -30,6 +30,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/graph_viewport.dart';
 import 'package:zanshin/src/features/graph/hatch_swatch.dart';
+import 'package:zanshin/src/features/graph/inspector_check_reveal.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart';
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/layout_invariants.dart';
@@ -322,11 +323,23 @@ final graphFolder = WidgetbookFolder(
       name: 'Inspector',
       useCases: <WidgetbookUseCase>[
         // Story 10.38: the files beside the diff from 780 points, above it below 740.
-        WidgetbookUseCase(name: 'Wide', builder: (context) => const _InspectorAt(width: 900)),
+        // Story 10.42: the unpicked boxes show only on hover, which Marionette cannot do — the knob shows them.
+        WidgetbookUseCase(
+          name: 'Wide',
+          builder: (context) => _InspectorAt(
+            width: 900,
+            checksShown: context.knobs.boolean(label: 'checkboxes shown'),
+          ),
+        ),
         WidgetbookUseCase(name: 'Narrow', builder: (context) => const _InspectorAt(width: 460)),
         WidgetbookUseCase(
           name: 'Tree',
-          builder: (context) => const _InspectorAt(width: 460, tree: true, longPaths: true),
+          builder: (context) => _InspectorAt(
+            width: 460,
+            tree: true,
+            longPaths: true,
+            checksShown: context.knobs.boolean(label: 'checkboxes shown'),
+          ),
         ),
         WidgetbookUseCase(name: 'Long path', builder: (context) => const _InspectorAt(width: 460, longPaths: true)),
         WidgetbookUseCase(name: 'File menu', builder: (context) => const _FileMenu()),
@@ -2213,11 +2226,12 @@ class _PinnedNumbersState extends State<_PinnedNumbers> {
 /// Story 10.38: the inspector at a fixed [width] on the demo's first mutable change — 900 puts the files beside the
 /// diff, 460 above it. Story 10.39: [tree] lists the files as a tree, [longPaths] gives them deep paths.
 class _InspectorAt extends StatefulWidget {
-  const _InspectorAt({required this.width, this.tree = false, this.longPaths = false});
+  const _InspectorAt({required this.width, this.tree = false, this.longPaths = false, this.checksShown = false});
 
   final double width;
   final bool tree;
   final bool longPaths;
+  final bool checksShown;
 
   @override
   State<_InspectorAt> createState() => _InspectorAtState();
@@ -2299,7 +2313,9 @@ class _InspectorAtState extends State<_InspectorAt> {
               child: SizedBox(
                 width: widget.width,
                 height: 760,
-                child: GraphInspector(model: inspector),
+                child: widget.checksShown
+                    ? InspectorChecksShown(child: GraphInspector(model: inspector))
+                    : GraphInspector(model: inspector),
               ),
             ),
           ),
