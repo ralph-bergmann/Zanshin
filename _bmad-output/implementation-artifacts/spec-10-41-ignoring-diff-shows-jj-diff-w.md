@@ -2,15 +2,22 @@
 title: 'Story 10.41 — The ignoring diff shows exactly `jj diff -w`: rows from the ignoring read, whitespace-only lines from the backend, gap rows with Show / Hide'
 type: 'bugfix'
 created: '2026-11-15'
-status: 'in-progress'
-baseline_revision: '1fd245a5aa9a92bede45dd214a947101df963cb8'
+status: 'done'
+baseline_revision: '9c6aceb5854db94b93d884e37737c69282102f96'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/.claude/skills/design-artifacts/SKILL.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      An exact section that no ignoring changed line and no listed line touches is left out of the block's parts, so the hunk checkbox can read "all" while a commit skips that section.
+    evidence: |-
+      Unverified (maybe-false). diffBlocks keeps only touched sections in DiffBlock.parts / hunk.sections (the intent-contract's rule). It needs an exact changed run that the -w read pairs only with byte-identical lines outside any whitespace pair, more than 2 x context lines from other changes. A constructed repo fixture showing such a section would settle it; if real, the commit can break the file (high).
+    location: >-
+      app/lib/src/features/graph/inspector_diff.dart diffBlocks
+    severity: high (unverified)
 ---
 
 <intent-contract>
@@ -145,6 +152,35 @@ deferred: []
   - `[low]` `[defer]` (intent) No Marionette check against the study — the intent gives it to the console session; moot under the intent gap (nothing deferred this pass).
   - `[low]` `[patch]` (intent) `epic-10-context.md` names the dropped header pill — grouped with the blind planning row; fixed in this run.
 
+### 2026-11-15 — Review pass (resumed run, after Ralph's answers)
+- verdicts: 25 findings — high 0, medium 0, low 17, false 1, maybe-false 7
+- findings:
+  - `[low]` `[patch]` (verification) Binary content at `-w` has no test that its `whitespace_lines` stay empty (the guard `changed && !paired` could become `differ` unnoticed) — added `binary_content_lists_no_whitespace_lines` in `crates/zanshin-jj/tests/it/hunks.rs` (`x\0a b` → `x\0a  b` at `-w`).
+  - `[low]` `[patch]` (verification) A tied part's own checkbox (`_partBox`: label, three-state, toggling) is untested — the tied widget test only reached `_foldBox` — added the widget test "a tied part with a real change" (label "Pick lines 8–10", `null` with one of two sections picked, mixed → all, none → all).
+  - `[low]` `[reject]` (intent, R2) Rows are not compared with the stock CLI — carried: the color-words read is jj's walk (Story 5.10) and the fixture was cross-checked by hand; no jj verb changed, so no oracle run.
+  - `[low]` `[reject]` (intent) No single test runs click → view model → commit — each link is tested (the header checkbox calls `onHunkToggled` with both sections; `toggleHunk` adds a hunk's sections; the real-repo commit of `block.hunk.sections` yields the new file), and carried: `GraphCommit` and Split share `select_tree`.
+  - `[maybe-false]` `[defer]` (intent R4) An exact section that no ignoring changed line and no listed line touches is left out of the block's parts, so the hunk checkbox reads "all" while a commit skips it — needs an exact read whose changed run the `-w` read pairs only with byte-identical lines outside any whitespace pair, more than 2 × context from other changes; if real, high (a broken commit). Deferred, unverified.
+  - `[low]` `[reject]` (intent) Two ignoring hunks inside one exact hunk join with no separator when only identical lines lie between — carried (no separator for an ignoring skip inside one block).
+  - `[low]` `[reject]` (intent) Side by side, a gap row has no `⋯` number columns — the intent's side-by-side rule says only "gap rows full width", and the band reads the same.
+  - `[low]` `[reject]` (intent) A pair that differs only in a missing final newline counts as whitespace-only — the word diff marks the `\n` as removed, so the row is marked and counted honestly; pinned by a unit test.
+  - `[maybe-false]` `[reject]` (edge) A pair whose two sides fall in different exact hunks is not tied, so a pick may take one side — the intent-contract names this shortcut (exact hunks lie more than 2 × context unchanged lines apart).
+  - `[maybe-false]` `[reject]` (edge) One ignoring hunk's removed and added lines can map to two blocks — carried (a split pair at an exact-hunk boundary is not reachable in practice).
+  - `[low]` `[reject]` (edge) Under `diff.color-words.conflict = "pair"` a conflicted file lists no whitespace lines, so its whitespace-only changes get no gap row — the intent-contract sets exactly this; a rare config on a conflicted side.
+  - `[low]` `[reject]` (edge) Open gaps keyed by the first left number survive a reload of the same file and mode — carried (worst case a gap closes, or one starting at the same line stays open).
+  - `[low]` `[reject]` (edge) A tied part mixing an old-only and a new-side section names only its new-side lines in its VoiceOver label — the same rule as 10.38's part label (new side, the old side only for a pure deletion); a tied part always has a new side.
+  - `[maybe-false]` `[defer]` (blind) Untouched exact sections are dropped — grouped with the intent R4 row (deferred, unverified).
+  - `[low]` `[reject]` (blind) The description block's `whitespace_lines` has no Dart consumer — the intent-contract asks for them on `RevisionDiff::description`.
+  - `[low]` `[reject]` (blind) Summary mode computes `whitespace_lines` and then clears them — the app's summary reads stay exact, where `whitespace_lines` returns at once; only a `-w` summary pays one extra line diff.
+  - `[maybe-false]` `[reject]` (blind) At context 0 an identical line between two re-indented lines lands in the earlier block, outside its header range — its numbers still run without a jump (block 1 shows 2–3, block 2 shows 4); cosmetic.
+  - `[low]` `[reject]` (blind) `_togglePart` toggles a tied part's sections one call at a time, so listeners see a half-picked state between — the end state is right (each call reads the live pick); a batched model call would add API for extra rebuilds only.
+  - `[false]` `[reject]` (blind) `diffOptionsNote` ("A picked part shows its hidden whitespace lines") is inaccurate — it still holds: a picked part's gaps open (with the rest of its hunk's).
+  - `[low]` `[patch]` (blind) `inspectorGapShowTooltip` duplicates `inspectorFoldShowTooltip` ("Show these lines") — the gap's Show button now uses `inspectorFoldShowTooltip`; the key is gone (`flutter gen-l10n` rerun).
+  - `[maybe-false]` `[reject]` (blind) The gap key goes stale on a reload; `?? 0` covers an impossible case — carried with the edge row above; a listed line always has both numbers.
+  - `[low]` `[patch]` (blind) The gap row's `⋯` glyphs reach VoiceOver — `_number` wraps its text in `ExcludeSemantics(excluding: dots)`.
+  - `[low]` `[reject]` (blind) `FileDiff.whitespaceLines` is the only optional field in `zanshin_core` — the intent-contract asks for a `const []` default.
+  - `[low]` `[patch]` (blind) The Dart doc comment of `whitespaceLines` has an unwrapped line — reflowed; the five copies of the paragraph stay (each layer documents its own field).
+  - `[maybe-false]` `[reject]` (blind) No Rust unit test shows `-b` leaving out a pair it treats as a real change (`a b` → `ab`) — covered by the `zanshin-jj` integration test `ignoring_whitespace_drops_the_hunk_but_keeps_the_section` (a changed line at `-b`) and the Dart port test's fold counts.
+
 ## Design Notes
 
 - **Ralph's design changes of 2026-11-15** (after the epic text, in `whitespace-study.jsx/.css`, they win over items 2–4): (1) every shown whitespace-only line carries jj's marks always, in the default `-w` view too, and no text is dimmed; (2) the gap row that stands for hidden whitespace-only lines reads "N more lines with only whitespace changes"; (3) no pill in the hunk header — Show / Hide sit on the gap row, which stays above its lines when open and then reads "N lines with only whitespace changes"; whitespace-only lines inside the context have no row or button, they are always shown.
@@ -182,7 +218,60 @@ deferred: []
 - `node --check design_system/_ds_bundle.js` -- passes.
 - Not run: `cargo make test` / `test-full` / `coverage` (the loop's gate rule); the parity oracle (no jj verb changed).
 
+**Verification notes (2026-11-15, resumed run with Ralph's answers; gate rule of the story loop: no full gate):**
+- `spec-10-41-attempt-1.patch` re-applied cleanly on `9c6aceb5`, then deleted.
+- `cargo test -p zanshin-jj --lib hunks::` -- 21 passed (new: identical lines between pairs, missing final newline = a `Removed` `\n` segment, so it counts as whitespace-only; no shortcut needed).
+- `cargo test -p zanshin-jj --test it -- hunks:: diff:: api_stability::` -- 104 passed (new: an interdiff's description lists its whitespace line, not in summary mode).
+- `cargo test -p zanshin-ffi` -- 240 + 406 passed.
+- `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` -- clean (the summary-mode clearing moved into `summarize` to keep `diff` under 100 lines); `cargo fmt --all --check` -- clean; `cargo check --workspace --all-targets` -- clean.
+- `cargo make codegen` -- regenerated the schema doc comment in both generated accessors.
+- `dart test test/ffi/diff_test.dart test/worker/diff_test.dart` in `packages/zanshin_core` with the gate's environment -- 22 passed; `dart analyze --fatal-infos --fatal-warnings` and `dart format --set-exit-if-changed` there -- clean.
+- `cargo make test-app test/features/graph test/features/undo_timeline test/widgetbook test/l10n test/architecture` -- 1576 passed; after the last Rust refactor `graph_ports_test.dart` + `inspector_diff_test.dart` again -- 115 passed (the real-repo text_field test commits the one box and the committed file equals the new text exactly).
+- `dart analyze --fatal-infos` in `app` -- no issues; `dart format --set-exit-if-changed` on `app/lib`, `test`, `widgetbook`, `integration_test` -- 0 changed.
+- `node --check design_system/_ds_bundle.js` -- passes (no `.jsx` change this run; DS docs only).
+- Not run: `cargo make test` / `test-full` / `coverage` (the loop's gate rule); the parity oracle (no jj verb changed); Marionette (the console session's).
+
+**Verification notes (2026-11-15, orchestrator re-run of the resumed run and after the review patches):**
+- `cargo test -p zanshin-jj --lib hunks::` -- 21 passed; `--test it -- hunks:: diff:: api_stability::` -- 104 passed; after the patch `--test it -- hunks::` -- 19 passed (new binary test included).
+- `cargo test -p zanshin-ffi` -- 240 + 406 passed.
+- `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings`, `cargo fmt --all --check` -- clean (clippy rerun for `zanshin-jj` after the patch).
+- `cargo make codegen` -- idempotent (33 changed paths before and after).
+- `cargo make --allow-private test-core` (the whole `zanshin_core` suite, gate environment) -- 1190 passed; `test-core-analyze` -- no issues; `test-core-format` -- 0 changed (rerun after the doc reflow).
+- `cargo make test-app test/features/graph test/features/undo_timeline test/widgetbook test/l10n test/architecture` -- 1576 passed; after the patches 1577 passed.
+- `test-dart-analyze` (app) -- no issues; `test-dart-format` -- 0 changed (both rerun after the patches).
+- `node --check design_system/_ds_bundle.js` -- passes.
+
 ## Auto Run Result
+
+### Resumed run (done 2026-11-15)
+
+Status: done
+
+**Summary.** Story 10.41 is built on the saved first attempt plus Ralph's two answers. While whitespace is ignored, each exact hunk shows the ignoring read's lines (`jj diff -w` / `-b`), hidden whitespace-only lines collapse into gap rows with Show / Hide, marks always, nothing dimmed. Answer 1a: exact sections that one listed pair spans are tied into one pickable part (`text_field.dart`: one box, both sections; the committed file equals the new text). Answer 2a: the backend also lists identical lines between two whitespace pairs of one matched run; Show reveals them as plain context, the gap count stays the whitespace-only lines.
+
+**Files changed.**
+- `crates/zanshin-jj/src/hunks.rs` -- `FileDiff::whitespace_lines` (pairs + in-between identical lines), `summarize` clears it on files and the description; unit tests.
+- `crates/zanshin-jj/tests/it/{hunks,diff,api_stability}.rs` -- literals, description / summary / paired-conflict / binary tests.
+- `schemas/envelope.fbs`, `crates/zanshin-ffi/src/{diff,envelope_generated}.rs`, `packages/zanshin_core/lib/src/ffi/{diff,envelope_zanshin.ffi_generated}.dart`, `docs/ffi-abi.md` -- the wire field and its docs; tests in `zanshin-ffi` and `zanshin_core`.
+- `app/lib/src/features/graph/inspector_diff.dart` -- `diffBlocks` (blocks, tied parts by union-find), `diffBlockRows` (gap rows, counts, identical lines), `DiffGapRow`, part checkboxes three-state over tied sections, both layouts; `IgnoredLines`, `whitespaceRows`, `hunkLineParts`, the dimming and the per-line pill removed.
+- `app/lib/src/features/graph/graph_inspector.dart`, `app/lib/src/features/undo_timeline/operation_changes.dart` -- pass the ignoring `FileDiff`.
+- `app/lib/l10n/*` -- gap texts, count-bearing Show / Hide labels; the old whitespace pill strings gone.
+- `app/widgetbook/folders/graph.dart` -- the Whitespace ignored use case.
+- `app/test/features/{graph,undo_timeline}/*` -- row builder, widgets, real-repo text_field commit, operation view.
+- DS `DiffHunk.{jsx,d.ts,prompt.md}`, `content.{css,card.html}`, `_ds_bundle.js`, `readme.md`, `design/DESIGN-SYSTEM-SYNC.md` -- gap row and marked line (not published).
+- `spec-10-41-attempt-1.patch` -- deleted (applied).
+
+**Review findings.** 25 findings (high 0, medium 0, low 17, false 1, maybe-false 7). Patched 5 low: binary test, tied-part checkbox test, one duplicate string key, `⋯` hidden from VoiceOver, a doc comment reflowed. Deferred 1 entry (2 rows; unverified, high if true): an exact section that no row touches is left out of the parts. Rejected 18, each with its reason in the triage log (carried rows, intent-set shortcuts, cosmetic cases).
+
+**Follow-up review recommendation: false** -- this pass patched only low entries (5 low, 0 medium, 0 high).
+
+**Verification.** All targeted checks pass (notes above). Not run: the full gate and coverage (the loop's gate rule), the parity oracle (no jj verb changed), Marionette (the console session's).
+
+**Residual risks.** The deferred untouched-section case; a pair spanning two exact hunks is not tied (intent shortcut); no visual check against the study; new Rust lines are tested but coverage was not measured.
+
+**Commits.** `9c6aceb5` (spec with Ralph's answers), `7ba0e957` (code, DS, tests; deletes `spec-10-41-attempt-1.patch`), then the planning commit (this spec, deferred-work.md, sprint status).
+
+
 
 ### First run (blocked 2026-11-15; answered by Ralph the same day — kept for history)
 

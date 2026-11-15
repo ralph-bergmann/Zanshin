@@ -3108,3 +3108,12 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **No test shows that a successful login-shell adoption stores the environment that editor detection and launching use.** Low.
   - `_adopted ??= variables` in `adoptLoginShellEnvironment` (`packages/zanshin_core/lib/src/environment/login_shell.dart`) is untested: a real adoption installs a process-global Rust environment that would leak into other test files.
   - **Follow-up:** none, unless a test can adopt in a process of its own.
+
+## Surfaced in Story 10.41 (bmad-build-auto, 2026-11-15)
+
+- **While whitespace is ignored, an exact section that no row touches may be left out of the hunk pick.** High if real; unverified.
+  - `diffBlocks` (`app/lib/src/features/graph/inspector_diff.dart`) builds a block's parts only from the exact sections its ignoring changed lines and listed whitespace lines touch, as the spec says. If the `-w` read pairs a whole exact changed run with byte-identical lines outside any whitespace pair (more than 2 × context lines from other changes), that section gets no checkbox and the hunk checkbox reads "all" while a commit skips it.
+  - **Follow-up:** build a real-repo fixture that produces such a section. If it exists, fold untouched sections into the hunk pick (and the nearest part).
+- **The Whitespace ignored view was not checked through Marionette against `design/Whitespace Study.html`; the DS `DiffHunk` gap row is not published.** Low.
+  - The catalogue has the Whitespace ignored use case (`app/widgetbook/folders/graph.dart`); DS repo files are updated (`design_system/`, DESIGN-SYSTEM-SYNC 2026-11-15 line).
+  - **Follow-up:** in a console session compare both layouts with the study through Marionette, then run `design-artifacts` A and B.
