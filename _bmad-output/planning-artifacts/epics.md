@@ -13024,7 +13024,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
    - a gap of at most 20 lines only ↕ "Show N lines".
    Revealed lines are plain context with both numbers; the count updates; a fully opened gap disappears and the hunks join. Per gap, for the session, reset with the file and the mode (like 10.41's whitespace gaps).
 5. **One gap row.** The whitespace gap row of 10.41 ("N more lines with only whitespace changes" · Show / Hide) takes the same shape, and its Show / Hide also shows only while the pointer or keyboard is in the code pane. *(Changes 10.41's always-visible Show.)*
-6. **The context-lines number leaves the file's options menu.** It stays the default in Settings › General › Diffs (jj's `diff.color-words.context`, written with `--user` as today). The options menu keeps Whitespace. *(Claude's proposal in the design round, approved with the study.)*
+6. **The file's options menu stays as it is,** Whitespace and Context lines both *(Ralph 2026-11-15: keep the context lines in the menu)*.
 7. **Backend.** The unchanged lines of a range (old and new numbers) come from Rust for the revision pair and file being shown (zanshin-jj, FFI, `packages/zanshin_core`, `docs/ffi-abi.md`); today `FileDiff` carries only the hunks. A range is read when a gap opens, not with every diff.
 8. **Both layouts.** Side by side follows the same rules: no header, the part box in the leading gutter, gap rows across both sides.
 9. **The operation view** (`operation_changes.dart`) uses the same diff: it gets items 1, 4, 5 and 8 (no checkboxes there).
@@ -13039,7 +13039,6 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 - Under `-w`, the hunk old 32–63 / new 46–91: one box on its first changed row; hovering it draws the bar down to its last line, across the whitespace gap row; checking it equals the old header box (Split commits the same file as before).
 - Show all and ↕ open a gap completely; switching file or whitespace mode closes every gap again.
 - Gap controls hidden with the pointer outside the code pane, visible inside; the same for the whitespace gap row's Show / Hide.
-- The options menu has no context-lines list; Settings still sets it.
 - Marionette, by the console session: both layouts against `design/Calm Inspector Study.html`.
 
 **Related:** 10.40, 10.41, 10.42.
