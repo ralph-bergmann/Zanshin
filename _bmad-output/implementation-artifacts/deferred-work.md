@@ -3073,19 +3073,19 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in Story 10.38 (bmad-build-auto, 2026-11-14)
 
-- **The design-system changes of Story 10.38 are in the repo but not published.** Medium.
+- **The design-system changes of Story 10.38 are in the repo but not published.** Medium. *(2026-11-15: Ralph wants it published once, after Story 10.40, for 10.35–10.40 together.)*
   - The Design System artifact (https://claude.ai/artifact/J5iSiy8cS6Q1EXa44g945d) and canvas `6sAzL5mDcVpWXevbTcempu` still show the state before the story: the unattended run's publish (`design-artifacts` skill, step A) was refused by the auto-mode permission check. Repo files: `design_system/` (SplitDivider, DiffHunk parts and pinned numbers, kit inspector split, tokens without `--inspector-w-max` / `--panel-w-max`).
   - **Follow-up:** in a console session run the skill's steps A (build with `build_ds.py`, one publish) and B (canvas sync).
 - **Both inspector layouts, the divider, the parts and the pinned numbers were not checked through Marionette.** Low.
   - Widget tests cover the behaviour; the catalogue has Graph › Inspector › Wide / Narrow, Inspector diff › Three parts / Pinned numbers scrolled right, and Controls › Split divider.
   - **Follow-up:** compare those use cases with `design/Inspector Study.html` and the DS cards through Marionette.
-- **A large file's unified diff may scroll sideways slowly (unverified).** Medium.
+- ~~**A large file's unified diff may scroll sideways slowly (unverified).**~~ — RESOLVED 2026-11-15 (checked by Ralph in the running app on the Flutter plugin project): sideways scrolling looks fine. Medium.
   - `app/lib/src/features/graph/inspector_diff.dart` `_Pinned`: each line's pinned numbers and each hunk header listen to the file's horizontal scroll (one rebuild per line per tick); `_DiffBody` runs `IntrinsicWidth` over the whole file in a non-lazy scroll view.
   - **Follow-up:** scroll a diff of a few thousand lines in a profile build; if frames drop, paint the pinned column once per body (one listener) or make the lines lazy.
 
 ## Surfaced in the follow-up review of Story 10.38 (bmad-build-auto, 2026-11-14)
 
-- **Dragging the split divider or the inspector's edge over a large diff may stutter (unverified).** Medium.
+- ~~**Dragging the split divider or the inspector's edge over a large diff may stutter (unverified).**~~ — RESOLVED 2026-11-15 (checked by Ralph in the running app on the Flutter plugin project): dragging looks fine. Medium.
   - In the wide layout each drag frame changes the diff pane's width; `_DiffBody`'s `LayoutBuilder` (`app/lib/src/features/graph/inspector_diff.dart`) then measures the number digits again and runs `IntrinsicWidth` over every line of the non-lazy file.
   - **Follow-up:** measure it together with the sideways-scroll item above: in a profile build drag the divider and the inspector edge with a diff of a few thousand lines open and watch the frame times.
 
@@ -3098,7 +3098,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in Story 10.39 (bmad-build-auto, 2026-11-14)
 
-- **The two IntelliJ checks of Story 10.39 are not done: Go to File (⇧⌘O) with an absolute `path:line`, and whether `idea --line` opens in the running IntelliJ.** Low.
+- ~~**The two IntelliJ checks of Story 10.39 are not done: Go to File (⇧⌘O) with an absolute `path:line`, and whether `idea --line` opens in the running IntelliJ.**~~ — RESOLVED 2026-11-15 (checked by Ralph): Go to File takes the copied `path:line`; `idea --line` jumps in the running IntelliJ (Zanshin needed a restart to read the new shell `PATH`); with IntelliJ not running it opens the file without its project, which stays (Story 10.40, "left as is"). A line past the end of the file on disk goes to Story 10.40 item 5. Low.
   - Both need Ralph's IntelliJ; the unattended run may not start a real editor. Open in Editor runs `idea --line <n> <absolute path>` (`app/lib/src/features/graph/project_files.dart` `editorCommand`; tested with a fake launcher).
   - **Follow-up:** Ralph sets Settings › General › Editor to IntelliJ IDEA, opens a diff line in a project that is open in IntelliJ, and checks that the running IntelliJ jumps to the line.
 - **The file rows, folder rows, tree/flat switch, menus and copyable diff path were not checked through Marionette against the mock-up and the DS cards.** Low.

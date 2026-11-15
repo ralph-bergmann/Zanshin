@@ -12912,6 +12912,39 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Related:** 9.36, 10.24, 10.30, 10.38.
 
+### Story 10.40: Inspector follow-ups from Ralph's first use of 10.33–10.39 [UI]
+*(Added 2026-11-15, Ralph — console session. Ralph used the rebuilt inspector on his real repositories and reported six findings; Claude checked each against the code, the app log and the jj CLI, and Ralph accepted Claude's proposals.)*
+
+**Design round: none needed.** Each item restores what the mock-up `design/Inspector Study.html` or the design system already shows, or settles behaviour without a new look.
+
+**Scope.**
+1. **The pinned line numbers are see-through.** In the unified diff the pinned column paints on `colors.codeBg`, which is only 42 % opaque (`rgba(8,10,22,.42)`, light `.66`), so the text scrolled under it shows through (`inspector_diff.dart` `_unified` → `row()`: `Color.alphaBlend(fill, colors.codeBg)`). The mock-up paints an opaque well (`inspector-study.css:4`, `--isd-code`). Every pinned backing — the line numbers, the part gutter, the fold row's numbers and the pinned hunk header — gets an opaque base: `codeBg` blended over `flBgSolid`, then the line's fill over that; both themes.
+2. **A click beside a context menu always closes it.** Today a context menu on the file list closes only on a click in the diff, and the diff's line menu only on a click in the file list. Cause: Flutter's `RawMenuAnchor` puts its whole child in the menu's tap-region group, and `ZsMenuAnchor` wraps the whole file list or the whole diff, so a click there counts as "inside". In `ZsMenuAnchor` (`packages/zanshin_ui/lib/src/controls/zs_menu.dart`), every click outside the menu panel closes a menu opened at a position. That click is consumed, as today (`consumeOutsideTaps: true`). A `ZsMenuButton` click on its own button still toggles its menu.
+3. **A right-click without a line menu crashes the window.** A right-click that no line handler catches — the hunk header, gaps, fold rows, the no-newline marker, conflict headers — reaches the `SelectionArea`, whose `contextMenuBuilder` is `null` (`inspector_diff.dart`, the line-menu branch). Flutter still calls the builder (`selectable_region.dart:1397`), throws `Null check operator used on a null value` (13 times in Ralph's log on 2026-11-15) and shows its full-window error panel. The builder returns an empty widget. DECIDED (Ralph): such a right-click opens nothing.
+4. **Split when every change is picked.** On a change other than @ (`splitsEverything`) Split is disabled, but the title and description fields stay editable. DECIDED (Ralph): the composer's fields, the Rest/Selected preview, the command line and the Split button go away; the hint "Every change is picked — Split needs something left behind. To describe this change, click its title." and Cancel stay. The draft is kept and comes back when a change is unpicked.
+5. **Open in Editor at a line the file on disk does not have.** For a change other than @ the file on disk is @'s version (Story 10.39 item 7); Ralph opened a line past its end. When the line menu opens, the file's line count on disk is read. A line past the end opens the file without a line (`editorCommand(line: null)`; a custom `{line}` becomes 1, as today), and the Open row says "Line N is not in the file on disk — opens at its start". A missing file stays disabled, as today.
+6. **The context-lines menu shows the effective value.** The diff options menu checks `diff.color-words.context` from the user config only (`inspector_diff.dart` `diffOptionsEntries`), and the diff itself uses the effective value. Like the CLI, the menu checks the effective value (the repo config included). A pick still writes the user config. When the repo config sets the key, the menu says so in a note ("Set in this repository's config, which wins").
+7. **DS `MenuButton` opens above without room.** The DS JSX `MenuButton` always opens below; the Flutter `ZsMenuButton` flips above when there is no room below. The DS follows the Flutter control: `components/actions/MenuButton.jsx` and its block in `_ds_bundle.js` (skill `design-artifacts` § E). The publish waits for a console session.
+
+**Checked and left as is (Ralph, 2026-11-15).**
+- Under `-w`, a picked part shows its whitespace-only lines dimmed with the pill "whitespace only"; unpicked they fold or go, as `jj diff -w` shows. This is Story 10.33's rule (Split takes those lines) and stays.
+- IntelliJ opens a file without its project when it was not running. JetBrains documents only `idea --line N <file>` and `idea <project>`, no form for both (opening-files-from-command-line.html), so the launcher stays as it is.
+
+**Non-goals.** A menu on the hunk header; a `{root}` placeholder for the editor command; opening a change's own version of a file.
+
+**Depends on.** 10.33, 10.35, 10.38, 10.39 (done).
+
+**Witnesses.**
+- Scrolled fully right, the pinned numbers of a context line, an added line and a fold row paint fully opaque (a widget test reads the backing colour's alpha); same in the light theme.
+- With the file-row menu open, a click on another file row closes it and selects nothing; with the line menu open, a click on another diff line closes it; a `ZsMenuButton` still toggles.
+- A right-click on a hunk header, a fold row and a no-newline row throws nothing and opens no menu.
+- On a change other than @ with every file picked, no text field and no Split button are shown; unpicking one file brings back the draft as typed.
+- A 10-line file on disk and a line menu for line 40: the Open row carries the note and runs the editor without `--line`.
+- A repo config with `diff.color-words.context = 7`: the menu checks 7 and shows the note; picking 5 writes the user config.
+- Marionette, by the console session after the run: the pinned numbers, both menus and the Split hint in the running catalogue against the mock-up.
+
+**Related:** 10.33, 10.35, 10.38, 10.39.
+
 ---
 
 ## Epic 11: Floating app shell (Flutter UI)
