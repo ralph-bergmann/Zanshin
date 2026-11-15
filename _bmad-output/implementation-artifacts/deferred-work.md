@@ -3132,9 +3132,15 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in the follow-up review of Story 9.59 (bmad-build-auto, 2026-11-16)
 
-- **A bad name pattern refuses with Zanshin's own text and no hint, unlike the CLI.** Medium.
+- ~~**A bad name pattern refuses with Zanshin's own text and no hint, unlike the CLI.**~~ — RESOLVED 2026-11-16 (closing run of Story 9.59, spec-9-59-closing-name-pattern-error-text, commit d8b4c8b4b87e43447b631f3603f295e2b1583419): every caller of the shared helpers refuses with the CLI's error text, `Caused by:` lines and hint; `bookmark list` and `clone` carry the hint too; oracle witnesses in `hints.rs` and scenario `tag_delete_bad_pattern`. Medium.
   - `describe_pattern_parse_error` (`crates/zanshin-jj/src/bookmark_ops.rs:177`) says "failed to parse name pattern…" (lowercase, source appended with `: `) and drops the hint; the CLI says "Failed to parse name pattern: {kind}" with `Caused by:` lines and `revset_parse_error_hint` (`cli/src/revset_util.rs:336-339`, also `:358` for "…or remote symbol" @ v0.47.0). Pre-existing in the bookmark verbs; the tag verbs `delete` / `track` / `untrack` inherit it. Pinned by `tests/it/bookmark_tracking.rs:283`, `bookmark_ops.rs:526`, `tag_ops.rs:268`.
   - **Follow-up:** port the CLI message and hint (as `fix.rs:405-411` does for filesets), update those tests, and add an oracle refusal scenario for a bad pattern.
-- **The shared bookmark and list helpers still cite the CLI at v0.46.0.** Low.
+- ~~**The shared bookmark and list helpers still cite the CLI at v0.46.0.**~~ — RESOLVED 2026-11-16 (closing run of Story 9.59, commit d8b4c8b4b87e43447b631f3603f295e2b1583419): every CLI citation in `bookmark_ops.rs` and `bookmarks.rs` re-read and re-cited at v0.47.0 (`default_ignored_remote_name` moved to `frontend/src/revset_util.rs`). Low.
   - `crates/zanshin-jj/src/bookmark_ops.rs` (e.g. `:154`, `:176`, `:186`, `:200`) and `crates/zanshin-jj/src/bookmarks.rs` (e.g. `:277`, `:348`, `:398`) cite `v0.46.0` line numbers; at v0.47.0 `parse_union_name_patterns` starts at `revset_util.rs:323`. The tag verbs reuse them while citing v0.47.0. Behavior was not found to differ.
   - **Follow-up:** re-check the helpers against v0.47.0 and update the citations in one pass.
+
+## Surfaced in the closing run of Story 9.59 (bmad-build-auto, 2026-11-16)
+
+- **A bad `remotes.<r>.auto-track-bookmarks` / `fetch-bookmarks` / `fetch-tags` pattern refuses with only "Invalid `remotes.<r>.<field>`: <kind>", without the CLI's `Caused by:` lines and hint.** Medium.
+  - `crates/zanshin-jj/src/config.rs:1714-1724` and the clone `preset` closure (`crates/zanshin-jj/src/creation.rs:541-550`) render `e.kind()` only; the CLI's `parse_remote_string_expression` (`cli/src/revset_util.rs:463-488` @ v0.47.0) adds both. `ConfigError::Load` / `RepoError::Config` carry no hints, so `jj.config_error` needs a hints channel first.
+  - **Follow-up:** render the `Caused by:` lines with `warning::caused_by` and carry `revset::parse_hint` through `jj.config_error` (hints on `ConfigError` / `RepoError::Config`), like the name-pattern port.
