@@ -22,6 +22,9 @@ deferred:
     location: >-
       app/lib/src/features/graph/graph_inspector.dart:464
     severity: medium (unverified)
+    resolved: >-
+      2026-11-15 — fixed (spec-10-43-closing-gap-reads-follow-the-shown-diff, commit 4efc881a): gap reads use the
+      shown diff's commit and whitespace mode; a rewrite with the same file diff re-reads every open gap.
 ---
 
 <intent-contract>
