@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/graph/inspector_diff.dart diffBlocks
     severity: high (unverified)
+    resolved: >-
+      2026-11-15 — fixed (spec-10-41-closing-untouched-sections-join-the-pick, commit e4c02980): real; a block with an untouched exact section now picks all its sections as one part.
 ---
 
 <intent-contract>
