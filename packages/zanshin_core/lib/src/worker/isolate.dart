@@ -1843,6 +1843,57 @@ class ZanshinWorker {
     return repo_ffi_diff.decodeDiffEnvelopeInternal(bytes);
   }
 
+  /// One file's unchanged lines in a left range, in the repo identified by
+  /// [handleId] (Story 10.43): [revision], [from], [to] and [interdiff] as in
+  /// [diff], [path], [whitespace] and the 0-based half-open left range
+  /// [start]..[end] cross unchanged.
+  ///
+  /// Sends a [DiffLinesCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<DiffLines>` bytes. Writes no operation beyond the pre-verb
+  /// snapshot's.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000)
+  /// or [start] / [end] does not fit in 32 bits unsigned. Throws
+  /// [ZanshinFfiException] on FFI errors as [diff] does. Completes with a
+  /// [StateError] after [close].
+  Future<List<repo_ffi_diff.HunkLine>> diffLines(
+    int handleId, {
+    required String path,
+    required int start,
+    required int end,
+    String? revision,
+    String? from,
+    String? to,
+    bool interdiff = false,
+    repo_ffi_diff.DiffWhitespace whitespace = repo_ffi_diff.DiffWhitespace.exact,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(revision, 'revision');
+    rejectInteriorNul(from, 'from');
+    rejectInteriorNul(to, 'to');
+    rejectInteriorNul(path, 'path');
+    for (final (String name, int value) in [('start', start), ('end', end)]) {
+      if (value < 0 || value > 0xFFFFFFFF) {
+        throw ArgumentError.value(value, name, 'must fit in 32 bits unsigned');
+      }
+    }
+    final Uint8List bytes = await send(
+      DiffLinesCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revision: revision,
+        from: from,
+        to: to,
+        interdiff: interdiff,
+        path: path,
+        whitespace: whitespace,
+        start: start,
+        end: end,
+      ),
+    );
+    return repo_ffi_diff.decodeDiffLinesEnvelopeInternal(bytes);
+  }
+
   /// List a revision's conflicts with what a merge editor needs, in the repo
   /// identified by [handleId] (Story 9.17) — the CLI's `jj resolve --list`.
   ///
@@ -4691,6 +4742,37 @@ void _workerEntry(_WorkerInit init) {
               whitespace: whitespace,
               summary: summary,
               interdiff: interdiff,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case DiffLinesCommand(
+          :final int handleId,
+          :final String? revision,
+          :final String? from,
+          :final String? to,
+          :final bool interdiff,
+          :final String path,
+          :final repo_ffi_diff.DiffWhitespace whitespace,
+          :final int start,
+          :final int end,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: DiffLinesCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_diff.zanshinDiffLines(
+              raw,
+              revision: revision,
+              from: from,
+              to: to,
+              interdiff: interdiff,
+              path: path,
+              whitespace: whitespace,
+              start: start,
+              end: end,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

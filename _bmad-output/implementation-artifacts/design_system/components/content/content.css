@@ -84,55 +84,47 @@
 .zs-diff-collapsed:hover{background:var(--add-bg-hi)}
 .zs-diff-note{padding:6px 10px 8px;font:var(--type-code);color:var(--text-dim)}
 
-/* DiffHunk */
+/* DiffHunk — no header (Story 10.43): hunks follow each other with a 1px line, or a gap row between them */
 .zs-hunk+.zs-hunk{border-top:1px solid var(--fl-border)}
 .zs-hunk .zs-diff-body{padding:4px 0}
-.zs-hunk-hd{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 10px;background:var(--hunk-bg);color:var(--text-dim);user-select:none;transition:background var(--dur-hover) var(--ease-state)}
-.zs-hunk-range{font:var(--fs-sm) var(--font-mono);color:var(--hunk);white-space:nowrap}
-.zs-hunk-ctx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--fs-sm) var(--font-mono);color:var(--text-muted)}
-.zs-hunk-stat{display:flex;gap:6px;margin-left:auto;flex-shrink:0;font:var(--fs-sm) var(--font-mono)}
-.zs-hunk-stat .a{color:var(--add)}.zs-hunk-stat .r{color:var(--rem)}
-.zs-hunk-grip{flex-shrink:0;color:var(--text-faint);opacity:0;transition:opacity var(--dur-hover) var(--ease-state)}
-.zs-hunk-hd.is-grab:hover .zs-hunk-grip{opacity:1}
-.zs-hunk.is-sel .zs-hunk-hd{background:var(--accent-soft-hi);color:var(--text)}
-.zs-hunk.is-some .zs-hunk-hd{background:linear-gradient(color-mix(in oklch,var(--accent) 12%,transparent),color-mix(in oklch,var(--accent) 12%,transparent)),var(--code-bg);color:var(--text)}
-/* the edge: on a picked hunk's lines, or (with parts) on a picked part's — on the pinned numbers, so it stays when the text scrolls */
-.zs-diff-line.is-pick .zs-diff-pin,.zs-diff-row.is-pick{box-shadow:inset 2px 0 0 var(--accent-line)}
-/* parts (Story 10.38, sync #26): "N parts" in the header; a 22px gutter before the numbers holds a 13px checkbox on a part's first line */
-.zs-hunk-parts{flex-shrink:0;padding:1px 7px;border-radius:999px;background:var(--fl-hover);font:10.5px var(--font-sans);color:var(--text-dim)}
-.zs-diff-gut{display:grid;place-items:center;flex:0 0 22px;width:22px}
+/* the bar: on a picked part's rows, and on every row of the part whose checkbox the pointer rests on (.is-hot) — picked and hovered
+   look the same; on the pinned numbers so it stays when the text scrolls, side by side on the gutter (its fill would cover the row's) */
+.zs-diff-line:is(.is-pick,.is-hot) .zs-diff-pin,.zs-diff-gap:is(.is-pick,.is-hot) .zs-diff-pin,.zs-diff-row:is(.is-pick,.is-hot)>.zs-diff-gut{box-shadow:inset 2px 0 0 var(--accent-line)}
+/* parts (Stories 10.38, 10.43): a 22px gutter before the numbers holds a 13px checkbox on each part's first row */
+.zs-diff-gut{display:grid;place-items:center;flex:0 0 22px;width:22px;align-self:stretch}
 .zs-diff-row.has-gut{grid-template-columns:22px 1fr 1fr}
 .zs-diff-row.has-gut.hdr{grid-template-columns:22px 1fr}
 .zs-diff-row.has-gut>.zs-diff-gut{background:var(--code-bg)}
 /* pinned numbers (deferred-work I1): the hunks of a DiffView scroll sideways as one unit, every line as wide as the widest; the gutter
-   and numbers stay at the visible left edge on an opaque backing (the well plus the line's fill), the header as wide as the visible area */
-.zs-diff-hunks{overflow:auto;container-type:inline-size}
+   and numbers stay at the visible left edge on an opaque backing (the well plus the line's fill) */
+.zs-diff-hunks{overflow:auto}
 .zs-diff-wide{width:max-content;min-width:100%}
 .zs-diff-hunks .zs-hunk .zs-diff-body{overflow:visible}
-.zs-diff-hunks .zs-hunk-hd{position:sticky;left:0;width:100cqw;box-sizing:border-box}
 .zs-hunk .zs-diff-line{padding-left:0}
 .zs-diff-pin{display:flex;flex-shrink:0;position:sticky;left:0;z-index:1;padding-left:10px;background:var(--code-bg)}
 .zs-diff-line.add .zs-diff-pin{background:linear-gradient(var(--add-bg),var(--add-bg)),var(--code-bg)}
 .zs-diff-line.rem .zs-diff-pin{background:linear-gradient(var(--rem-bg),var(--rem-bg)),var(--code-bg)}
 .zs-hunk.is-lifted{opacity:.38;outline:1.5px dashed var(--accent-line);outline-offset:-1.5px}
-/* whitespace ignored (2026-11-15, Story 10.41, Whitespace Study): the rows are exactly jj diff -w / -b's lines; a whitespace-only line
-   shows jj's marks (the word fills), nothing is dimmed. Lines jj skips sit in a gap row at their place: a --fl-hover band, ⋯ in both
-   number columns, "N more lines with only whitespace changes" in --text-faint and a Show pill; open, the row stays above its lines,
-   "N lines with only whitespace changes" with Hide (no pill while a pick keeps it open). A part made only of whitespace changes folds
-   into one hatched row ("⋯ N lines changed whitespace only · Show"), full width, its checkbox in the gutter; open, the band, hatched */
-.zs-diff-gap{display:flex;align-items:center;min-height:22px;background:var(--fl-hover)}
-.zs-diff-gap .zs-diff-pin{background:linear-gradient(var(--fl-hover),var(--fl-hover)),var(--code-bg)}
-.zs-diff-gap .ln{color:var(--text-faint)}
+/* gap rows (2026-11-15, Story 10.43, Calm Inspector Study): hidden lines in one quiet 26px band at their place — the gutter (empty but
+   for a fold's checkbox), the arrow columns over the two number columns, the text in --text-faint, then a flat button. Unchanged lines:
+   "N unchanged lines", ↓ / ↑ open 20 lines, ↕ opens a run of 20 or fewer, "Show all" opens a longer one. Whitespace ignored (Story
+   10.41): the lines jj diff -w / -b skips, "N more lines with only whitespace changes" with Show (open: "N lines …" with Hide, none
+   while a pick keeps it open); a part made only of whitespace changes is the same band, hatched, its checkbox in the gutter */
+.zs-diff-gap{display:flex;align-items:center;height:26px;box-sizing:border-box;font:11.5px var(--font-sans);color:var(--text-faint);background:var(--fl-hover);border-block:1px solid color-mix(in oklch,var(--fl-border) 60%,transparent)}
+.zs-diff-gap .zs-diff-pin{align-self:stretch;align-items:center;background:linear-gradient(var(--fl-hover),var(--fl-hover)),var(--code-bg)}
+.zs-diff-split .zs-diff-gap .zs-diff-pin{padding-left:0}
 .zs-diff-gap.is-fold{background:repeating-linear-gradient(135deg,transparent 0 5px,var(--fl-hover) 5px 6px),var(--fl-hover)}
-.zs-diff-gap.is-side>.zs-diff-gut{background:var(--code-bg);align-self:stretch}
-.zs-gap-tx{padding-left:18px;font:11.5px var(--font-sans);color:var(--text-faint);white-space:nowrap}
-.zs-ws-tag{flex-shrink:0;align-self:center;margin:0 12px 0 10px;padding:0 6px;border:0;border-radius:999px;font:10.5px/16px var(--font-sans);color:var(--text-dim);background:var(--fl-hover);white-space:nowrap}
-button.zs-ws-tag:hover{color:var(--text);background:var(--fl-on)}
-.zs-diff-fold{display:flex;align-items:center;min-height:22px;background:repeating-linear-gradient(135deg,transparent 0 5px,var(--fl-hover) 5px 6px)}
-.zs-diff-fold.is-side>.zs-diff-gut{background:var(--code-bg);align-self:stretch}
-.zs-diff-fold .ln{visibility:hidden}
-.zs-fold-tx{padding:0 12px 0 18px;border:0;background:none;font:11.5px var(--font-sans);color:var(--text-dim);white-space:nowrap;text-align:left;cursor:default}
-.zs-fold-tx:hover{color:var(--text)}
+/* as wide as the two number columns (each --ln plus 8px), in the code's ch */
+.zs-gap-arrows{display:flex;align-items:center;justify-content:center;gap:4px;min-width:calc(2 * var(--ln,2ch) + 16px);font:var(--type-code)}
+.zs-gap-tx{padding-left:18px;white-space:nowrap}
+.zs-gap-btn,.zs-gap-all{border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-dim);cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
+.zs-gap-btn{display:grid;place-items:center;width:24px;height:20px;padding:0}
+.zs-gap-all{flex-shrink:0;margin-left:10px;padding:2px 7px;font:11.5px var(--font-sans);white-space:nowrap}
+.zs-gap-btn:hover,.zs-gap-all:hover{background:var(--fl-on);color:var(--text)}
+/* inside a .zs-check-reveal pane the controls show only while the pointer or focus is in it; the count always shows.
+   Opacity only, as the checks above: a hidden control stays a Tab stop and in the accessibility tree */
+.zs-check-reveal .zs-diff-gap :is(.zs-gap-btn,.zs-gap-all){opacity:0;transition:opacity var(--dur-hover) var(--ease-state)}
+.zs-check-reveal:is(:hover,:focus-within,.is-revealed) .zs-diff-gap :is(.zs-gap-btn,.zs-gap-all){opacity:1}
 
 /* Kbd */
 .zs-kbd{display:inline-block;font:var(--fs-xs) var(--font-mono);line-height:1.4;background:var(--bg-card-2);border:1px solid var(--border);padding:1px 5px;border-radius:var(--radius-kbd);color:var(--text-muted)}

@@ -1296,22 +1296,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorDiffModeChange => 'Executable bit changed';
 
   @override
-  String inspectorHunkCheck(String range) {
-    return 'Select hunk $range';
-  }
-
-  @override
-  String inspectorHunkParts(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count parts',
-      one: '1 part',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String inspectorPartPick(int count, int start, int end) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -1418,6 +1402,53 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String inspectorUnchangedLines(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unchanged lines',
+      one: '1 unchanged line',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String inspectorUnchangedShow(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Show $count lines',
+      one: 'Show 1 line',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String inspectorUnchangedShowBelow(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Show $count lines below',
+      one: 'Show 1 line below',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String inspectorUnchangedShowAbove(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Show $count lines above',
+      one: 'Show 1 line above',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get inspectorUnchangedShowAll => 'Show all';
+
+  @override
   String get inspectorGapShow => 'Show';
 
   @override
@@ -1456,7 +1487,7 @@ class AppLocalizationsEn extends AppLocalizations {
       other: '$count lines',
       one: '1 line',
     );
-    return '⋯ $_temp0 changed whitespace only · Show';
+    return '⋯ $_temp0 changed whitespace only';
   }
 
   @override

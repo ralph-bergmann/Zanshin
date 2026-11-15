@@ -6,7 +6,7 @@ import '../ffi/bookmarks.dart' show Bookmark, BookmarkSortKey;
 import '../ffi/change.dart' show Change;
 import '../ffi/commit_contents.dart' show CommitContent;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, EvologEntry, InterdiffView, RevisionRef, ShowEntry;
-import '../ffi/diff.dart' show Diff, DiffWhitespace;
+import '../ffi/diff.dart' show Diff, DiffWhitespace, FileDiff, HunkLine, HunkLineKind;
 import '../ffi/drop_actions.dart'
     show
         BookmarkDropSource,
@@ -1680,6 +1680,51 @@ final class RepoHandle {
       whitespace: whitespace,
       summary: summary,
       interdiff: interdiff,
+    );
+  }
+
+  /// One file's unchanged lines in a left range (Story 10.43): the
+  /// [HunkLineKind.context] lines `jj diff` with unlimited `--context` prints
+  /// for [path], for the lines a diff with less context hides.
+  ///
+  /// [revision], [from], [to] and [interdiff] select the revisions exactly as
+  /// [diff]'s do, [whitespace] is `-w` / `-b`. [path] is the file as
+  /// [FileDiff.path] names it (a rename's target; its left side is read at the
+  /// source, as the diff reads it). [start] / [end] are a 0-based half-open
+  /// range of left line numbers: a line with left number `n` comes back when
+  /// `start <= n - 1 < end`, in order, with both numbers and the segments as
+  /// the diff gives them (at `-w` / `-b` a whitespace-only pair keeps the CLI's
+  /// marks). A range past the file's end is clipped; a path the diff does not
+  /// list or a binary file gives no lines. Writes no operation beyond the
+  /// pre-verb snapshot's.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an argument contains an interior NUL (U+0000)
+  /// or [start] / [end] does not fit in 32 bits unsigned; throws
+  /// [ZanshinFfiException] on FFI errors as [diff] does.
+  Future<List<HunkLine>> diffLines({
+    required String path,
+    required int start,
+    required int end,
+    String? revision,
+    String? from,
+    String? to,
+    bool interdiff = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.diffLines(
+      _handleId,
+      revision: revision,
+      from: from,
+      to: to,
+      interdiff: interdiff,
+      path: path,
+      whitespace: whitespace,
+      start: start,
+      end: end,
     );
   }
 

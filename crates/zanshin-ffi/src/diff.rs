@@ -7,17 +7,19 @@
 //! snapshot (Story 9.26), so every envelope carries the precondition report and the call's
 //! warnings. Since Story 5.10 the lines are `jj diff`'s default color-words lines: each line
 //! carries its kind, its left and right line numbers and its segments (the CLI's colour labels).
+//! Story 10.43 adds `zanshin_diff_lines` (a `DiffLinesRequest` in, a `DiffLines` payload out):
+//! one file's unchanged lines in a left range, read on demand.
 
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, VerifierOptions, WIPOffset};
 use tracing::debug;
 use zanshin_jj::{
-    DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, HunkLineKind, MutateError, RevisionDiff,
-    SegmentKind, Whitespace,
+    DiffLinesOptions, DiffOptions, DiffRevisions, FileDiff, Hunk, HunkKey, HunkLine, HunkLineKind, MutateError,
+    RevisionDiff, SegmentKind, Whitespace,
 };
 
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, precondition_envelope, reject_null_request,
-    session_from_handle, CallReport, FfiErrorObj, FFI_INVALID_ARGUMENT,
+    catch, expect_request_kind, finish_envelope, invalid_request, missing_field, precondition_envelope,
+    reject_null_request, session_from_handle, CallReport, FfiErrorObj, FFI_INVALID_ARGUMENT,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -48,8 +50,29 @@ fn read_diff_request(data: *const u8, len: usize) -> Result<DiffOptions, FfiErro
     let req = flatbuffers::root_with_opts::<fbs::DiffRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
     expect_request_kind(req.kind(), fbs::RequestKind::Diff)?;
+    Ok(DiffOptions {
+        revisions: diff_revisions(req.revision(), req.from(), req.to(), req.interdiff())?,
+        paths: strings(req.paths()),
+        context: req.context().map(|c| c.value() as usize),
+        whitespace: diff_whitespace(req.whitespace())?,
+        summary: req.summary(),
+    })
+}
+
+/// The revision form of a `DiffRequest` / `DiffLinesRequest`: `from` or `to` present is the
+/// `--from` / `--to` form (an absent side `@`), else the `-r` form (absent: `@`); `interdiff`
+/// selects the inter-diff forms.
+///
+/// # Errors
+/// - `jj.invalid_input` — `revision` together with `from` or `to`.
+fn diff_revisions(
+    revision: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+    interdiff: bool,
+) -> Result<DiffRevisions, FfiErrorObj> {
     let text = |s: Option<&str>| s.map(str::to_owned);
-    let revisions = match (text(req.revision()), text(req.from()), text(req.to()), req.interdiff()) {
+    Ok(match (text(revision), text(from), text(to), interdiff) {
         (Some(_), from, to, _) if from.is_some() || to.is_some() => {
             return Err(map_mutate_err(MutateError::invalid(
                 "revision cannot be used with from or to",
@@ -59,13 +82,32 @@ fn read_diff_request(data: *const u8, len: usize) -> Result<DiffOptions, FfiErro
         (_, from, to, true) => DiffRevisions::Interdiff { from, to },
         (revision, None, None, false) => DiffRevisions::Revision(revision),
         (_, from, to, false) => DiffRevisions::FromTo { from, to },
-    };
-    Ok(DiffOptions {
-        revisions,
-        paths: strings(req.paths()),
-        context: req.context().map(|c| c.value() as usize),
+    })
+}
+
+/// Parse a `DiffLinesRequest` buffer into owned [`DiffLinesOptions`]: the revisions as
+/// [`read_diff_request`] reads them, `start..end` the left range.
+///
+/// `data`/`len` describe a caller-owned buffer, borrowed for the call only (see
+/// [`read_diff_request`]).
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `DiffLinesRequest` buffer, its `kind` is
+///   not `DiffLines`, or its `whitespace` is outside the enum.
+/// - `jj.invalid_input` — `path` is absent, or `revision` together with `from` or `to`.
+fn read_diff_lines_request(data: *const u8, len: usize) -> Result<DiffLinesOptions, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see `read_diff_request`).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::DiffLinesRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::DiffLines)?;
+    Ok(DiffLinesOptions {
+        revisions: diff_revisions(req.revision(), req.from(), req.to(), req.interdiff())?,
+        path: req.path().ok_or_else(|| missing_field("path"))?.to_owned(),
         whitespace: diff_whitespace(req.whitespace())?,
-        summary: req.summary(),
+        range: req.start()..req.end(),
     })
 }
 
@@ -176,6 +218,66 @@ pub fn diff_to_envelope(diff: &RevisionDiff, report: &CallReport) -> Vec<u8> {
     finish_envelope(b, fbs::Payload::Diff, Some(diff.as_union_value()), report)
 }
 
+/// One file's unchanged lines in a left range in the repo identified by `handle` (Story 10.43) —
+/// `zanshin_jj::Repo::diff_lines`: the `Context` lines `jj diff` with unlimited `--context` prints
+/// for the file, whose left number − 1 lies in `start..end`, in order, both numbers set and the
+/// segments as the diff gives them. The lines a diff with less context hides.
+///
+/// The arguments cross as a `DiffLinesRequest` `FlatBuffers` request buffer: `revision`, `from`,
+/// `to` and `interdiff` read exactly as `zanshin_diff`'s, `path` (the file, a rename's TARGET; its
+/// left side is read at the source), `whitespace` (`-w` / `-b`) and `start` / `end` (a 0-based
+/// half-open range of left line numbers, clipped to the file). A path the diff does not list, a
+/// binary file or a range with no unchanged line gives no lines. No caching. Writes NO operation
+/// beyond the pre-verb snapshot's (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `DiffLines` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `DiffLinesRequest` buffer, its `kind`
+///   is not `DiffLines`, or its `whitespace` is outside the enum.
+/// - `jj.invalid_input` — `path` is absent (before the snapshot), else as for `zanshin_diff`.
+/// - `jj.revset_parse_error` — a revision is not a valid revset expression.
+/// - `jj.revset_resolution_error` — a revision resolves to no commit or more than one, as for
+///   `zanshin_diff`.
+/// - `jj.config_error` — a `diff.color-words.*` key, `ui.conflict-marker-style` or the revset
+///   aliases are malformed.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — a side cannot be read, or another jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// As for `zanshin_diff`; `data` is a `fbs.DiffLinesRequestObjectBuilder(...).toBytes()` buffer.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_diff_lines(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_diff_lines", handle);
+    let buf = catch(|| {
+        let options = read_diff_lines_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.diff_lines(&options);
+        precondition_envelope(
+            &mut session.repo,
+            result,
+            map_mutate_err,
+            |lines: &Vec<HunkLine>, report| diff_lines_to_envelope(lines, report),
+        )
+    });
+    vec_into_token(buf)
+}
+
+/// Build a success `Envelope` with a `DiffLines` payload: the lines in order, `lines` always
+/// written. `report` rides as on every envelope.
+#[must_use]
+pub fn diff_lines_to_envelope(lines: &[HunkLine], report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(1024);
+    let lines: Vec<_> = lines.iter().map(|l| line_offset(&mut b, l)).collect();
+    let lines = b.create_vector(&lines);
+    let payload = fbs::DiffLines::create(&mut b, &fbs::DiffLinesArgs { lines: Some(lines) });
+    finish_envelope(b, fbs::Payload::DiffLines, Some(payload.as_union_value()), report)
+}
+
 fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs::FileDiff<'b>> {
     let path = b.create_string(&f.path);
     let sections = keys_vector(b, &f.sections);
@@ -199,6 +301,7 @@ fn file_offset<'b>(b: &mut FlatBufferBuilder<'b>, f: &FileDiff) -> WIPOffset<fbs
             added: f.added,
             fingerprint: Some(fingerprint),
             whitespace_lines: Some(whitespace_lines),
+            left_line_count: f.left_line_count,
         },
     )
 }
@@ -407,6 +510,7 @@ mod tests {
                     .iter()
                     .map(line_from_wire)
                     .collect(),
+                left_line_count: f.left_line_count(),
             }
         };
         let files = diff
@@ -451,6 +555,7 @@ mod tests {
             added: 0,
             fingerprint: "f0".into(),
             whitespace_lines: vec![],
+            left_line_count: 0,
         }
     }
 
@@ -478,6 +583,7 @@ mod tests {
                 binary: false,
                 mode_change: false,
                 whitespace_lines: vec![reindented()],
+                left_line_count: 30,
                 sections: vec![key(1, 2, 1, 3), key(9, 1, 10, 0), key(20, 0, 20, 4)],
                 hunks: vec![
                     Hunk {
@@ -571,6 +677,16 @@ mod tests {
         let bytes = diff_to_envelope(&diff, &CallReport::default());
         assert_eq!(diff_from_wire(&bytes), diff);
         let env = verified_envelope(&bytes);
+        // Story 10.43: the left side's line count.
+        let wire_files = env
+            .data_as_diff()
+            .expect("Diff payload")
+            .files()
+            .expect("files present");
+        assert_eq!(
+            (wire_files.get(0).left_line_count(), wire_files.get(1).left_line_count()),
+            (30, 0)
+        );
         assert!(env.warnings().is_none());
         assert!(env.precondition().is_none());
         assert_eq!(env.data_as_diff().expect("Diff payload").from_commit_id(), None);
@@ -950,5 +1066,171 @@ mod tests {
         })
         .expect_err("unknown whitespace");
         assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+    }
+
+    /// Story 10.43: a `DiffLines` envelope carries the lines in order through the generated
+    /// accessors; no lines is an empty vector, not an absent one.
+    #[test]
+    fn diff_lines_round_trip_through_the_generated_accessors() {
+        let lines = vec![
+            line(
+                HunkLineKind::Context,
+                (Some(4), Some(5)),
+                whole(SegmentKind::Equal, "}\n"),
+            ),
+            reindented(),
+        ];
+        let bytes = super::diff_lines_to_envelope(&lines, &CallReport::default());
+        let env = verified_envelope(&bytes);
+        assert!(env.ok());
+        assert_eq!(env.data_type(), fbs::Payload::DiffLines);
+        let wire = env.data_as_diff_lines().expect("DiffLines payload");
+        let decoded: Vec<HunkLine> = wire
+            .lines()
+            .expect("lines present")
+            .iter()
+            .map(line_from_wire)
+            .collect();
+        assert_eq!(decoded, lines);
+        let empty = super::diff_lines_to_envelope(&[], &CallReport::default());
+        let wire = verified_envelope(&empty)
+            .data_as_diff_lines()
+            .expect("DiffLines payload");
+        assert!(wire.lines().expect("lines present").is_empty());
+    }
+
+    /// One `DiffLinesRequest`.
+    #[derive(Default)]
+    struct LinesRequest<'a> {
+        kind: Option<fbs::RequestKind>,
+        revision: Option<&'a str>,
+        from: Option<&'a str>,
+        to: Option<&'a str>,
+        interdiff: bool,
+        path: Option<&'a str>,
+        whitespace: Option<fbs::DiffWhitespace>,
+        start: u32,
+        end: u32,
+    }
+
+    fn read_lines(r: &LinesRequest<'_>) -> Result<zanshin_jj::DiffLinesOptions, crate::envelope::FfiErrorObj> {
+        let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+        let revision = r.revision.map(|s| b.create_string(s));
+        let from = r.from.map(|s| b.create_string(s));
+        let to = r.to.map(|s| b.create_string(s));
+        let path = r.path.map(|s| b.create_string(s));
+        let req = fbs::DiffLinesRequest::create(
+            &mut b,
+            &fbs::DiffLinesRequestArgs {
+                kind: r.kind.unwrap_or(fbs::RequestKind::DiffLines),
+                revision,
+                from,
+                to,
+                interdiff: r.interdiff,
+                path,
+                whitespace: r.whitespace.unwrap_or(fbs::DiffWhitespace::Exact),
+                start: r.start,
+                end: r.end,
+            },
+        );
+        b.finish(req, None);
+        let bytes = b.finished_data();
+        super::read_diff_lines_request(bytes.as_ptr(), bytes.len())
+    }
+
+    /// Every field reaches its option; the revision forms read as `DiffRequest`'s.
+    #[test]
+    fn the_lines_reader_reads_every_field() {
+        use zanshin_jj::{DiffLinesOptions, DiffRevisions, Whitespace};
+        assert_eq!(
+            read_lines(&LinesRequest {
+                path: Some(""),
+                ..LinesRequest::default()
+            })
+            .expect("valid"),
+            DiffLinesOptions::default()
+        );
+        assert_eq!(
+            read_lines(&LinesRequest {
+                revision: Some("r"),
+                path: Some("a/b.rs"),
+                whitespace: Some(fbs::DiffWhitespace::IgnoreSpaceChange),
+                start: 3,
+                end: 23,
+                ..LinesRequest::default()
+            })
+            .expect("valid"),
+            DiffLinesOptions {
+                revisions: DiffRevisions::Revision(Some(rev("r"))),
+                path: "a/b.rs".into(),
+                whitespace: Whitespace::IgnoreSpaceChange,
+                range: 3..23,
+            }
+        );
+        let revisions = |revision, from, to, interdiff| {
+            read_lines(&LinesRequest {
+                revision,
+                from,
+                to,
+                interdiff,
+                path: Some("f"),
+                ..LinesRequest::default()
+            })
+            .expect("valid")
+            .revisions
+        };
+        assert_eq!(
+            revisions(None, Some("a"), None, false),
+            DiffRevisions::FromTo {
+                from: Some(rev("a")),
+                to: None
+            }
+        );
+        assert_eq!(
+            revisions(None, Some("a"), Some("c"), true),
+            DiffRevisions::Interdiff {
+                from: Some(rev("a")),
+                to: Some(rev("c"))
+            }
+        );
+        assert_eq!(revisions(Some("r"), None, None, true), DiffRevisions::Created(rev("r")));
+    }
+
+    /// `revision` with `from` and an absent `path` refuse `jj.invalid_input`; another kind, an
+    /// unknown whitespace, a buffer that does not verify and a null pointer `ffi.*`.
+    #[test]
+    fn the_lines_reader_refuses_conflicts_another_kind_and_an_unknown_whitespace() {
+        use crate::envelope::{FFI_INVALID_ARGUMENT, JJ_INVALID_INPUT};
+        let err = read_lines(&LinesRequest {
+            revision: Some("r"),
+            from: Some("a"),
+            path: Some("f"),
+            ..LinesRequest::default()
+        })
+        .expect_err("conflict");
+        assert_eq!(err.code, JJ_INVALID_INPUT);
+        let err = read_lines(&LinesRequest::default()).expect_err("no path");
+        assert_eq!(
+            (err.code.as_str(), err.context.as_deref()),
+            (JJ_INVALID_INPUT, Some("path is required"))
+        );
+        let err = read_lines(&LinesRequest {
+            kind: Some(fbs::RequestKind::Diff),
+            ..LinesRequest::default()
+        })
+        .expect_err("wrong kind");
+        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+        let err = read_lines(&LinesRequest {
+            whitespace: Some(fbs::DiffWhitespace(200)),
+            path: Some("f"),
+            ..LinesRequest::default()
+        })
+        .expect_err("unknown whitespace");
+        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+        let garbage = [1_u8, 2, 3];
+        let err = super::read_diff_lines_request(garbage.as_ptr(), garbage.len()).expect_err("garbage");
+        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+        let err = super::read_diff_lines_request(std::ptr::null(), 0).expect_err("null");
+        assert_eq!(err.code, crate::envelope::FFI_NULL_POINTER);
     }
 }

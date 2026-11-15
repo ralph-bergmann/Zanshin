@@ -216,6 +216,15 @@ class _Details implements GraphDetails {
   }) => Completer<Diff>().future;
 
   @override
+  Future<List<HunkLine>> diffLines(
+    String commitId, {
+    required String path,
+    required int start,
+    required int end,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) => Completer<List<HunkLine>>().future;
+
+  @override
   Future<DiffContext> diffContext() async => (lines: 3, fromRepo: false);
 
   @override

@@ -253,6 +253,61 @@ void main() {
       final RepoHandle other = await worker.openRepo(tempDir.path);
       await other.close();
       expect(other.diff, throwsStateError);
+      expect(() => other.diffLines(path: 'f.txt', start: 0, end: 1), throwsStateError);
+    });
+
+    // Story 10.43: the left side's line count and the on-demand read of unchanged lines.
+
+    test('left_line_count_crosses_the_buffer', () async {
+      final Diff diff = await repo.diff(revision: at, summary: true);
+      expect(fileOf(diff, 'f.txt').leftLineCount, 5);
+      expect(fileOf(diff, 'w.txt').leftLineCount, 1);
+    });
+
+    test('diff_lines_return_the_unchanged_lines_in_the_left_range', () async {
+      final List<HunkLine> lines = await repo.diffLines(revision: at, path: 'f.txt', start: 0, end: 5);
+      expect(lines.map((l) => (l.kind, l.left, l.right, l.text)), [
+        (HunkLineKind.context, 2, 2, 'b\n'),
+        (HunkLineKind.context, 4, 4, 'd\n'),
+      ]);
+      expect(lines.first.segments.map((s) => (s.kind, s.text)), [(SegmentKind.equal, 'b\n')]);
+      final List<HunkLine> fromTo = await repo.diffLines(from: a, to: at, path: 'f.txt', start: 3, end: 100);
+      expect(fromTo.map((l) => l.left), [4], reason: 'from / to cross; the range is clipped');
+      final List<HunkLine> created = await repo.diffLines(
+        revision: at,
+        interdiff: true,
+        path: 'f.txt',
+        start: 0,
+        end: 2,
+      );
+      expect(created.map((l) => l.left), [2]);
+
+      // `-w`: the whitespace-only pair is a context line with jj's marks; exact has none.
+      final List<HunkLine> ignoring = await repo.diffLines(
+        revision: at,
+        path: 'w.txt',
+        whitespace: DiffWhitespace.ignoreAllSpace,
+        start: 0,
+        end: 1,
+      );
+      expect(ignoring.single.segments.map((s) => (s.kind, s.text)), [
+        (SegmentKind.equal, 'x '),
+        (SegmentKind.added, ' '),
+        (SegmentKind.equal, 'y\n'),
+      ]);
+      expect(await repo.diffLines(revision: at, path: 'w.txt', start: 0, end: 1), isEmpty);
+    });
+
+    test('diff_lines_refusals', () async {
+      await expectLater(
+        repo.diffLines(revision: at, from: a, path: 'f.txt', start: 0, end: 1),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      await expectLater(repo.diffLines(path: 'a\u0000b', start: 0, end: 1), throwsArgumentError);
+      await expectLater(repo.diffLines(path: 'f.txt', start: -1, end: 1), throwsArgumentError);
+      await expectLater(repo.diffLines(path: 'f.txt', start: 0, end: 1 << 32), throwsArgumentError);
+      expect(() => zanshinDiffLines(0, path: 'a\u0000b', start: 0, end: 1), throwsArgumentError);
+      expect(() => zanshinDiffLines(0, path: 'f.txt', start: -1, end: 1), throwsArgumentError);
     });
   });
 }

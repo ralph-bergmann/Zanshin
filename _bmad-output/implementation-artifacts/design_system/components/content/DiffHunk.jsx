@@ -47,8 +47,8 @@ export function zsDiffSides(ls) {
   return rows;
 }
 
-// A row for hidden whitespace-only lines (Story 10.41): a gap, or a whitespace-only part's fold.
-const zsDiffGap = (l) => l.t === "gap" || l.t === "fold";
+// A row for hidden lines: unchanged lines (Story 10.43), or whitespace-only lines (Story 10.41) — a gap, or a whitespace-only part's fold.
+const zsDiffGap = (l) => l.t === "unchanged" || l.t === "gap" || l.t === "fold";
 
 // Numbers for git-sigil lines (no numbers of their own), counted from oldStart / newStart.
 function zsNumbered(ls, oldStart, newStart) {
@@ -62,82 +62,83 @@ function zsNumbered(ls, oldStart, newStart) {
   });
 }
 
-// DiffHunk — one hunk: a header (checkbox · @@ range · enclosing context · +/− · grip) over its color-words lines, unified
-// (a left and a right number column, then the text) or side by side (whole lines per side, each cell with its number).
-// Selected hunks get the moon header and a 2px moon edge; they are what Commit / Split take. Mutable hunks can be dragged
-// onto another change. Changed words are marked as in DiffView, in both layouts; a side-by-side cell clips its marks.
-// wordMarks={false} (or a DiffView around it with wordMarks={false}) draws them without their tint.
-// Parts (2026-11-14, Story 10.38, sync #26): `parts` gives each line its part (jj's diff-editor section; null for context). A
-// selectable hunk of more than one part shows "N parts" in its header and a 22px gutter before the numbers (side by side: leading the
-// row) with a checkbox on each part's first line; `picked` lists the picked parts — some of them: the header on --accent at 12 % and the
-// hunk checkbox mixed; a picked part's lines carry the 2px edge. Unified, the gutter and numbers stay pinned at the visible left edge
-// while the text scrolls under them (a DiffView around the hunks scrolls them as one unit).
-// Whitespace ignored (2026-11-15, Story 10.41, Whitespace Study): the lines are exactly jj diff -w / -b's — a whitespace-only line is a
-// context line with jj's marks (" 6:8|      {+  +}controller,"), nothing dimmed. `{ t: "gap", n, open, fixed }` stands for n lines jj
-// skips, at their place: a --fl-hover band with ⋯ in both number columns, "N more lines with only whitespace changes" and a Show pill
-// (onShow); open, it stays above its lines, "N lines with only whitespace changes" with Hide (onHide; no pill when `fixed`, a pick
-// keeps it open). `{ t: "fold", n, open, fixed }` is a part made only of such lines: closed one hatched row "⋯ N lines changed whitespace
-// only · Show" (onShow), full width, its checkbox in the gutter while the hunk is selectable; open, the gap band, hatched, the checkbox kept.
-export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [], wordMarks = true, mode = "unified", selectable = false, selected = false, lifted = false, onToggle, onGrab, parts, picked: pickedIn = [], onTogglePart, onShow, onHide, className = "" }) {
+// How many hidden unchanged lines one arrow opens.
+const ZS_GAP_STEP = 20;
+
+// DiffHunk — one hunk's color-words lines, unified (a left and a right number column, then the text) or side by side (whole
+// lines per side, each cell with its number). No header (2026-11-15, Story 10.43, Calm Inspector Study): hunks follow each other
+// with a 1px line, or a gap row between them. Changed words are marked as in DiffView, in both layouts; a side-by-side cell clips
+// its marks. wordMarks={false} (or a DiffView around it with wordMarks={false}) draws them without their tint.
+// Parts (Stories 10.38, 10.43): `parts` gives each line its part (jj's diff-editor section; null for context; without `parts` the
+// changed lines are one part, 0). A selectable hunk shows a 22px gutter before the numbers (side by side: leading the row) with one
+// checkbox per part, on the part's first row — also when the hunk has one part; `picked` lists the picked parts, whose rows carry a
+// 2px --accent-line bar on the left edge. While the pointer rests on a part's checkbox every row of that part shows the same bar.
+// Unified, the gutter and numbers stay pinned at the visible left edge while the text scrolls under them.
+// Gap rows: one quiet 26px band — the gutter (empty but for a fold's checkbox), the arrow columns over the numbers, the text, a button.
+// `{ t: "unchanged", n, top, bottom }` stands for n hidden unchanged lines (Story 10.43): "N unchanged lines"; with onExpand,
+// n ≤ 20 gets one ↕ "Show N lines", more gets ↓ "Show 20 lines below" (not on a top gap), ↑ "Show 20 lines above" (not on a
+// bottom gap) and "Show all". Whitespace ignored (Story 10.41): `{ t: "gap", n, open, fixed }` stands for n whitespace-only lines jj
+// skips — "N more lines with only whitespace changes" with Show (onShow); open, it stays above its lines, "N lines with only
+// whitespace changes" with Hide (onHide; none when `fixed`, a pick keeps it open). `{ t: "fold", n, open, fixed }` is a part made only
+// of such lines: the same band, hatched, its checkbox in the gutter; closed it reads "⋯ N lines changed whitespace only", then Show.
+// Inside a pane marked .zs-check-reveal the arrows and buttons show only while the pointer or focus is in the pane.
+export function DiffHunk({ oldStart = 1, newStart = 1, lines = [], wordMarks = true, mode = "unified", selectable = false, lifted = false, parts, picked = [], onTogglePart, onShow, onHide, onExpand, className = "" }) {
+  const [hot, setHot] = React.useState(null);
   const ls = zsNumbered(lines.map(zsDiffLine).filter((l) => l.t !== "hunk"), oldStart, newStart);
-  const partOf = parts ? lines.filter((l) => !(typeof l === "string" && l.startsWith("@@"))).map((_, i) => parts[i] ?? null) : [];
-  const allParts = [...new Set(partOf.filter((p) => p != null))];
-  const count = allParts.length;
-  const showParts = selectable && count > 1;
-  // A selected hunk without its own part picks has every part picked.
-  const picked = showParts && selected && !pickedIn.length ? allParts : pickedIn;
-  const some = showParts && picked.length > 0 && picked.length < count;
-  const all = selected || (showParts && picked.length === count);
+  const partOf = parts
+    ? lines.filter((l) => !(typeof l === "string" && l.startsWith("@@"))).map((_, i) => parts[i] ?? null)
+    : ls.map((l) => (l.t === "ctx" || l.t === "hdr" || zsDiffGap(l) ? null : 0));
+  const gut = selectable && partOf.some((p) => p != null);
   const seen = new Set();
-  // the gutter leads every row while the hunk shows its parts, or a folded part takes a pick
-  const gut = showParts || (selectable && ls.some((l) => l.t === "fold"));
-  const gutter = (p) => gut && (
-    <span className="zs-diff-gut">{showParts && p != null && !seen.has(p) && seen.add(p) &&
-      <Checkbox size="sm" checked={picked.includes(p)} onChange={() => onTogglePart && onTogglePart(p)} label={picked.includes(p) ? "Unpick these lines" : "Pick these lines"} />}</span>
-  );
-  const pick = (p) => (showParts ? p != null && picked.includes(p) : all) ? " is-pick" : "";
-  const nLines = (n) => n + " " + (n === 1 ? "line" : "lines");
-  const fold = (l, p, k, side) => {
-    const isFold = l.t === "fold";
-    const on = picked.includes(p);
-    // the part's checkbox goes on its first row
-    const first = isFold && p != null && !seen.has(p);
+  // the part's checkbox goes on its first row; resting the pointer on it lights every row of the part
+  const gutter = (p, ws) => {
+    if (!gut) return null;
+    const first = p != null && !seen.has(p);
     if (first) seen.add(p);
-    const box = gut && <span className="zs-diff-gut">{first && selectable && <Checkbox size="sm" checked={on} onChange={() => onTogglePart && onTogglePart(p)} label={on ? "Unpick these whitespace-only lines" : "Pick these whitespace-only lines"} />}</span>;
-    if (isFold && !l.open) {
-      return (
-        <div key={k} className={"zs-diff-fold" + (side ? " is-side" : "")}>
-          {side ? box : <span className="zs-diff-pin">{box}<span className="ln l" /><span className="ln r" /></span>}
-          <button type="button" className="zs-fold-tx" title="Show these lines" onClick={() => onShow && onShow(l, p)}>⋯ {nLines(l.n)} changed whitespace only · Show</button>
-        </div>
-      );
+    const on = picked.includes(p);
+    return (
+      <span className="zs-diff-gut" onMouseEnter={first ? () => setHot(p) : undefined} onMouseLeave={first ? () => setHot(null) : undefined}>
+        {first && <Checkbox size="sm" checked={on} onChange={() => onTogglePart && onTogglePart(p)} label={(on ? "Unpick these " : "Pick these ") + (ws ? "whitespace-only lines" : "lines")} />}
+      </span>
+    );
+  };
+  const pick = (p) => (p == null ? "" : picked.includes(p) ? " is-pick" : hot === p ? " is-hot" : "");
+  const nLines = (n) => n + " " + (n === 1 ? "line" : "lines");
+  const gapRow = (l, p, k) => {
+    const btn = (icon, title, how) => <button key={how} type="button" className="zs-gap-btn" title={title} aria-label={title} onClick={() => onExpand(l, how)}><Icon name={icon} size={14} /></button>;
+    const small = l.n <= ZS_GAP_STEP;
+    let arrows = null, text, action = null;
+    if (l.t === "unchanged") {
+      text = l.n + " unchanged " + (l.n === 1 ? "line" : "lines");
+      if (onExpand) {
+        arrows = small ? btn("updown", "Show " + nLines(l.n), "all")
+          : [!l.top && btn("chevron-down", "Show " + ZS_GAP_STEP + " lines below", "down"), !l.bottom && btn("chevron-up", "Show " + ZS_GAP_STEP + " lines above", "up")];
+        if (!small) action = <button type="button" className="zs-gap-all" onClick={() => onExpand(l, "all")}>Show all</button>;
+      }
+    } else if (l.t === "fold" && !l.open) {
+      text = "⋯ " + nLines(l.n) + " changed whitespace only";
+      action = <button type="button" className="zs-gap-all" title="Show these lines" onClick={() => onShow && onShow(l, p)}>Show</button>;
+    } else {
+      text = (l.open ? nLines(l.n) : l.n + " more " + (l.n === 1 ? "line" : "lines")) + " with only whitespace changes";
+      if (!l.fixed) action = <button type="button" className="zs-gap-all" title={l.open ? "Hide these lines again" : "Show these lines"} onClick={() => (l.open ? onHide : onShow)?.(l, p)}>{l.open ? "Hide" : "Show"}</button>;
     }
     return (
-      <div key={k} className={"zs-diff-gap" + (isFold ? " is-fold" : "") + (side ? " is-side" : "")}>
-        {side ? box : <span className="zs-diff-pin">{box}<span className="ln l">⋯</span><span className="ln r">⋯</span></span>}
-        <span className="zs-gap-tx">{l.open ? nLines(l.n) : l.n + " more " + (l.n === 1 ? "line" : "lines")} with only whitespace changes</span>
-        {!l.fixed && <button type="button" className="zs-ws-tag" title={l.open ? "Hide these lines again" : "Show these lines"} onClick={() => (l.open ? onHide : onShow)?.(l, p)}>{l.open ? "Hide" : "Show"}</button>}
+      <div key={k} className={"zs-diff-gap" + (l.t === "fold" ? " is-fold" : "") + pick(p)}>
+        <span className="zs-diff-pin">{gutter(p, true)}<span className="zs-gap-arrows">{arrows}</span></span>
+        {typeof text === "string" ? <span className="zs-gap-tx">{text}</span> : text}
+        {action}
       </div>
     );
   };
-  const changed = ls.filter((l) => l.t !== "ctx" && l.t !== "hdr" && !zsDiffGap(l));
-  const a = new Set(changed.map((l) => l.r).filter((n) => n != null)).size;
-  const r = new Set(changed.map((l) => l.l).filter((n) => n != null)).size;
-  const span = (side, start) => {
-    const ns = ls.map((l) => l[side]).filter((n) => n != null);
-    return ns.length ? [ns[0], Math.max(...ns) - ns[0] + 1] : [start, 0];
-  };
-  const [ol, oc] = span("l", oldStart), [nl, nc] = span("r", newStart);
-  const head = range || "@@ −" + ol + "," + oc + " +" + nl + "," + nc + " @@";
   const body = mode !== "split"
-    ? ls.map((l, i) => (zsDiffGap(l) ? fold(l, partOf[i], i, false) : (
+    ? ls.map((l, i) => (zsDiffGap(l) ? gapRow(l, partOf[i], i) : (
         <div key={i} className={"zs-diff-line " + l.t + pick(partOf[i])}>
           <span className="zs-diff-pin">{gutter(partOf[i])}<span className="ln l">{l.t !== "hdr" ? l.l ?? "" : ""}</span><span className="ln r">{l.t !== "hdr" ? l.r ?? "" : ""}</span></span>
           <span className="tx">{zsDiffText(l)}</span>
         </div>
       )))
     : zsDiffSides(ls).map((row, k) => {
-        if (row.fold) return fold(row.fold, partOf[ls.indexOf(row.fold)], k, true);
+        if (row.fold) return gapRow(row.fold, partOf[ls.indexOf(row.fold)], k);
         // a row's part: the part of the first changed line holding one of its numbers
         const p = row.length === 1 ? null : (() => { for (const c of row) { if (!c || c.t === "ctx") continue; const i = ls.findIndex((l) => l.t !== "ctx" && (c.t === "rem" ? l.l === c.n : l.r === c.n)); if (i >= 0 && partOf[i] != null) return partOf[i]; } return null; })();
         return (
@@ -153,15 +154,7 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
         );
       });
   return (
-    <div className={["zs-hunk", all && "is-sel", some && "is-some", lifted && "is-lifted", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")}>
-      <div className={"zs-hunk-hd" + (onGrab ? " is-grab" : "")} onPointerDown={onGrab} title={onGrab ? "Drag onto a change to move this hunk there" : undefined}>
-        {selectable && <Checkbox checked={all} mixed={some} onChange={onToggle} label={all ? "Deselect hunk" : "Select hunk"} />}
-        <code className="zs-hunk-range">{head}</code>
-        {showParts && <span className="zs-hunk-parts" title="Parts you can pick on their own">{count} parts</span>}
-        {context && <span className="zs-hunk-ctx">{context}</span>}
-        <span className="zs-hunk-stat">{a > 0 && <span className="a">+{a}</span>}{r > 0 && <span className="r">−{r}</span>}</span>
-        {onGrab && <Icon name="grip" size="xs" className="zs-hunk-grip" style={{ height: 12 }} />}
-      </div>
+    <div className={["zs-hunk", lifted && "is-lifted", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")}>
       <div className={"zs-diff-body" + (mode === "split" ? " zs-diff-split" : "")} style={{ "--ln": zsDiffDigits(ls) + "ch" }}>{body}</div>
     </div>
   );

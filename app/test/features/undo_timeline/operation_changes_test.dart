@@ -385,6 +385,108 @@ void main() {
     });
   });
 
+  group('Story 10.43: gap rows in the operation view', () {
+    /// A source whose files have 40 left lines (a bottom gap of 39) and whose gap reads answer lines 2-40.
+    FakeOperationChangesSource gapSource(OpChangedCommit change) =>
+        FakeOperationChangesSource(
+            testOpShow(testOperation(1, now: _now, description: _rewrite), <OpChangedCommit>[change]),
+            entries: <ShowEntry>[
+              testShowEntry('kxyz' * 8, _x, 'New\nbody'),
+              testShowEntry('kxyz' * 8, _p, ''),
+              testShowEntry('kabc' * 8, _abandoned, 'Gone\n'),
+            ],
+            diff: (call) => Diff(
+              files: <FileDiff>[
+                for (final String path in call.paths.isEmpty ? const <String>['a.txt'] : call.paths)
+                  testFileDiff(path, leftLineCount: 40),
+              ],
+              operationId: 'op',
+              commitIds: const <String>[],
+            ),
+          )
+          ..lines = <HunkLine>[
+            for (var n = 2; n <= 40; n++)
+              HunkLine(
+                kind: HunkLineKind.context,
+                text: 'line $n\n',
+                left: n,
+                right: n,
+                segments: <Segment>[Segment(kind: SegmentKind.equal, text: 'line $n\n')],
+              ),
+          ];
+
+    /// Opens the focused file's bottom gap whole with Show all.
+    Future<void> showAll(WidgetTester tester) async {
+      final Finder all = find.bySemanticsIdentifier('inspector-unchanged-all');
+      await tester.ensureVisible(all);
+      await tester.pump();
+      await tester.tap(all);
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('a file diff has no hunk header and no boxes; its gap row reads its lines in the rewritten '
+        "commit's interdiff form", (tester) async {
+      final FakeOperationChangesSource changes = gapSource(_rewritten());
+      await withView(tester, changes, () async {
+        expect(find.textContaining('@@'), findsNothing, reason: 'no hunk header');
+        expect(find.byWidgetPredicate((w) => w is ZsCheckbox), findsNothing, reason: 'no boxes');
+        expect(find.text('39 unchanged lines'), findsOneWidget, reason: 'the bottom gap');
+        await showAll(tester);
+        final LineReadCall read = changes.lineReads.single;
+        expect(
+          (read.revision, read.from, read.to, read.interdiff, read.path, read.start, read.end, read.whitespace),
+          (null, _p, _x, true, 'a.txt', 1, 40, DiffWhitespace.exact),
+          reason: 'from the first predecessor to the commit, as its diff',
+        );
+        expect(find.text('39 unchanged lines'), findsNothing);
+        expect(find.text('line 40'), findsOneWidget);
+      });
+    });
+
+    testWidgets("an abandoned commit's gap reads `-r` the commit, no interdiff", (tester) async {
+      final FakeOperationChangesSource changes = gapSource(_abandonedChange());
+      await withView(tester, changes, () async {
+        await showAll(tester);
+        final LineReadCall read = changes.lineReads.single;
+        expect(
+          (read.revision, read.from, read.to, read.interdiff),
+          (_abandoned, null, null, false),
+          reason: 'show_patch, as its diff',
+        );
+      });
+    });
+
+    testWidgets("a created commit's gap reads the commit as an interdiff with no predecessor", (tester) async {
+      final FakeOperationChangesSource changes = gapSource(
+        OpChangedCommit(commitId: _x, abandoned: false, addedCommitIds: <String>[_x], removedCommitIds: const []),
+      );
+      await withView(tester, changes, () async {
+        await showAll(tester);
+        final LineReadCall read = changes.lineReads.single;
+        expect((read.revision, read.from, read.to, read.interdiff), (_x, null, null, true));
+      });
+    });
+
+    testWidgets('after "Ignore all whitespace" the gap reads at -w', (tester) async {
+      final FakeOperationChangesSource changes = gapSource(_rewritten());
+      await withView(tester, changes, () async {
+        final ZsMenuItem ignoreAll = tester
+            .widget<ZsMenuButton>(
+              find.byWidgetPredicate((w) => w is ZsMenuButton && w.identifier == 'inspector-diff-options'),
+            )
+            .entries
+            .whereType<ZsMenuItem>()
+            .singleWhere((i) => i.identifier == 'diff-options-whitespace-ignoreAll');
+        ignoreAll.onSelected!();
+        await tester.pump();
+        await tester.pump();
+        await showAll(tester);
+        expect(changes.lineReads.single.whitespace, DiffWhitespace.ignoreAllSpace);
+      });
+    });
+  });
+
   testWidgets('Story 10.33: the focused file has the diff options menu, the description block none; the whitespace '
       'mode reloads the file exact and at -w; a context pick writes the config and reloads', (tester) async {
     final changes = FakeOperationChangesSource(

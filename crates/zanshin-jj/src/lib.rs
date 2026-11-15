@@ -117,8 +117,8 @@ pub use fix::{FixOptions, FixResult, FixToolStderr};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
 pub use hunks::{
-    DiffOptions, DiffRevisions, FileDiff, Hunk, HunkLine, HunkLineKind, HunksOptions, RevisionDiff, Segment,
-    SegmentKind, Whitespace,
+    DiffLinesOptions, DiffOptions, DiffRevisions, FileDiff, Hunk, HunkLine, HunkLineKind, HunksOptions, RevisionDiff,
+    Segment, SegmentKind, Whitespace,
 };
 pub use metaedit::MetaeditOptions;
 pub use movement::{Direction, MovementOptions, MovementTarget, MovementTargets};

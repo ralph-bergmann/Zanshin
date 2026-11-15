@@ -13,6 +13,11 @@ class InspectorCheckReveal extends StatefulWidget {
   /// The pane.
   final Widget child;
 
+  /// Whether the scope above [context] is revealed (Story 10.43): its on-demand controls show. Outside any scope they
+  /// always show, as an [InspectorCheck] does.
+  static bool revealedOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_RevealScope>()?.revealed ?? true;
+
   @override
   State<InspectorCheckReveal> createState() => _InspectorCheckRevealState();
 }

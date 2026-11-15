@@ -227,7 +227,8 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
     setSel((s) => { const n = new Set([...s].filter((id) => allIds.includes(id))); const on = ids.every((id) => n.has(id)); ids.forEach((id) => on ? n.delete(id) : n.add(id)); return n; });
     setPartSel((o) => { const n = { ...o }; ids.forEach((id) => delete n[id]); return n; });
   };
-  const partsOf = (h) => new Set((h.parts || []).filter((p) => p != null)).size;
+  // a hunk without parts is one part (DiffHunk, Story 10.43)
+  const partsOf = (h) => new Set((h.parts || []).filter((p) => p != null)).size || 1;
   const togglePart = (h, p) => {
     const was = sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || [];
     const next = was.includes(p) ? was.filter((x) => x !== p) : [...was, p];
@@ -244,7 +245,6 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
     return { kind: "diff", from: c.id, hunkIds: ids, files: fs.map((x) => ({ path: x.f.path, status: x.f.status })), whole, a: st.a, r: st.r, label };
   };
   const dragFile = (e, f) => { const ids = f.hunks.map((h) => h.id); beginDrag(e, payload(sel.size > 1 && ids.some((id) => sel.has(id)) ? [...sel] : ids)); };
-  const dragHunk = (e, h) => beginDrag(e, payload(sel.size > 1 && sel.has(h.id) ? [...sel] : [h.id]));
 
   const actions = !mutable
     ? [<Button key="new" variant="primary" icon="plus" iconSize="md" onClick={() => onNew(c.id)} title={"jj new " + c.id.slice(0, 8)}>New change on top</Button>]
@@ -356,10 +356,9 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
               <DiffView file={ff.path} copyPath={ZK_ROOT + ff.path} viewed={!!viewed[ff.path]} onViewedChange={(v) => setViewed(ff.path, v)}
                 tools={<Segmented size="sm" label="Diff layout" value={diffMode} onChange={setDiffMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
                 {ff.hunks.map((h) => (
-                  <DiffHunk key={h.id} oldStart={h.oldStart} newStart={h.newStart} context={h.ctx} lines={h.lines} mode={diffMode}
-                    selectable={mutable} selected={sel.has(h.id)} lifted={!!(liftSet && liftSet.has(h.id))} onToggle={() => toggle([h.id])}
-                    parts={h.parts} picked={sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || []} onTogglePart={(p) => togglePart(h, p)}
-                    onGrab={mutable ? (e) => dragHunk(e, h) : undefined}/>
+                  <DiffHunk key={h.id} oldStart={h.oldStart} newStart={h.newStart} lines={h.lines} mode={diffMode}
+                    selectable={mutable} lifted={!!(liftSet && liftSet.has(h.id))}
+                    parts={h.parts} picked={sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || []} onTogglePart={(p) => togglePart(h, p)}/>
                 ))}
               </DiffView>
             )}

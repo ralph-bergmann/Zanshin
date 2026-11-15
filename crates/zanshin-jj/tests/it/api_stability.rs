@@ -1858,6 +1858,8 @@ fn compute_hunks_surface_resolves() {
             lines: color_words_lines(),
         }],
         whitespace_lines: Vec::new(),
+        // Story 10.43.
+        left_line_count: 1,
     };
     assert_eq!(file.clone(), file);
     assert_eq!(file.hunks[0].lines[0].text(), "x");
@@ -1900,6 +1902,20 @@ fn compute_hunks_surface_resolves() {
             &mut zanshin_jj::Repo,
             &zanshin_jj::DiffOptions,
         ) -> Result<zanshin_jj::RevisionDiff, zanshin_jj::MutateError>;
+    // Story 10.43: one file's unchanged lines in a left range.
+    let lines = zanshin_jj::DiffLinesOptions {
+        revisions: zanshin_jj::DiffRevisions::Revision(None),
+        path: "a".to_owned(),
+        whitespace: zanshin_jj::Whitespace::IgnoreAllSpace,
+        range: 0..20,
+    };
+    assert_eq!(lines.clone(), lines);
+    assert_eq!(zanshin_jj::DiffLinesOptions::default().range, 0..0);
+    _ = zanshin_jj::Repo::diff_lines
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::DiffLinesOptions,
+        ) -> Result<Vec<zanshin_jj::HunkLine>, zanshin_jj::MutateError>;
 }
 
 /// The Story 9.17 surface: `resolve_list`'s payload, `resolve`'s tools and `diffedit`'s options

@@ -33,6 +33,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         Diff,
         DiffWhitespace,
         FileChange,
+        HunkLine,
         ShowEntry,
         Signature,
         SquashPlan;
@@ -296,6 +297,15 @@ class _Details implements GraphDetails {
     bool summary = false,
     DiffWhitespace whitespace = DiffWhitespace.exact,
   }) async => Diff(files: const [], operationId: 'op', commitIds: <String>[commitId]);
+
+  @override
+  Future<List<HunkLine>> diffLines(
+    String commitId, {
+    required String path,
+    required int start,
+    required int end,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) async => const <HunkLine>[];
 
   @override
   Future<DiffContext> diffContext() async => (lines: 3, fromRepo: false);

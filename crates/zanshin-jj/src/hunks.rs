@@ -150,6 +150,10 @@ pub struct FileDiff {
     /// [`Whitespace::Exact`], in [`DiffOptions::summary`] mode, for binary content and under
     /// `diff.color-words.conflict = "pair"` on a conflicted side.
     pub whitespace_lines: Vec<HunkLine>,
+    /// The number of lines of the left side (Story 10.43), counted as [`HunkLine`] numbers count
+    /// them: a last line without a line break counts. 0 when either side is binary or the left
+    /// side is absent or empty. [`DiffOptions::summary`] mode keeps it.
+    pub left_line_count: u32,
 }
 
 /// [`crate::Repo::diff`]'s arguments (Story 5.6) — `jj diff`'s.
@@ -168,6 +172,21 @@ pub struct DiffOptions {
     /// Leave every file's [`FileDiff::hunks`] empty — kinds, flags, sections, counts and
     /// fingerprints are those of the full diff.
     pub summary: bool,
+}
+
+/// [`crate::Repo::diff_lines`]'s arguments (Story 10.43): one file's unchanged lines in a range.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DiffLinesOptions {
+    /// Which revisions to diff, read exactly as [`DiffOptions::revisions`].
+    pub revisions: DiffRevisions,
+    /// The file's repo-relative path in jj's internal `/`-separated form — a rename's TARGET, as
+    /// [`FileDiff::path`] names it.
+    pub path: String,
+    /// How lines are compared.
+    pub whitespace: Whitespace,
+    /// The left line numbers to return, 0-based and half-open: line `n` (1-based) is in it when
+    /// `n - 1` is. A range past the file's end is clipped.
+    pub range: Range<u32>,
 }
 
 /// The two sides of a [`crate::Repo::diff`] (Story 5.6).
@@ -475,6 +494,50 @@ pub(crate) fn diff(
     })
 }
 
+/// One file's unchanged lines in a left range (Story 10.43) — see [`crate::Repo::diff_lines`].
+///
+/// # Errors
+///
+/// See [`crate::Repo::diff`].
+pub(crate) fn diff_lines(
+    workspace: &Workspace,
+    config: &StackedConfig,
+    sink: &mut Warnings,
+    templates: &Templates<'_>,
+    options: &DiffLinesOptions,
+) -> Result<Vec<HunkLine>, MutateError> {
+    // Unlimited context makes the file one hunk; not `usize::MAX`, as the context walk adds 1.
+    let diff = diff(
+        workspace,
+        config,
+        sink,
+        templates,
+        &DiffOptions {
+            revisions: options.revisions.clone(),
+            paths: vec![options.path.clone()],
+            context: Some(u32::MAX as usize),
+            whitespace: options.whitespace,
+            summary: false,
+        },
+    )?;
+    // The paths are prefixes, so other files can come back.
+    let Some(file) = diff.files.into_iter().find(|file| file.path == options.path) else {
+        return Ok(Vec::new());
+    };
+    Ok(file
+        .hunks
+        .into_iter()
+        .flat_map(|hunk| hunk.lines)
+        .filter(|line| {
+            line.kind == HunkLineKind::Context
+                && line
+                    .left
+                    .and_then(|left| left.checked_sub(1))
+                    .is_some_and(|index| options.range.contains(&index))
+        })
+        .collect())
+}
+
 fn commit_id(commit: &Commit) -> CommitId {
     CommitId(commit.id().hex())
 }
@@ -647,6 +710,7 @@ impl<'a> DiffReader<'a> {
             sections: Vec::new(),
             fingerprint: fingerprint(Some(texts), self.options.mode, None, false),
             whitespace_lines: whitespace_lines(texts, self.options),
+            left_line_count: line_count(texts.before),
             hunks,
             removed,
             added,
@@ -718,11 +782,17 @@ impl<'a> DiffReader<'a> {
                 mode_change,
             ),
             whitespace_lines,
+            left_line_count: if binary { 0 } else { line_count(texts.before) },
             hunks,
             removed,
             added,
         })
     }
+}
+
+/// [`FileDiff::left_line_count`] of one side's text.
+fn line_count(text: &[u8]) -> u32 {
+    u32::try_from(text.split_inclusive(|byte| *byte == b'\n').count()).unwrap_or(u32::MAX)
 }
 
 /// One side's content as `jj diff`'s color-words format reads it (`diff_content_with`,

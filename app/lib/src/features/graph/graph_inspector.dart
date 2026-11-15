@@ -459,6 +459,27 @@ class InspectorViewModel extends ChangeNotifier {
     _loadFocus();
   }
 
+  /// The unchanged lines a gap row of [path] opens (Story 10.43): `-r` the shown change at the current whitespace mode,
+  /// as the diff reads it. A refusal is logged like the diff's and rethrown: the gap stays closed.
+  Future<List<HunkLine>> diffLines(String path, int start, int end) async {
+    final String? commitId = _commitId;
+    if (commitId == null) {
+      return const <HunkLine>[];
+    }
+    try {
+      return await details.diffLines(
+        commitId,
+        path: path,
+        start: start,
+        end: end,
+        whitespace: diffWhitespaceOf(_whitespace),
+      );
+    } on ZanshinFfiException catch (error) {
+      _log.warning('diff lines refused: ${error.code}');
+      rethrow;
+    }
+  }
+
   /// Reads the focused file: exact (parts, picks, header, counts) and, while whitespace is ignored, at the mode too, in
   /// parallel; it shows once both arrived, and a refusal of either is the diff's refusal (Story 10.33).
   void _loadFocus() {
@@ -655,16 +676,6 @@ class InspectorViewModel extends ChangeNotifier {
         (shape.sections.isNotEmpty || shape.modeChange);
   }
 
-  /// [hunk]'s checkbox in [path]: all of its sections picked (or the file whole) → true, some → mixed, none → false.
-  bool? hunkState(String path, Hunk hunk) {
-    if (_picked.contains(path)) {
-      return true;
-    }
-    final Set<HunkKey> keys = _partial[path]?.keys ?? const <HunkKey>{};
-    final int n = hunk.sections.where(keys.contains).length;
-    return n == 0 ? false : (n == hunk.sections.length ? true : null);
-  }
-
   /// Whether [path]'s mode change is picked: the file whole, or its partial's mode.
   bool modePicked(String path) => _picked.contains(path) || (_partial[path]?.mode ?? false);
 
@@ -678,21 +689,6 @@ class InspectorViewModel extends ChangeNotifier {
       _picked.add(path);
     }
     _picksChanged();
-  }
-
-  /// Toggles [hunk]'s sections in [path]: all picked → removed, else added.
-  void toggleHunk(String path, Hunk hunk) {
-    if (!hunkable(path) || hunk.sections.isEmpty) {
-      return;
-    }
-    final ({Set<HunkKey> keys, bool mode}) pick = _partialOf(path);
-    if (hunkState(path, hunk) ?? false) {
-      pick.keys.removeAll(hunk.sections);
-    } else {
-      // The shown diff may predate a reload: only keys of the file's current sections.
-      pick.keys.addAll(hunk.sections.where(_summary![path]!.sections.contains));
-    }
-    _setPartial(path, pick);
   }
 
   /// Whether [part] (one of a hunk's sections) of [path] is picked: the file whole, or the section in its partial.
@@ -3168,8 +3164,8 @@ class _ChangesState extends State<_Changes> {
                   layout: model.layout,
                   onLayoutChanged: model.setLayout,
                   // The dimmed previous file's diff takes no picks: they would land on the focused path.
-                  hunkPicked: pickHunks ? (hunk) => model.hunkState(focused, hunk) : null,
-                  onHunkToggled: (hunk) => model.toggleHunk(focused, hunk),
+                  // The previous file's lines belong to its own path: its gaps show their counts only.
+                  readLines: model.previousDiff == null ? (start, end) => model.diffLines(focused, start, end) : null,
                   partPicked: pickHunks ? (part) => model.partPicked(focused, part) : null,
                   onPartToggled: (part) => model.togglePart(focused, part),
                   modePicked: pickHunks ? model.modePicked(focused) : null,

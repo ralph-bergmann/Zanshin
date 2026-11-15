@@ -119,7 +119,7 @@ class _RevsetErrorKindReader extends fb.Reader<RevsetErrorKind> {
 ///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 64 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 65 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -202,7 +202,8 @@ enum RequestKind {
   FindChanges(70),
   FileEdit(71),
   FileDelete(72),
-  Diff(73);
+  Diff(73),
+  DiffLines(74);
 
   final int value;
   const RequestKind(this.value);
@@ -357,6 +358,8 @@ enum RequestKind {
         return RequestKind.FileDelete;
       case 73:
         return RequestKind.Diff;
+      case 74:
+        return RequestKind.DiffLines;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -365,7 +368,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 73;
+  static const int maxValue = 74;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -2256,7 +2259,8 @@ enum PayloadTypeId {
   FoundChanges(59),
   GitColocationStatus(60),
   GitColocationResult(61),
-  Diff(62);
+  Diff(62),
+  DiffLines(63);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -2389,6 +2393,8 @@ enum PayloadTypeId {
         return PayloadTypeId.GitColocationResult;
       case 62:
         return PayloadTypeId.Diff;
+      case 63:
+        return PayloadTypeId.DiffLines;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -2397,7 +2403,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 62;
+  static const int maxValue = 63;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -3884,6 +3890,170 @@ class DiffRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint8(6, _whitespace?.value);
     fbBuilder.addBool(7, _summary);
     fbBuilder.addBool(8, _interdiff);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_diff_lines` (Story 10.43) — one file's unchanged lines in a left range
+///  (`zanshin_jj::Repo::diff_lines`): the `Context` lines `jj diff` with unlimited `--context`
+///  prints for that file.
+///
+///    revision / from / to / interdiff   read exactly as `DiffRequest`'s, refusals included
+///    path        the file's repo-relative path in jj's internal `/`-separated form — a rename's
+///                TARGET (`FileDiff.path`); its left side is read at the source, as the diff reads it
+///    whitespace  `-w` / `-b`
+///    start / end a 0-based half-open range of LEFT line numbers: line `n` (1-based) is returned
+///                when `start <= n - 1 < end`; a range past the file's end is clipped
+class DiffLinesRequest {
+  DiffLinesRequest._(this._bc, this._bcOffset);
+  factory DiffLinesRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<DiffLinesRequest> reader = _DiffLinesRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get interdiff => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 14);
+  DiffWhitespace get whitespace => DiffWhitespace.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 16, 0));
+  int get start => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 18, 0);
+  int get end => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 20, 0);
+
+  @override
+  String toString() {
+    return 'DiffLinesRequest{kind: ${kind}, revision: ${revision}, from: ${from}, to: ${to}, interdiff: ${interdiff}, path: ${path}, whitespace: ${whitespace}, start: ${start}, end: ${end}}';
+  }
+}
+
+class _DiffLinesRequestReader extends fb.TableReader<DiffLinesRequest> {
+  const _DiffLinesRequestReader();
+
+  @override
+  DiffLinesRequest createObject(fb.BufferContext bc, int offset) => DiffLinesRequest._(bc, offset);
+}
+
+class DiffLinesRequestBuilder {
+  DiffLinesRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(9);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInterdiff(bool? interdiff) {
+    fbBuilder.addBool(4, interdiff);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWhitespace(DiffWhitespace? whitespace) {
+    fbBuilder.addUint8(6, whitespace?.value);
+    return fbBuilder.offset;
+  }
+
+  int addStart(int? start) {
+    fbBuilder.addUint32(7, start);
+    return fbBuilder.offset;
+  }
+
+  int addEnd(int? end) {
+    fbBuilder.addUint32(8, end);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DiffLinesRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _revision;
+  final String? _from;
+  final String? _to;
+  final bool? _interdiff;
+  final String? _path;
+  final DiffWhitespace? _whitespace;
+  final int? _start;
+  final int? _end;
+
+  DiffLinesRequestObjectBuilder({
+    RequestKind? kind,
+    String? revision,
+    String? from,
+    String? to,
+    bool? interdiff,
+    String? path,
+    DiffWhitespace? whitespace,
+    int? start,
+    int? end,
+  }) : _kind = kind,
+       _revision = revision,
+       _from = from,
+       _to = to,
+       _interdiff = interdiff,
+       _path = path,
+       _whitespace = whitespace,
+       _start = start,
+       _end = end;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
+    final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(9);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, fromOffset);
+    fbBuilder.addOffset(3, toOffset);
+    fbBuilder.addBool(4, _interdiff);
+    fbBuilder.addOffset(5, pathOffset);
+    fbBuilder.addUint8(6, _whitespace?.value);
+    fbBuilder.addUint32(7, _start);
+    fbBuilder.addUint32(8, _end);
     return fbBuilder.endTable();
   }
 
@@ -25193,6 +25363,10 @@ class HunkObjectBuilder extends fb.ObjectBuilder {
 ///  run of listed lines has no number gap; a listed line with no `Added` / `Removed` segment is
 ///  such an identical line. Empty at exact, in summary mode, for binary content and under
 ///  `diff.color-words.conflict = "pair"` on a conflicted side.
+///
+///  Story 10.43 appends `left_line_count`: the number of lines of the left side, cut like
+///  `split_inclusive('\n')` (a last line without `\n` counts); 0 when either side is binary or the
+///  left side is absent or empty; kept in summary mode.
 class FileDiff {
   FileDiff._(this._bc, this._bcOffset);
   factory FileDiff(List<int> bytes) {
@@ -25217,10 +25391,11 @@ class FileDiff {
   String? get fingerprint => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 22);
   List<HunkLine>? get whitespaceLines =>
       const fb.ListReader<HunkLine>(HunkLine.reader).vTableGetNullable(_bc, _bcOffset, 24);
+  int get leftLineCount => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 26, 0);
 
   @override
   String toString() {
-    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}, kind: ${kind}, fromPath: ${fromPath}, removed: ${removed}, added: ${added}, fingerprint: ${fingerprint}, whitespaceLines: ${whitespaceLines}}';
+    return 'FileDiff{path: ${path}, binary: ${binary}, modeChange: ${modeChange}, sections: ${sections}, hunks: ${hunks}, kind: ${kind}, fromPath: ${fromPath}, removed: ${removed}, added: ${added}, fingerprint: ${fingerprint}, whitespaceLines: ${whitespaceLines}, leftLineCount: ${leftLineCount}}';
   }
 }
 
@@ -25237,7 +25412,7 @@ class FileDiffBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(11);
+    fbBuilder.startTable(12);
   }
 
   int addPathOffset(int? offset) {
@@ -25295,6 +25470,11 @@ class FileDiffBuilder {
     return fbBuilder.offset;
   }
 
+  int addLeftLineCount(int? leftLineCount) {
+    fbBuilder.addUint32(11, leftLineCount);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -25312,6 +25492,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
   final int? _added;
   final String? _fingerprint;
   final List<HunkLineObjectBuilder>? _whitespaceLines;
+  final int? _leftLineCount;
 
   FileDiffObjectBuilder({
     String? path,
@@ -25325,6 +25506,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     int? added,
     String? fingerprint,
     List<HunkLineObjectBuilder>? whitespaceLines,
+    int? leftLineCount,
   }) : _path = path,
        _binary = binary,
        _modeChange = modeChange,
@@ -25335,7 +25517,8 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
        _removed = removed,
        _added = added,
        _fingerprint = fingerprint,
-       _whitespaceLines = whitespaceLines;
+       _whitespaceLines = whitespaceLines,
+       _leftLineCount = leftLineCount;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -25352,7 +25535,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     final int? whitespaceLinesOffset = _whitespaceLines == null
         ? null
         : fbBuilder.writeList(_whitespaceLines!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(11);
+    fbBuilder.startTable(12);
     fbBuilder.addOffset(0, pathOffset);
     fbBuilder.addBool(1, _binary);
     fbBuilder.addBool(2, _modeChange);
@@ -25364,6 +25547,7 @@ class FileDiffObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint32(8, _added);
     fbBuilder.addOffset(9, fingerprintOffset);
     fbBuilder.addOffset(10, whitespaceLinesOffset);
+    fbBuilder.addUint32(11, _leftLineCount);
     return fbBuilder.endTable();
   }
 
@@ -25492,6 +25676,83 @@ class DiffObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(2, commitIdsOffset);
     fbBuilder.addOffset(3, fromCommitIdOffset);
     fbBuilder.addOffset(4, descriptionOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One file's unchanged lines in a left range (Story 10.43), returned by `zanshin_diff_lines`:
+///  `Context` lines in order, both numbers set, segments as the diff gives them (at `-w` / `-b` a
+///  whitespace-only pair keeps the CLI's marks). `lines` is always present; empty when the diff
+///  lists no such file, the file is binary or nothing unchanged lies in the range.
+class DiffLines {
+  DiffLines._(this._bc, this._bcOffset);
+  factory DiffLines(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<DiffLines> reader = _DiffLinesReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<HunkLine>? get lines => const fb.ListReader<HunkLine>(HunkLine.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'DiffLines{lines: ${lines}}';
+  }
+}
+
+class _DiffLinesReader extends fb.TableReader<DiffLines> {
+  const _DiffLinesReader();
+
+  @override
+  DiffLines createObject(fb.BufferContext bc, int offset) => DiffLines._(bc, offset);
+}
+
+class DiffLinesBuilder {
+  DiffLinesBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addLinesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DiffLinesObjectBuilder extends fb.ObjectBuilder {
+  final List<HunkLineObjectBuilder>? _lines;
+
+  DiffLinesObjectBuilder({
+    List<HunkLineObjectBuilder>? lines,
+  }) : _lines = lines;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? linesOffset = _lines == null
+        ? null
+        : fbBuilder.writeList(_lines!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, linesOffset);
     return fbBuilder.endTable();
   }
 
@@ -25765,6 +26026,8 @@ class Envelope {
         return GitColocationResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 62:
         return Diff.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 63:
+        return DiffLines.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

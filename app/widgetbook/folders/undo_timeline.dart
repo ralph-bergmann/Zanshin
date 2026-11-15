@@ -254,6 +254,28 @@ class _DemoChanges implements OperationChangesSource {
     );
   }
 
+  /// Story 10.43: a gap row's lines, made up for the demo (the files' hunks keep left and right numbers equal).
+  @override
+  Future<List<HunkLine>> diffLines({
+    required String path,
+    required int start,
+    required int end,
+    String? revision,
+    String? from,
+    String? to,
+    bool interdiff = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) async => <HunkLine>[
+    for (var left = start + 1; left <= end; left++)
+      HunkLine(
+        kind: HunkLineKind.context,
+        text: '// line $left\n',
+        left: left,
+        right: left,
+        segments: <Segment>[Segment(kind: SegmentKind.equal, text: '// line $left\n')],
+      ),
+  ];
+
   static FileDiff _file(String path, String old, String now) => FileDiff(
     path: path,
     kind: FileChangeKind.modified,
@@ -296,6 +318,8 @@ class _DemoChanges implements OperationChangesSource {
     removed: 1,
     added: 1,
     fingerprint: path,
+    // Story 10.43: a top gap of 2 lines and a bottom gap of 36.
+    leftLineCount: 40,
   );
 }
 

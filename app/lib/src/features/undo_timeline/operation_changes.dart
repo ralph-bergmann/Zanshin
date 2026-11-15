@@ -15,6 +15,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import '../graph/graph_inspector.dart' show InspectorFileRow;
 import '../graph/graph_ports.dart' show jjOpShowCommand;
+import '../graph/inspector_check_reveal.dart';
 import '../graph/inspector_diff.dart';
 import '../projects/project_repos.dart';
 import '../projects/projects_environment.dart';
@@ -45,6 +46,19 @@ abstract interface class OperationChangesSource {
     bool interdiff = false,
     bool summary = false,
     List<String> paths = const <String>[],
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  });
+
+  /// The unchanged lines of [path] in the [diff] of the same revision form at [whitespace] whose left number − 1 lies in
+  /// [start] to [end] (0-based, half-open), as that diff prints them as context (Story 10.43): what a gap row opens.
+  Future<List<HunkLine>> diffLines({
+    required String path,
+    required int start,
+    required int end,
+    String? revision,
+    String? from,
+    String? to,
+    bool interdiff = false,
     DiffWhitespace whitespace = DiffWhitespace.exact,
   });
 
@@ -103,6 +117,27 @@ class RepoOperationChangesSource implements OperationChangesSource {
     interdiff: interdiff,
     summary: summary,
     paths: paths,
+    whitespace: whitespace,
+  );
+
+  @override
+  Future<List<HunkLine>> diffLines({
+    required String path,
+    required int start,
+    required int end,
+    String? revision,
+    String? from,
+    String? to,
+    bool interdiff = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) => _repo.handle.diffLines(
+    path: path,
+    start: start,
+    end: end,
+    revision: revision,
+    from: from,
+    to: to,
+    interdiff: interdiff,
     whitespace: whitespace,
   );
 }
@@ -423,6 +458,36 @@ class OperationChangesModel extends ChangeNotifier {
             paths: paths,
             whitespace: whitespace,
           );
+  }
+
+  /// The unchanged lines a gap row of [path] opens (Story 10.43): the selected change's lines in the revision form
+  /// [_diffOf] chose for its diff, at the current whitespace mode. A refusal is logged like the diff's and rethrown: the
+  /// gap stays closed.
+  Future<List<HunkLine>> diffLines(String path, int start, int end) async {
+    final int? selected = _selected;
+    if (_disposed || selected == null) {
+      return const <HunkLine>[];
+    }
+    final OpChangedCommit change = changes[selected];
+    final DiffWhitespace whitespace = diffWhitespaceOf(_whitespace);
+    final String? predecessor = change.removedCommitIds.firstOrNull;
+    try {
+      return await (change.abandoned
+          ? _source.diffLines(path: path, start: start, end: end, revision: change.commitId, whitespace: whitespace)
+          : _source.diffLines(
+              path: path,
+              start: start,
+              end: end,
+              revision: predecessor == null ? change.commitId : null,
+              from: predecessor,
+              to: predecessor == null ? null : change.commitId,
+              interdiff: true,
+              whitespace: whitespace,
+            ));
+    } on ZanshinFfiException catch (error) {
+      _log.warning('file diff lines refused: ${error.code}');
+      rethrow;
+    }
   }
 
   /// Selects [changes]' entry [index]: reads its files and focuses the first.
@@ -863,20 +928,24 @@ class _Files extends StatelessWidget {
                 if (focused != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: InspectorDiffView(
-                      path: focused,
-                      copyPath: model.absolutePath(focused),
-                      diff: model.focusedDiff,
-                      ignoring: model.focusedIgnoring,
-                      whitespace: model.whitespace,
-                      onWhitespaceChanged: model.setWhitespace,
-                      contextLines: model.contextLines,
-                      contextFromRepo: model.contextFromRepo,
-                      onContextLinesChanged: (lines) => unawaited(model.setContextLines(lines)),
-                      wordMarks: model.wordMarks,
-                      error: model.focusError,
-                      layout: model.layout,
-                      onLayoutChanged: model.setLayout,
+                    // The gap rows' controls show while the pointer or focus is in this diff (Story 10.43).
+                    child: InspectorCheckReveal(
+                      child: InspectorDiffView(
+                        path: focused,
+                        copyPath: model.absolutePath(focused),
+                        readLines: (start, end) => model.diffLines(focused, start, end),
+                        diff: model.focusedDiff,
+                        ignoring: model.focusedIgnoring,
+                        whitespace: model.whitespace,
+                        onWhitespaceChanged: model.setWhitespace,
+                        contextLines: model.contextLines,
+                        contextFromRepo: model.contextFromRepo,
+                        onContextLinesChanged: (lines) => unawaited(model.setContextLines(lines)),
+                        wordMarks: model.wordMarks,
+                        error: model.focusError,
+                        layout: model.layout,
+                        onLayoutChanged: model.setLayout,
+                      ),
                     ),
                   ),
               ],

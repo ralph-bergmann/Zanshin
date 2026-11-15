@@ -1055,6 +1055,41 @@ ZanshinBuf *zanshin_diff(uint64_t handle,
                          uintptr_t len);
 
 /**
+ * One file's unchanged lines in a left range in the repo identified by `handle` (Story 10.43) —
+ * `zanshin_jj::Repo::diff_lines`: the `Context` lines `jj diff` with unlimited `--context` prints
+ * for the file, whose left number − 1 lies in `start..end`, in order, both numbers set and the
+ * segments as the diff gives them. The lines a diff with less context hides.
+ *
+ * The arguments cross as a `DiffLinesRequest` `FlatBuffers` request buffer: `revision`, `from`,
+ * `to` and `interdiff` read exactly as `zanshin_diff`'s, `path` (the file, a rename's TARGET; its
+ * left side is read at the source), `whitespace` (`-w` / `-b`) and `start` / `end` (a 0-based
+ * half-open range of left line numbers, clipped to the file). A path the diff does not list, a
+ * binary file or a range with no unchanged line gives no lines. No caching. Writes NO operation
+ * beyond the pre-verb snapshot's (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `DiffLines` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `DiffLinesRequest` buffer, its `kind`
+ *   is not `DiffLines`, or its `whitespace` is outside the enum.
+ * - `jj.invalid_input` — `path` is absent (before the snapshot), else as for `zanshin_diff`.
+ * - `jj.revset_parse_error` — a revision is not a valid revset expression.
+ * - `jj.revset_resolution_error` — a revision resolves to no commit or more than one, as for
+ *   `zanshin_diff`.
+ * - `jj.config_error` — a `diff.color-words.*` key, `ui.conflict-marker-style` or the revset
+ *   aliases are malformed.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — a side cannot be read, or another jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * As for `zanshin_diff`; `data` is a `fbs.DiffLinesRequestObjectBuilder(...).toBytes()` buffer.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_diff_lines(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
  * Touch up a revision's content with a GUI-selected tree, in the repo identified by `handle` —
  * the CLI's `jj diffedit` (Story 9.17).
  *

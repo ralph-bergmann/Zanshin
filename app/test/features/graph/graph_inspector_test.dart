@@ -296,6 +296,22 @@ class _Details implements GraphDetails {
     return diffOf(changeId, paths: paths, summary: summary);
   }
 
+  /// Every `diffLines` call: the commit id, the path, the range and the whitespace mode; [lines] answers it.
+  final lineReads = <(String, String, int, int, DiffWhitespace)>[];
+  var lines = const <HunkLine>[];
+
+  @override
+  Future<List<HunkLine>> diffLines(
+    String commitId, {
+    required String path,
+    required int start,
+    required int end,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) async {
+    lineReads.add((commitId, path, start, end, whitespace));
+    return lines;
+  }
+
   /// Every `squashPlan` call's change id; [combined] is its answer, [refusePlan] its refusal.
   final plans = <String>[];
   String? combined;
@@ -347,6 +363,7 @@ FileDiff fileDiff(
   bool binary = false,
   bool modeChange = false,
   List<HunkKey> sections = const <HunkKey>[],
+  int leftLineCount = 0,
 }) => FileDiff(
   path: path,
   kind: kind,
@@ -358,6 +375,7 @@ FileDiff fileDiff(
   removed: removed,
   added: added,
   fingerprint: fingerprint,
+  leftLineCount: leftLineCount,
 );
 
 /// A hunk over [lines], its counts taken from them.
@@ -1511,17 +1529,17 @@ void main() {
     ) async {
       await pump(tester);
       await settle(tester);
-      // Story 10.42: no `+N −M` in the header or on a row; the hunk header keeps its counts.
+      // Story 10.42: no `+N −M` in the header or on a row; Story 10.43: no hunk header with counts either.
       expect(meta(tester), '2 files');
-      expect(find.text('+3'), findsOneWidget, reason: 'the hunk header only');
-      expect(find.text('−1'), findsOneWidget);
+      expect(find.text('+3'), findsNothing);
+      expect(find.text('−1'), findsNothing);
       expect(find.text('+2'), findsNothing, reason: "new.dart's row has no ±; its hunk does not show");
       expect(inspector.focusedPath, 'src/a.dart');
       expect(details.diffs.map((d) => '${d.$1} ${d.$2} ${d.$3}'), <String>[
         '$_mutable [] true',
         '$_mutable [src/a.dart] false',
       ]);
-      expect(find.text('@@ −2,2 +2,4 @@'), findsOneWidget);
+      expect(find.textContaining('@@'), findsNothing, reason: 'no hunk header');
       expect(find.text('old a'), findsOneWidget, reason: 'the text without its newline');
       expect(find.byType(SelectionArea), findsOneWidget, reason: 'the diff text is selectable');
       await unmount(tester);
@@ -1585,7 +1603,7 @@ void main() {
         <String>['src/a.dart'],
         <String>['src/new.dart'],
       ]);
-      expect(find.text('fn main()'), findsOneWidget, reason: 'the hunk symbol');
+      expect(find.text('fn main()'), findsNothing, reason: 'Story 10.43: no hunk header, no symbol');
       expect(find.text('b one'), findsOneWidget);
       expect(find.text('old a'), findsNothing);
       await unmount(tester);
@@ -2094,7 +2112,7 @@ void main() {
       await settle(tester);
       expect(inspector.entry, isNotNull);
       expect(details.diffs.map((d) => d.$1).toSet(), <String>{_mutable});
-      expect(find.text('+3'), findsWidgets);
+      expect(find.text('new a'), findsOneWidget, reason: 'its diff shows');
       expect(find.byKey(const ValueKey<String>('inspector-diff')), findsOneWidget);
       await unmount(tester);
     });
@@ -2640,8 +2658,8 @@ void main() {
           after: (start: 0, end: 1),
           sections: const <HunkKey>[k1],
           lines: const <HunkLine>[
-            HunkLine(kind: HunkLineKind.removed, text: 'a0\n'),
-            HunkLine(kind: HunkLineKind.added, text: 'A0\n'),
+            HunkLine(kind: HunkLineKind.removed, text: 'a0\n', left: 1),
+            HunkLine(kind: HunkLineKind.added, text: 'A0\n', right: 1),
           ],
         ),
         hunk(
@@ -2649,15 +2667,15 @@ void main() {
           after: (start: 5, end: 7),
           sections: const <HunkKey>[k2],
           lines: const <HunkLine>[
-            HunkLine(kind: HunkLineKind.added, text: 'n1\n'),
-            HunkLine(kind: HunkLineKind.added, text: 'n2\n'),
+            HunkLine(kind: HunkLineKind.added, text: 'n1\n', right: 6),
+            HunkLine(kind: HunkLineKind.added, text: 'n2\n', right: 7),
           ],
         ),
         hunk(
           before: (start: 10, end: 11),
           after: (start: 12, end: 12),
           sections: const <HunkKey>[k3],
-          lines: const <HunkLine>[HunkLine(kind: HunkLineKind.removed, text: 'gone\n')],
+          lines: const <HunkLine>[HunkLine(kind: HunkLineKind.removed, text: 'gone\n', left: 11)],
         ),
       ],
     );
@@ -2684,8 +2702,8 @@ void main() {
               after: (start: 2, end: 3),
               sections: const <HunkKey>[k4],
               lines: const <HunkLine>[
-                HunkLine(kind: HunkLineKind.removed, text: 'echo a\n'),
-                HunkLine(kind: HunkLineKind.added, text: 'echo b\n'),
+                HunkLine(kind: HunkLineKind.removed, text: 'echo a\n', left: 3),
+                HunkLine(kind: HunkLineKind.added, text: 'echo b\n', right: 3),
               ],
             ),
           ],
@@ -2721,7 +2739,8 @@ void main() {
     }
 
     Finder checkbox(String identifier) => find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == identifier);
-    Finder hunkBox(int i) => checkbox('inspector-hunk-check').at(i);
+    // Story 10.43: no hunk header; a hunk of one part has its one part checkbox.
+    Finder hunkBox(int i) => checkbox('inspector-part-check').at(i);
     Finder fileBox(String label) => find.byWidgetPredicate((w) => w is ZsCheckbox && w.label == label);
     bool? state(WidgetTester tester, Finder box) => tester.widget<ZsCheckbox>(box).value;
     bool? selectAll(WidgetTester tester) => state(tester, checkbox('inspector-select-all'));
@@ -2750,8 +2769,6 @@ void main() {
       await settle(tester);
     }
 
-    Color headerColor(WidgetTester tester, int i) =>
-        tester.widget<Container>(find.byKey(const ValueKey<String>('inspector-hunk-header')).at(i)).color!;
     // The unified lines draw the edge on their pinned numbers (Story 10.38): the hunk's first line's.
     Border? edgeOf(WidgetTester tester, int i) =>
         (tester
@@ -2768,29 +2785,24 @@ void main() {
                 ?.border
             as Border?;
 
-    // A unified header's band on the opaque pin base (Story 10.40).
-    Color pinned(ZsColors colors, Color band) =>
-        Color.alphaBlend(band, Color.alphaBlend(colors.codeBg, colors.flBgSolid));
-
     String filesOf(HunkChoice? hunks) => <String>[
       for (final FileSelection f in hunks!.files)
         '${f.path}:${f.whole ? 'whole' : '${f.mode ? 'mode+' : ''}${f.hunks.map((k) => k.oldStart).join(',')}'}',
     ].join(' ');
 
-    testWidgets('@ opens with every file and hunk checked; the selected look is on every hunk', (tester) async {
+    testWidgets('@ opens with every file and part checked; the selected look is on every part', (tester) async {
       await pump(tester, select: _at);
       await settle(tester);
       expect(inspector.focusedPath, 'a.txt');
       expect(state(tester, fileBox('a.txt')), isTrue);
       expect(selectAll(tester), isTrue);
       expect(hunkBox(0), findsOneWidget);
-      expect(checkbox('inspector-hunk-check'), findsNWidgets(3));
+      expect(checkbox('inspector-part-check'), findsNWidgets(3), reason: 'one box per part, one part per hunk');
+      expect(find.byKey(const ValueKey<String>('inspector-hunk-header')), findsNothing, reason: 'no hunk header');
       for (var i = 0; i < 3; i++) {
         expect(state(tester, hunkBox(i)), isTrue);
-        expect(tester.widget<ZsCheckbox>(hunkBox(i)).tristate, isTrue);
       }
       final ZsColors colors = ZsColors.of(tester.element(composer));
-      expect(headerColor(tester, 0), pinned(colors, colors.accentSoftHi));
       expect(edgeOf(tester, 0)!.left, BorderSide(color: colors.accentLine, width: 2));
       await unmount(tester);
     });
@@ -2805,9 +2817,8 @@ void main() {
       expect(state(tester, fileBox('a.txt')), isNull, reason: 'mixed');
       expect(selectAll(tester), isNull, reason: 'mixed');
       final ZsColors colors = ZsColors.of(tester.element(composer));
-      expect(headerColor(tester, 1), pinned(colors, colors.hunkBg), reason: 'an unselected header stays the hunk band');
-      expect(edgeOf(tester, 1), isNull);
-      expect(headerColor(tester, 0), pinned(colors, colors.accentSoftHi));
+      expect(edgeOf(tester, 1), isNull, reason: "an unpicked part's rows carry no edge");
+      expect(edgeOf(tester, 0)!.left, BorderSide(color: colors.accentLine, width: 2));
       expect(shown(tester), "jj commit -i -m ''");
       // Selected: every file has a pick (a.txt k1+k3: +1 −2, b.sh ±1, d.txt +2); Rest: a.txt's k2 (+2).
       expect(find.descendant(of: composer, matching: find.text('4 files')), findsOneWidget);
@@ -2865,7 +2876,7 @@ void main() {
       await settle(tester);
       await focusFile(tester, 'd.txt');
       expect(find.text('d1'), findsOneWidget, reason: 'its hunk shows');
-      expect(checkbox('inspector-hunk-check'), findsNothing);
+      expect(checkbox('inspector-part-check'), findsNothing);
       expect(checkbox('inspector-mode-check'), findsNothing);
       await unmount(tester);
 
@@ -2874,7 +2885,7 @@ void main() {
       await pump(tester, select: _left);
       await settle(tester);
       expect(find.text('gone'), findsOneWidget, reason: 'the diff shows');
-      expect(checkbox('inspector-hunk-check'), findsNothing);
+      expect(checkbox('inspector-part-check'), findsNothing);
       expect(checkbox('inspector-file-check'), findsNothing, reason: 'no file box either');
       expect(checkbox('inspector-select-all'), findsNothing);
       await unmount(tester);
@@ -2883,17 +2894,17 @@ void main() {
     testWidgets("the dimmed previous file's diff takes no hunk or mode checkboxes", (tester) async {
       await pump(tester, select: _at);
       await settle(tester);
-      expect(checkbox('inspector-hunk-check'), findsNWidgets(3));
+      expect(checkbox('inspector-part-check'), findsNWidgets(3));
       details.holdDiff = true;
       await focusFile(tester, 'b.sh');
       expect(inspector.previousDiff, isNotNull);
-      expect(checkbox('inspector-hunk-check'), findsNothing);
+      expect(checkbox('inspector-part-check'), findsNothing);
       expect(checkbox('inspector-mode-check'), findsNothing);
       details.heldDiffs.single.$3.complete(details.diffOf(_at, paths: <String>['b.sh']));
       await settle(tester);
       expect(inspector.previousDiff, isNull);
       expect(checkbox('inspector-mode-check'), findsOneWidget);
-      expect(checkbox('inspector-hunk-check'), findsOneWidget);
+      expect(checkbox('inspector-part-check'), findsOneWidget);
       await unmount(tester);
     });
 
@@ -3080,7 +3091,7 @@ void main() {
         inspector
           ..togglePick('b.sh')
           ..togglePick('d.txt')
-          ..toggleHunk('a.txt', inspector.focusedDiff!.hunks[1]);
+          ..togglePart('a.txt', k2);
         await settle(tester);
       }
 
@@ -3113,7 +3124,7 @@ void main() {
         expect(tester.getTopLeft(name), nameAt, reason: 'the name keeps its place');
 
         // Hovering the code pane reveals only its boxes.
-        await mouse.moveTo(tester.getCenter(find.byKey(const ValueKey<String>('inspector-hunk-header')).at(1)));
+        await mouse.moveTo(tester.getCenter(find.text('n1')));
         await settle(tester);
         expect(opacity(tester, hunkBox(1)), 1);
         expect(opacity(tester, fileBox('b.sh')), 0);
@@ -3201,7 +3212,7 @@ void main() {
         await settle(tester);
         inspector
           ..togglePick('b.sh')
-          ..toggleHunk('a.txt', inspector.focusedDiff!.hunks[1]);
+          ..togglePart('a.txt', k2);
         await settle(tester);
         for (final box in <Finder>[fileBox('b.sh'), hunkBox(1), checkbox('inspector-select-all')]) {
           expect(opacity(tester, box), 1);
@@ -3877,7 +3888,6 @@ void main() {
     const s3 = HunkKey(oldStart: 9, oldCount: 1, newStart: 9, newCount: 1);
     Finder partBox(int i) =>
         find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == 'inspector-part-check').at(i);
-    final Finder hunkBox = find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == 'inspector-hunk-check');
 
     /// The mutable change's one file `p.txt`: one hunk of three parts (sections s1, s2, s3).
     void threeParts() {
@@ -3915,7 +3925,7 @@ void main() {
     }
 
     testWidgets(
-      'a file picked whole shows every part checked; toggling one leaves the others checked, the hunk mixed',
+      'a file picked whole shows every part checked; toggling one leaves the others checked',
       (
         tester,
       ) async {
@@ -3932,7 +3942,6 @@ void main() {
             true,
           ],
         );
-        expect(tester.widget<ZsCheckbox>(hunkBox).value, isTrue);
         await tester.ensureVisible(partBox(0));
         await tester.pump();
         await tester.tap(partBox(0));
@@ -3945,30 +3954,27 @@ void main() {
             true,
           ],
         );
-        expect(tester.widget<ZsCheckbox>(hunkBox).value, isNull, reason: 'mixed');
         expect(tester.widget<ZsCheckbox>(partBox(0)).label, 'Pick line 2', reason: 'the part names its lines');
         await unmount(tester);
       },
     );
 
-    testWidgets('a hunk of three parts: the second part alone selects only its section; the hunk shows mixed', (
-      tester,
-    ) async {
+    testWidgets('a hunk of three parts: the second part alone selects only its section', (tester) async {
       threeParts();
       await pump(tester, width: 1000);
       await settle(tester);
       expect(
         find.byWidgetPredicate((w) => w is ZsCheckbox && w.identifier == 'inspector-part-check'),
         findsNWidgets(3),
+        reason: 'one box per part, no hunk box',
       );
-      expect(find.text('3 parts'), findsOneWidget);
+      expect(find.text('3 parts'), findsNothing, reason: 'no hunk header');
       await tester.ensureVisible(partBox(1));
       await tester.pump();
       await tester.tap(partBox(1));
       await settle(tester);
       expect(tester.widget<ZsCheckbox>(partBox(1)).value, isTrue);
       expect(tester.widget<ZsCheckbox>(partBox(0)).value, isFalse);
-      expect(tester.widget<ZsCheckbox>(hunkBox).value, isNull, reason: 'mixed');
       final split = inspector.composerAction! as GraphSplit;
       expect(split.hunks!.files.single.hunks, <HunkKey>[s2]);
       // The edge marks only the second part's lines.
@@ -4018,7 +4024,6 @@ void main() {
             .opacity;
         expect(opacity(partBox(0)), 0, reason: 'unpicked');
         expect(opacity(partBox(1)), 1, reason: 'picked');
-        expect(opacity(hunkBox), 1, reason: 'the hunk is mixed');
         final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: Offset.zero);
         addTearDown(mouse.removePointer);
@@ -4031,6 +4036,127 @@ void main() {
         await unmount(tester);
       },
     );
+
+    testWidgets("Story 10.43: the pointer on a part's box draws the pick edge on its rows, and leaving removes it", (
+      tester,
+    ) async {
+      threeParts();
+      await pump(tester, width: 1000);
+      await settle(tester);
+      bool edged(String text) =>
+          (tester
+                      .widget<Container>(
+                        find
+                            .descendant(
+                              of: find.ancestor(of: find.text(text), matching: find.byType(Stack)).first,
+                              matching: find.byKey(const ValueKey<String>('inspector-line-pin')),
+                            )
+                            .first,
+                      )
+                      .foregroundDecoration!
+                  as BoxDecoration)
+              .border !=
+          null;
+      const texts = <String>['old 2', 'new 2', 'c3', 'old 6', 'new 6'];
+      expect(<bool>[for (final t in texts) edged(t)], <bool>[false, false, false, false, false]);
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(partBox(0)));
+      await settle(tester);
+      expect(<bool>[for (final t in texts) edged(t)], <bool>[true, true, false, false, false], reason: 'part 1 only');
+      await mouse.moveTo(Offset.zero);
+      await settle(tester);
+      expect(<bool>[for (final t in texts) edged(t)], <bool>[false, false, false, false, false]);
+      await unmount(tester);
+    });
+
+    /// [threeParts] with 40 left lines (a bottom gap of 30) and a second file `q.txt` like it; gap reads answer the
+    /// tail lines 11-40.
+    void gappedParts() {
+      threeParts();
+      final FileDiff file = details.fileDiffs[_mutable]!.single;
+      FileDiff gapped(String path) => fileDiff(
+        path,
+        added: 3,
+        removed: 3,
+        fingerprint: 'f$path',
+        sections: file.sections,
+        hunks: file.hunks,
+        leftLineCount: 40,
+      );
+      details
+        ..files[_mutable] = const <FileChange>[
+          FileChange(path: 'p.txt', kind: FileChangeKind.modified),
+          FileChange(path: 'q.txt', kind: FileChangeKind.modified),
+        ]
+        ..fileDiffs[_mutable] = <FileDiff>[gapped('p.txt'), gapped('q.txt')]
+        ..lines = <HunkLine>[
+          for (var n = 11; n <= 40; n++) HunkLine(kind: HunkLineKind.context, text: 'tail $n\n', left: n, right: n),
+        ];
+    }
+
+    Future<void> showAll(WidgetTester tester) async {
+      final Finder all = find.bySemanticsIdentifier('inspector-unchanged-all');
+      await tester.ensureVisible(all);
+      await tester.pump();
+      await tester.tap(all);
+      await settle(tester);
+    }
+
+    testWidgets('Story 10.43: a gap row reads its lines through the details port at `-r` the shown change', (
+      tester,
+    ) async {
+      gappedParts();
+      await pump(tester, width: 1000);
+      await settle(tester);
+      expect(find.text('30 unchanged lines'), findsOneWidget, reason: 'the bottom gap');
+      expect(find.text('2 unchanged lines'), findsNWidgets(2), reason: 'the holes inside the hunk');
+      await showAll(tester);
+      expect(details.lineReads, <(String, String, int, int, DiffWhitespace)>[
+        ('c$_mutable', 'p.txt', 10, 40, DiffWhitespace.exact),
+      ]);
+      expect(find.text('30 unchanged lines'), findsNothing, reason: 'opened whole, the row goes');
+      expect(find.text('tail 40'), findsOneWidget);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.43: after "Ignore all whitespace" a gap reads at -w', (tester) async {
+      gappedParts();
+      await pump(tester, width: 1000);
+      await settle(tester);
+      inspector.setWhitespace(DiffWhitespaceSetting.ignoreAll);
+      await settle(tester);
+      await showAll(tester);
+      expect(details.lineReads.single.$5, DiffWhitespace.ignoreAllSpace);
+      await unmount(tester);
+    });
+
+    testWidgets("Story 10.43: the dimmed previous file's gap rows show their counts, no controls, and read nothing", (
+      tester,
+    ) async {
+      gappedParts();
+      await pump(tester, width: 1000);
+      await settle(tester);
+      expect(find.bySemanticsIdentifier('inspector-unchanged-all'), findsOneWidget);
+      details.holdDiff = true;
+      await tester.tap(_fileRow('q.txt'));
+      await settle(tester);
+      expect(inspector.previousDiff, isNotNull);
+      expect(find.text('30 unchanged lines'), findsOneWidget, reason: 'the count still shows');
+      for (final control in <String>[
+        'inspector-unchanged-all',
+        'inspector-unchanged-show',
+        'inspector-unchanged-down',
+        'inspector-unchanged-up',
+      ]) {
+        expect(find.bySemanticsIdentifier(control), findsNothing, reason: control);
+      }
+      expect(details.lineReads, isEmpty);
+      details.heldDiffs.single.$3.complete(details.diffOf(_mutable, paths: <String>['q.txt']));
+      await settle(tester);
+      await unmount(tester);
+    });
   });
 
   test('the layout persists in the settings file and opens from it after a restart', () async {
@@ -4514,13 +4640,15 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('Story 10.40: a right-click no line answers (the hunk header) throws nothing and opens nothing', (
+    testWidgets('Story 10.40: a right-click no line answers (a gap row) throws nothing and opens nothing', (
       tester,
     ) async {
-      details.fileDiffs[_mutable] = lineAt(3);
+      details.fileDiffs[_mutable] = <FileDiff>[
+        fileDiff('src/a.dart', added: 1, fingerprint: 'fa', leftLineCount: 40, hunks: lineAt(3).single.hunks),
+      ];
       await pump(tester, files: files());
       await settle(tester);
-      await rightClick(tester, find.byKey(const ValueKey<String>('inspector-hunk-header')));
+      await rightClick(tester, find.byKey(const ValueKey<String>('inspector-unchanged-text')).first);
       expect(tester.takeException(), isNull);
       expect(find.text('Copy path:line'), findsNothing);
       await unmount(tester);

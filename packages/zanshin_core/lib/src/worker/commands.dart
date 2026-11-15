@@ -2361,6 +2361,56 @@ final class DiffCommand extends WorkerCommand implements HandleScopedCommand {
   final bool interdiff;
 }
 
+/// One file's unchanged lines in a left range, in the repo identified by
+/// [handleId] (Story 10.43). Writes no operation beyond the pre-verb
+/// snapshot's.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinDiffLines(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<DiffLines>` bytes.
+final class DiffLinesCommand extends WorkerCommand implements HandleScopedCommand {
+  const DiffLinesCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.path,
+    required this.start,
+    required this.end,
+    this.revision,
+    this.from,
+    this.to,
+    this.interdiff = false,
+    this.whitespace = DiffWhitespace.exact,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-r`, as in [DiffCommand].
+  final String? revision;
+
+  /// `--from`, as in [DiffCommand].
+  final String? from;
+
+  /// `--to`, as in [DiffCommand].
+  final String? to;
+
+  /// The inter-diff forms, as in [DiffCommand].
+  final bool interdiff;
+
+  /// The file, a rename's target.
+  final String path;
+
+  /// `-w` / `-b`.
+  final DiffWhitespace whitespace;
+
+  /// The first left line, 0-based.
+  final int start;
+
+  /// Past the last left line, 0-based.
+  final int end;
+}
+
 /// List a revision's conflicts with what a merge editor needs, in the repo
 /// identified by [handleId] (Story 9.17) — the CLI's `jj resolve --list`.
 ///

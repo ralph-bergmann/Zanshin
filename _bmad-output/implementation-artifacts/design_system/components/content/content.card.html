@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x760" name="Content" subtitle="FileRow (name first, the tree, calm: quiet words, checkboxes on demand), DiffView (copyable path) + DiffHunk (the diff options menu, whitespace ignored as jj diff -w with marked lines, a gap row and a folded part, word marks on and off, parts with their checkboxes, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
+<!-- @dsCard group="Components" viewport="700x760" name="Content" subtitle="FileRow (name first, the tree, calm: quiet words, checkboxes on demand), DiffView (copyable path) + DiffHunk (calm: no header, a checkbox per part with its hover bar, unchanged gap rows with ↑ / ↓ / ↕ / Show all, the diff options menu, whitespace ignored as jj diff -w with marked lines, a whitespace gap row and a folded part, word marks on and off, pinned numbers), ProjectRow (incl. moving rows), Kbd" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -21,6 +21,11 @@
     const [hs, setHs] = React.useState({ a: true, b: false });
     const [viewed, setViewed] = React.useState(false);
     const [parts, setParts] = React.useState([1]);
+    // Story 10.43: hidden unchanged lines between and around the hunks; a control shrinks the count (this preview opens no lines)
+    const [gaps, setGaps] = React.useState({ top: 4, ab: 22, bc: 16, cd: 2383, end: 40 });
+    const gap = (id, extra) => (gaps[id] > 0 ? [{ t: "unchanged", n: gaps[id], ...extra }] : []);
+    const expand = (id) => (row, how) => setGaps({ ...gaps, [id]: how === "all" ? 0 : Math.max(0, gaps[id] - 20) });
+    const nulls = (xs) => xs.map(() => null);
     // Story 10.41: the diff options (whitespace, context lines) and a hunk as jj diff -w prints it — a TextField wrapped in Semantics:
     // the real changes, re-indented context lines with their marks, a gap for the lines jj skips (Show / Hide), and a second part
     // that only re-indents, folded into one hatched row with its checkbox. Any pick opens the gaps without a pill.
@@ -36,12 +41,13 @@
     const mv = (o, n, field) => k + o + ":" + n + "|      {+  +}" + field;
     const wsLines = [], wsParts = [];
     const add = (line, p) => { wsLines.push(line); wsParts.push(p); };
+    gap("top", { top: true }).forEach((g) => add(g, null));
     add("~5:5|    return {+Semantics(+}", 0);
     add("+:6|{+      identifier: identifier,+}", 0);
     add("~5:7|{+      child: +}TextField(", 0);
     add(mv(6, 8, "controller: controller,"), 0);
     add(mv(7, 9, "enabled: enabled,"), 0);
-    if (ignoring) add({ t: "gap", n: 3, open: gapOpen || pickedAny, fixed: pickedAny }, null);
+    if (ignoring) add({ t: "gap", n: 3, open: gapOpen || pickedAny, fixed: pickedAny }, 0);
     if (!ignoring || gapOpen || pickedAny) [mv(8, 10, "style: textStyle,"), mv(9, 11, "focusNode: focusNode,"), mv(10, 12, "obscureText: obscureText,")].forEach((l) => add(l, 0));
     add(mv(11, 13, "maxLines: maxLines,"), 0);
     add("+:14|{+      ),+}", null);
@@ -83,12 +89,13 @@
         <DiffView file={files[sel][1]} copyPath={"/Users/you/code/app/" + files[sel][1]} viewed={viewed} onViewedChange={setViewed}
           options={{ whitespace: ws, context: ctx }} onOption={(id) => (id.startsWith("ws:") ? setWs(id.slice(3)) : setCtx(Number(id.slice(4))))}
           tools={<Segmented size="sm" label="Diff layout" value={mode} onChange={setMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>}>
-          {/* Story 10.41: whitespace ignored — exactly jj diff -w's rows under the exact range; a gap row with Show / Hide; a part
-              that only re-indents folds into one hatched row with its checkbox. */}
-          <DiffHunk range="@@ −5,13 +5,16 @@" mode={mode} selectable parts={wsParts} picked={wsPicked} onTogglePart={(p) => setWsPicked(flip(wsPicked, p))}
-            onToggle={() => setWsPicked(wsPicked.length === 2 ? [] : [0, 1])}
+          {/* Story 10.43: no header — one checkbox per part on its first changed row; resting the pointer on it draws the bar on
+              every row of the part (the whitespace gap row included); gap rows of unchanged lines, their controls only while the
+              pointer or focus is in this pane. Story 10.41: whitespace ignored — exactly jj diff -w's rows; a whitespace gap row
+              with Show / Hide; a part that only re-indents is the same band, hatched, with its checkbox. */}
+          <DiffHunk mode={mode} selectable parts={wsParts} picked={wsPicked} onTogglePart={(p) => setWsPicked(flip(wsPicked, p))} onExpand={expand("top")}
             onShow={(row) => (row.t === "gap" ? setGapOpen(true) : setFoldOpen(true))} onHide={(row) => (row.t === "gap" ? setGapOpen(false) : setFoldOpen(false))} lines={wsLines}/>
-          <DiffHunk context="class SwipeController" mode={mode} selectable selected={hs.a} onToggle={(v) => setHs({ ...hs, a: v })} onGrab={() => {}} lines={[
+          <DiffHunk mode={mode} selectable picked={hs.a ? [0] : []} onTogglePart={() => setHs({ ...hs, a: !hs.a })} lines={[
             " 12:12|  final double threshold;",
             "~13:13|  void onEnd({+DragEndDetails d+}) {",
             "+:14|{+    if (d.primaryVelocity!.abs() > threshold) {+}",
@@ -100,7 +107,8 @@
             " 16:20|",
             "~17:21|  static const _kSettle = [-220-]{+260+};",
           ]}/>
-          <DiffHunk context="void main() {" mode={mode} selectable selected={hs.b} onToggle={(v) => setHs({ ...hs, b: v })} lines={[
+          <DiffHunk mode={mode} selectable picked={hs.b ? [0] : []} onTogglePart={() => setHs({ ...hs, b: !hs.b })} onExpand={expand("ab")} lines={[
+            ...gap("ab"),
             " 40:45|  }",
             "-41:|  // [-Tablet only: the wide font overflows-] the app bar[-.-]",
             "-42:|[-  testWidgets('shows Save on the last step-]', (tester) async {",
@@ -112,7 +120,8 @@
           ]}/>
           {/* Story 10.38: one hunk of three parts (jj's diff-editor sections) — a checkbox per part, the second picked; the numbers stay
               pinned when the hunks scroll sideways. */}
-          <DiffHunk context="fn run()" mode={mode} selectable parts={[null, 0, null, null, 1, 1, null, null, 2]} picked={parts} onTogglePart={(p) => setParts(parts.includes(p) ? parts.filter((x) => x !== p) : [...parts, p])} lines={[
+          <DiffHunk mode={mode} selectable parts={[...nulls(gap("bc")), null, 0, null, null, 1, 1, null, null, 2]} picked={parts} onTogglePart={(p) => setParts(parts.includes(p) ? parts.filter((x) => x !== p) : [...parts, p])} onExpand={expand("bc")} lines={[
+            ...gap("bc"),
             " 60:60|  let a = 1;",
             "~61:61|  let b = [-2-]{+3+};",
             " 62:62|  let c = 4;",
@@ -125,7 +134,8 @@
           ]}/>
           {/* Settings › Changed words off (Story 5.14): no tint; a changed line keeps its runs in their hue, a removed or
               added line shows only its fill and ink. */}
-          <DiffHunk context="fn write_locked_index(" mode={mode} wordMarks={false} lines={[
+          <DiffHunk mode={mode} wordMarks={false} onExpand={(row, how) => expand(row.bottom ? "end" : "cd")(row, how)} lines={[
+            ...gap("cd"),
             " 2453:2453|        .into_inner()",
             "~2454:2454|        .map_err(|err| {+{+}",
             "+:2455|{+            let (source, out) = err.into_parts();+}",
@@ -134,6 +144,7 @@
             "+:2458|{+        })+}",
             "~2454:2459|{+        .map_err(+}GitResetHeadError::from_git[-(err.into_error())-])?;",
             " 2455:2460|    lock.commit()",
+            ...gap("end", { bottom: true }),
           ]}/>
         </DiffView>
         </div>

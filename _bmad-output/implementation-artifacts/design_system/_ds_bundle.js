@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7a0975b1eb2b","components/brand/Icon.jsx":"3f1c816c4911","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"bb71231ed9ab","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"12da377a4a0d","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"bb068d275c9d","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"0fc3f6c31697","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7a0975b1eb2b","components/brand/Icon.jsx":"3f1c816c4911","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"12489ebc99a0","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"12da377a4a0d","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"bb068d275c9d","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"933f6f50485f","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -1619,8 +1619,8 @@ function zsDiffSides(ls) {
   return rows;
 }
 
-// A row for hidden whitespace-only lines (Story 10.41): a gap, or a whitespace-only part's fold.
-const zsDiffGap = l => l.t === "gap" || l.t === "fold";
+// A row for hidden lines: unchanged lines (Story 10.43), or whitespace-only lines (Story 10.41) — a gap, or a whitespace-only part's fold.
+const zsDiffGap = l => l.t === "unchanged" || l.t === "gap" || l.t === "fold";
 
 // Numbers for git-sigil lines (no numbers of their own), counted from oldStart / newStart.
 function zsNumbered(ls, oldStart, newStart) {
@@ -1637,124 +1637,121 @@ function zsNumbered(ls, oldStart, newStart) {
   });
 }
 
-// DiffHunk — one hunk: a header (checkbox · @@ range · enclosing context · +/− · grip) over its color-words lines, unified
-// (a left and a right number column, then the text) or side by side (whole lines per side, each cell with its number).
-// Selected hunks get the moon header and a 2px moon edge; they are what Commit / Split take. Mutable hunks can be dragged
-// onto another change. Changed words are marked as in DiffView, in both layouts; a side-by-side cell clips its marks.
-// wordMarks={false} (or a DiffView around it with wordMarks={false}) draws them without their tint.
-// Parts (2026-11-14, Story 10.38, sync #26): `parts` gives each line its part (jj's diff-editor section; null for context). A
-// selectable hunk of more than one part shows "N parts" in its header and a 22px gutter before the numbers (side by side: leading the
-// row) with a checkbox on each part's first line; `picked` lists the picked parts — some of them: the header on --accent at 12 % and the
-// hunk checkbox mixed; a picked part's lines carry the 2px edge. Unified, the gutter and numbers stay pinned at the visible left edge
-// while the text scrolls under them (a DiffView around the hunks scrolls them as one unit).
-// Whitespace ignored (2026-11-15, Story 10.41, Whitespace Study): the lines are exactly jj diff -w / -b's — a whitespace-only line is a
-// context line with jj's marks (" 6:8|      {+  +}controller,"), nothing dimmed. `{ t: "gap", n, open, fixed }` stands for n lines jj
-// skips, at their place: a --fl-hover band with ⋯ in both number columns, "N more lines with only whitespace changes" and a Show pill
-// (onShow); open, it stays above its lines, "N lines with only whitespace changes" with Hide (onHide; no pill when `fixed`, a pick
-// keeps it open). `{ t: "fold", n, open, fixed }` is a part made only of such lines: closed one hatched row "⋯ N lines changed whitespace
-// only · Show" (onShow), full width, its checkbox in the gutter while the hunk is selectable; open, the gap band, hatched, the checkbox kept.
+// How many hidden unchanged lines one arrow opens.
+const ZS_GAP_STEP = 20;
+
+// DiffHunk — one hunk's color-words lines, unified (a left and a right number column, then the text) or side by side (whole
+// lines per side, each cell with its number). No header (2026-11-15, Story 10.43, Calm Inspector Study): hunks follow each other
+// with a 1px line, or a gap row between them. Changed words are marked as in DiffView, in both layouts; a side-by-side cell clips
+// its marks. wordMarks={false} (or a DiffView around it with wordMarks={false}) draws them without their tint.
+// Parts (Stories 10.38, 10.43): `parts` gives each line its part (jj's diff-editor section; null for context; without `parts` the
+// changed lines are one part, 0). A selectable hunk shows a 22px gutter before the numbers (side by side: leading the row) with one
+// checkbox per part, on the part's first row — also when the hunk has one part; `picked` lists the picked parts, whose rows carry a
+// 2px --accent-line bar on the left edge. While the pointer rests on a part's checkbox every row of that part shows the same bar.
+// Unified, the gutter and numbers stay pinned at the visible left edge while the text scrolls under them.
+// Gap rows: one quiet 26px band — the gutter (empty but for a fold's checkbox), the arrow columns over the numbers, the text, a button.
+// `{ t: "unchanged", n, top, bottom }` stands for n hidden unchanged lines (Story 10.43): "N unchanged lines"; with onExpand,
+// n ≤ 20 gets one ↕ "Show N lines", more gets ↓ "Show 20 lines below" (not on a top gap), ↑ "Show 20 lines above" (not on a
+// bottom gap) and "Show all". Whitespace ignored (Story 10.41): `{ t: "gap", n, open, fixed }` stands for n whitespace-only lines jj
+// skips — "N more lines with only whitespace changes" with Show (onShow); open, it stays above its lines, "N lines with only
+// whitespace changes" with Hide (onHide; none when `fixed`, a pick keeps it open). `{ t: "fold", n, open, fixed }` is a part made only
+// of such lines: the same band, hatched, its checkbox in the gutter; closed it reads "⋯ N lines changed whitespace only", then Show.
+// Inside a pane marked .zs-check-reveal the arrows and buttons show only while the pointer or focus is in the pane.
 function DiffHunk({
-  range,
   oldStart = 1,
   newStart = 1,
-  context,
   lines = [],
   wordMarks = true,
   mode = "unified",
   selectable = false,
-  selected = false,
   lifted = false,
-  onToggle,
-  onGrab,
   parts,
-  picked: pickedIn = [],
+  picked = [],
   onTogglePart,
   onShow,
   onHide,
+  onExpand,
   className = ""
 }) {
+  const [hot, setHot] = React.useState(null);
   const ls = zsNumbered(lines.map(__ds_scope.zsDiffLine).filter(l => l.t !== "hunk"), oldStart, newStart);
-  const partOf = parts ? lines.filter(l => !(typeof l === "string" && l.startsWith("@@"))).map((_, i) => parts[i] ?? null) : [];
-  const allParts = [...new Set(partOf.filter(p => p != null))];
-  const count = allParts.length;
-  const showParts = selectable && count > 1;
-  // A selected hunk without its own part picks has every part picked.
-  const picked = showParts && selected && !pickedIn.length ? allParts : pickedIn;
-  const some = showParts && picked.length > 0 && picked.length < count;
-  const all = selected || showParts && picked.length === count;
+  const partOf = parts ? lines.filter(l => !(typeof l === "string" && l.startsWith("@@"))).map((_, i) => parts[i] ?? null) : ls.map(l => l.t === "ctx" || l.t === "hdr" || zsDiffGap(l) ? null : 0);
+  const gut = selectable && partOf.some(p => p != null);
   const seen = new Set();
-  // the gutter leads every row while the hunk shows its parts, or a folded part takes a pick
-  const gut = showParts || selectable && ls.some(l => l.t === "fold");
-  const gutter = p => gut && /*#__PURE__*/React.createElement("span", {
-    className: "zs-diff-gut"
-  }, showParts && p != null && !seen.has(p) && seen.add(p) && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
-    size: "sm",
-    checked: picked.includes(p),
-    onChange: () => onTogglePart && onTogglePart(p),
-    label: picked.includes(p) ? "Unpick these lines" : "Pick these lines"
-  }));
-  const pick = p => (showParts ? p != null && picked.includes(p) : all) ? " is-pick" : "";
-  const nLines = n => n + " " + (n === 1 ? "line" : "lines");
-  const fold = (l, p, k, side) => {
-    const isFold = l.t === "fold";
-    const on = picked.includes(p);
-    // the part's checkbox goes on its first row
-    const first = isFold && p != null && !seen.has(p);
+  // the part's checkbox goes on its first row; resting the pointer on it lights every row of the part
+  const gutter = (p, ws) => {
+    if (!gut) return null;
+    const first = p != null && !seen.has(p);
     if (first) seen.add(p);
-    const box = gut && /*#__PURE__*/React.createElement("span", {
-      className: "zs-diff-gut"
-    }, first && selectable && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
+    const on = picked.includes(p);
+    return /*#__PURE__*/React.createElement("span", {
+      className: "zs-diff-gut",
+      onMouseEnter: first ? () => setHot(p) : undefined,
+      onMouseLeave: first ? () => setHot(null) : undefined
+    }, first && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
       size: "sm",
       checked: on,
       onChange: () => onTogglePart && onTogglePart(p),
-      label: on ? "Unpick these whitespace-only lines" : "Pick these whitespace-only lines"
+      label: (on ? "Unpick these " : "Pick these ") + (ws ? "whitespace-only lines" : "lines")
     }));
-    if (isFold && !l.open) {
-      return /*#__PURE__*/React.createElement("div", {
-        key: k,
-        className: "zs-diff-fold" + (side ? " is-side" : "")
-      }, side ? box : /*#__PURE__*/React.createElement("span", {
-        className: "zs-diff-pin"
-      }, box, /*#__PURE__*/React.createElement("span", {
-        className: "ln l"
-      }), /*#__PURE__*/React.createElement("span", {
-        className: "ln r"
-      })), /*#__PURE__*/React.createElement("button", {
+  };
+  const pick = p => p == null ? "" : picked.includes(p) ? " is-pick" : hot === p ? " is-hot" : "";
+  const nLines = n => n + " " + (n === 1 ? "line" : "lines");
+  const gapRow = (l, p, k) => {
+    const btn = (icon, title, how) => /*#__PURE__*/React.createElement("button", {
+      key: how,
+      type: "button",
+      className: "zs-gap-btn",
+      title: title,
+      "aria-label": title,
+      onClick: () => onExpand(l, how)
+    }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: icon,
+      size: 14
+    }));
+    const small = l.n <= ZS_GAP_STEP;
+    let arrows = null,
+      text,
+      action = null;
+    if (l.t === "unchanged") {
+      text = l.n + " unchanged " + (l.n === 1 ? "line" : "lines");
+      if (onExpand) {
+        arrows = small ? btn("updown", "Show " + nLines(l.n), "all") : [!l.top && btn("chevron-down", "Show " + ZS_GAP_STEP + " lines below", "down"), !l.bottom && btn("chevron-up", "Show " + ZS_GAP_STEP + " lines above", "up")];
+        if (!small) action = /*#__PURE__*/React.createElement("button", {
+          type: "button",
+          className: "zs-gap-all",
+          onClick: () => onExpand(l, "all")
+        }, "Show all");
+      }
+    } else if (l.t === "fold" && !l.open) {
+      text = "⋯ " + nLines(l.n) + " changed whitespace only";
+      action = /*#__PURE__*/React.createElement("button", {
         type: "button",
-        className: "zs-fold-tx",
+        className: "zs-gap-all",
         title: "Show these lines",
         onClick: () => onShow && onShow(l, p)
-      }, "⋯ ", nLines(l.n), " changed whitespace only \xB7 Show"));
+      }, "Show");
+    } else {
+      text = (l.open ? nLines(l.n) : l.n + " more " + (l.n === 1 ? "line" : "lines")) + " with only whitespace changes";
+      if (!l.fixed) action = /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        className: "zs-gap-all",
+        title: l.open ? "Hide these lines again" : "Show these lines",
+        onClick: () => (l.open ? onHide : onShow)?.(l, p)
+      }, l.open ? "Hide" : "Show");
     }
     return /*#__PURE__*/React.createElement("div", {
       key: k,
-      className: "zs-diff-gap" + (isFold ? " is-fold" : "") + (side ? " is-side" : "")
-    }, side ? box : /*#__PURE__*/React.createElement("span", {
+      className: "zs-diff-gap" + (l.t === "fold" ? " is-fold" : "") + pick(p)
+    }, /*#__PURE__*/React.createElement("span", {
       className: "zs-diff-pin"
-    }, box, /*#__PURE__*/React.createElement("span", {
-      className: "ln l"
-    }, "⋯"), /*#__PURE__*/React.createElement("span", {
-      className: "ln r"
-    }, "⋯")), /*#__PURE__*/React.createElement("span", {
+    }, gutter(p, true), /*#__PURE__*/React.createElement("span", {
+      className: "zs-gap-arrows"
+    }, arrows)), typeof text === "string" ? /*#__PURE__*/React.createElement("span", {
       className: "zs-gap-tx"
-    }, l.open ? nLines(l.n) : l.n + " more " + (l.n === 1 ? "line" : "lines"), " with only whitespace changes"), !l.fixed && /*#__PURE__*/React.createElement("button", {
-      type: "button",
-      className: "zs-ws-tag",
-      title: l.open ? "Hide these lines again" : "Show these lines",
-      onClick: () => (l.open ? onHide : onShow)?.(l, p)
-    }, l.open ? "Hide" : "Show"));
+    }, text) : text, action);
   };
-  const changed = ls.filter(l => l.t !== "ctx" && l.t !== "hdr" && !zsDiffGap(l));
-  const a = new Set(changed.map(l => l.r).filter(n => n != null)).size;
-  const r = new Set(changed.map(l => l.l).filter(n => n != null)).size;
-  const span = (side, start) => {
-    const ns = ls.map(l => l[side]).filter(n => n != null);
-    return ns.length ? [ns[0], Math.max(...ns) - ns[0] + 1] : [start, 0];
-  };
-  const [ol, oc] = span("l", oldStart),
-    [nl, nc] = span("r", newStart);
-  const head = range || "@@ −" + ol + "," + oc + " +" + nl + "," + nc + " @@";
-  const body = mode !== "split" ? ls.map((l, i) => zsDiffGap(l) ? fold(l, partOf[i], i, false) : /*#__PURE__*/React.createElement("div", {
+  const body = mode !== "split" ? ls.map((l, i) => zsDiffGap(l) ? gapRow(l, partOf[i], i) : /*#__PURE__*/React.createElement("div", {
     key: i,
     className: "zs-diff-line " + l.t + pick(partOf[i])
   }, /*#__PURE__*/React.createElement("span", {
@@ -1766,7 +1763,7 @@ function DiffHunk({
   }, l.t !== "hdr" ? l.r ?? "" : "")), /*#__PURE__*/React.createElement("span", {
     className: "tx"
   }, __ds_scope.zsDiffText(l)))) : zsDiffSides(ls).map((row, k) => {
-    if (row.fold) return fold(row.fold, partOf[ls.indexOf(row.fold)], k, true);
+    if (row.fold) return gapRow(row.fold, partOf[ls.indexOf(row.fold)], k);
     // a row's part: the part of the first changed line holding one of its numbers
     const p = row.length === 1 ? null : (() => {
       for (const c of row) {
@@ -1789,37 +1786,8 @@ function DiffHunk({
     }, c ? __ds_scope.zsDiffText(c) : ""))));
   });
   return /*#__PURE__*/React.createElement("div", {
-    className: ["zs-hunk", all && "is-sel", some && "is-some", lifted && "is-lifted", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")
+    className: ["zs-hunk", lifted && "is-lifted", !wordMarks && "no-word-marks", className].filter(Boolean).join(" ")
   }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-hunk-hd" + (onGrab ? " is-grab" : ""),
-    onPointerDown: onGrab,
-    title: onGrab ? "Drag onto a change to move this hunk there" : undefined
-  }, selectable && /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
-    checked: all,
-    mixed: some,
-    onChange: onToggle,
-    label: all ? "Deselect hunk" : "Select hunk"
-  }), /*#__PURE__*/React.createElement("code", {
-    className: "zs-hunk-range"
-  }, head), showParts && /*#__PURE__*/React.createElement("span", {
-    className: "zs-hunk-parts",
-    title: "Parts you can pick on their own"
-  }, count, " parts"), context && /*#__PURE__*/React.createElement("span", {
-    className: "zs-hunk-ctx"
-  }, context), /*#__PURE__*/React.createElement("span", {
-    className: "zs-hunk-stat"
-  }, a > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "a"
-  }, "+", a), r > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "r"
-  }, "\u2212", r)), onGrab && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "grip",
-    size: "xs",
-    className: "zs-hunk-grip",
-    style: {
-      height: 12
-    }
-  })), /*#__PURE__*/React.createElement("div", {
     className: "zs-diff-body" + (mode === "split" ? " zs-diff-split" : ""),
     style: {
       "--ln": __ds_scope.zsDiffDigits(ls) + "ch"
@@ -12193,7 +12161,8 @@ try { (() => {
         return n;
       });
     };
-    const partsOf = h => new Set((h.parts || []).filter(p => p != null)).size;
+    // a hunk without parts is one part (DiffHunk, Story 10.43)
+    const partsOf = h => new Set((h.parts || []).filter(p => p != null)).size || 1;
     const togglePart = (h, p) => {
       const was = sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || [];
       const next = was.includes(p) ? was.filter(x => x !== p) : [...was, p];
@@ -12243,7 +12212,6 @@ try { (() => {
       const ids = f.hunks.map(h => h.id);
       beginDrag(e, payload(sel.size > 1 && ids.some(id => sel.has(id)) ? [...sel] : ids));
     };
-    const dragHunk = (e, h) => beginDrag(e, payload(sel.size > 1 && sel.has(h.id) ? [...sel] : [h.id]));
     const actions = !mutable ? [/*#__PURE__*/React.createElement(Button, {
       key: "new",
       variant: "primary",
@@ -12526,17 +12494,13 @@ try { (() => {
       key: h.id,
       oldStart: h.oldStart,
       newStart: h.newStart,
-      context: h.ctx,
       lines: h.lines,
       mode: diffMode,
       selectable: mutable,
-      selected: sel.has(h.id),
       lifted: !!(liftSet && liftSet.has(h.id)),
-      onToggle: () => toggle([h.id]),
       parts: h.parts,
       picked: sel.has(h.id) ? [...Array(partsOf(h)).keys()] : partSel[h.id] || [],
-      onTogglePart: p => togglePart(h, p),
-      onGrab: mutable ? e => dragHunk(e, h) : undefined
+      onTogglePart: p => togglePart(h, p)
     })))))), composing && /*#__PURE__*/React.createElement(ZKComposer, {
       key: c.id + (isWC ? "w" : "s"),
       c: c,

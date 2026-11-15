@@ -17,7 +17,8 @@ import 'warning.dart';
 // models mirroring `zanshin_jj::RevisionDiff` / `FileDiff` / `Hunk` /
 // `HunkLine` and their decoder (Story 5.6 adds kinds, counts, fingerprints and
 // pins; Story 5.2 the lines' word-level segments, `zanshin_jj::Segment`),
-// plus Story 5.8's `zanshinDiff` adapter. `dart:ffi` stays inside `ffi/` —
+// plus Story 5.8's `zanshinDiff` adapter and Story 10.43's `zanshinDiffLines`
+// (one file's unchanged lines, read on demand). `dart:ffi` stays inside `ffi/` —
 // only the worker isolate calls the adapter.
 
 // ── Models ───────────────────────────────────────────────────────────────────
@@ -177,6 +178,7 @@ final class FileDiff {
     required this.added,
     required this.fingerprint,
     this.whitespaceLines = const [],
+    this.leftLineCount = 0,
   });
 
   /// The repo-relative path, in jj's internal `/`-separated form — a copy's or
@@ -233,6 +235,11 @@ final class FileDiff {
   /// exact, in summary mode, for binary content and under
   /// `diff.color-words.conflict = "pair"` on a conflicted side.
   final List<HunkLine> whitespaceLines;
+
+  /// The number of lines of the left side (Story 10.43), counted as [HunkLine]
+  /// numbers count them (a last line without `\n` counts); 0 when either side
+  /// is binary or the left side is absent or empty. Kept in summary mode.
+  final int leftLineCount;
 }
 
 /// A line-level diff between two revisions: `diff`'s files, in order, pinned
@@ -327,6 +334,48 @@ Uint8List zanshinDiff(
   return callWithRequest(request, (ptr, len) => zanshin_diff(rawHandle, ptr, len));
 }
 
+/// Call `zanshin_diff_lines` with the raw `u64` handle and a `DiffLinesRequest`
+/// request buffer, and return the FlatBuffers `Envelope` bytes (Story 10.43) —
+/// one file's unchanged lines in a left range.
+///
+/// [revision], [from], [to] and [interdiff] read exactly as [zanshinDiff]'s;
+/// [path] is the file (a rename's target, as [FileDiff.path] names it),
+/// [whitespace] `-w` / `-b`, and [start] / [end] a 0-based half-open range of
+/// left line numbers.
+Uint8List zanshinDiffLines(
+  int rawHandle, {
+  required String path,
+  required int start,
+  required int end,
+  String? revision,
+  String? from,
+  String? to,
+  bool interdiff = false,
+  DiffWhitespace whitespace = DiffWhitespace.exact,
+}) {
+  rejectInteriorNul(revision, 'revision');
+  rejectInteriorNul(from, 'from');
+  rejectInteriorNul(to, 'to');
+  rejectInteriorNul(path, 'path');
+  for (final (String name, int value) in [('start', start), ('end', end)]) {
+    if (value < 0 || value > 0xFFFFFFFF) {
+      throw ArgumentError.value(value, name, 'must fit in 32 bits unsigned');
+    }
+  }
+  final Uint8List request = fbs.DiffLinesRequestObjectBuilder(
+    kind: fbs.RequestKind.DiffLines,
+    revision: revision,
+    from: from,
+    to: to,
+    interdiff: interdiff,
+    path: path,
+    whitespace: whitespace.wire,
+    start: start,
+    end: end,
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_diff_lines(rawHandle, ptr, len));
+}
+
 // ── Decoder ──────────────────────────────────────────────────────────────────
 
 /// Decode a `Diff` `Envelope` buffer into a [Diff].
@@ -361,6 +410,26 @@ Diff decodeDiffEnvelopeInternal(Uint8List bytes) {
   );
 }
 
+/// Decode a `DiffLines` `Envelope` buffer into its lines (Story 10.43).
+///
+/// Exposed for decode-contract tests with synthetic buffers; production calls
+/// go through `ZanshinWorker.diffLines`.
+@visibleForTesting
+List<HunkLine> decodeDiffLinesEnvelope(Uint8List bytes) => decodeDiffLinesEnvelopeInternal(bytes);
+
+/// Internal decoder used by production code.
+List<HunkLine> decodeDiffLinesEnvelopeInternal(Uint8List bytes) {
+  final env = fbs.Envelope(bytes);
+  if (!env.ok) {
+    throw decodeEnvelopeErrorInternal(env);
+  }
+  final Object? payload = env.data;
+  if (payload is! fbs.DiffLines) {
+    throw ZanshinFfiException('ffi.unknown', 'expected DiffLines payload, got ${env.dataType}');
+  }
+  return [for (final fbs.HunkLine line in payload.lines ?? const []) _line(line)];
+}
+
 FileDiff _file(fbs.FileDiff file) => FileDiff(
   path: file.path ?? '',
   kind: mapChangeKind(file.kind),
@@ -373,6 +442,7 @@ FileDiff _file(fbs.FileDiff file) => FileDiff(
   added: file.added,
   fingerprint: file.fingerprint ?? '',
   whitespaceLines: [for (final fbs.HunkLine line in file.whitespaceLines ?? const []) _line(line)],
+  leftLineCount: file.leftLineCount,
 );
 
 Hunk _hunk(fbs.Hunk hunk) => Hunk(

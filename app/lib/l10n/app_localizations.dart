@@ -2012,18 +2012,6 @@ abstract class AppLocalizations {
   /// **'Executable bit changed'**
   String get inspectorDiffModeChange;
 
-  /// VoiceOver name and tooltip of a hunk's checkbox: whether Commit / Split takes the hunk.
-  ///
-  /// In en, this message translates to:
-  /// **'Select hunk {range}'**
-  String inspectorHunkCheck(String range);
-
-  /// The pill in a hunk's header when the hunk has more than one part (jj's diff-editor sections), each with its own checkbox.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 part} other{{count} parts}}'**
-  String inspectorHunkParts(int count);
-
   /// VoiceOver name and tooltip of an unchecked part checkbox in a hunk: Commit / Split takes this part's lines. The 1-based line range on the new side (the old side for a pure deletion).
   ///
   /// In en, this message translates to:
@@ -2150,6 +2138,36 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 line with only whitespace changes} other{{count} lines with only whitespace changes}}'**
   String inspectorGapOpen(int count);
 
+  /// Story 10.43: the quiet row that stands for unchanged lines the diff does not show (before, between or after its hunks); its controls open them.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 unchanged line} other{{count} unchanged lines}}'**
+  String inspectorUnchangedLines(int count);
+
+  /// Story 10.43: VoiceOver name and tooltip of the ↕ button on a row of at most 20 unchanged lines: it shows them all.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Show 1 line} other{Show {count} lines}}'**
+  String inspectorUnchangedShow(int count);
+
+  /// Story 10.43: VoiceOver name and tooltip of the ↓ button on a row of unchanged lines: it shows the first lines of the run, below the lines above it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Show 1 line below} other{Show {count} lines below}}'**
+  String inspectorUnchangedShowBelow(int count);
+
+  /// Story 10.43: VoiceOver name and tooltip of the ↑ button on a row of unchanged lines: it shows the last lines of the run, above the lines below it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Show 1 line above} other{Show {count} lines above}}'**
+  String inspectorUnchangedShowAbove(int count);
+
+  /// Story 10.43: the button on a row of more than 20 unchanged lines that shows all of them.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all'**
+  String get inspectorUnchangedShowAll;
+
   /// Story 10.41: the button on a whitespace gap row that shows its hidden lines.
   ///
   /// In en, this message translates to:
@@ -2180,10 +2198,10 @@ abstract class AppLocalizations {
   /// **'Hide these lines again'**
   String get inspectorGapHideTooltip;
 
-  /// The row a part made only of whitespace changes folds into while the diff ignores whitespace; a click shows its lines.
+  /// The row a part made only of whitespace changes folds into while the diff ignores whitespace; its Show button shows its lines.
   ///
   /// In en, this message translates to:
-  /// **'⋯ {count, plural, =1{1 line} other{{count} lines}} changed whitespace only · Show'**
+  /// **'⋯ {count, plural, =1{1 line} other{{count} lines}} changed whitespace only'**
   String inspectorFoldText(int count);
 
   /// Tooltip of a folded whitespace-only row and of a gap row's Show button.

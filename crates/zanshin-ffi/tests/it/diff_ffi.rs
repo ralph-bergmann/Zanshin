@@ -12,6 +12,9 @@
 //! same options, every request field reaching its option, and refuses what the CLI refuses.
 //!
 //! Story 5.2: every wire line carries its `segments`; Story 5.10: and its kind and line numbers.
+//!
+//! Story 10.43: `FileDiff.left_line_count` on the wire, and `zanshin_diff_lines` carries exactly
+//! what `Repo::diff_lines` returns.
 
 use std::ffi::CString;
 use std::fs;
@@ -19,7 +22,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 
 use flatbuffers::root as fb_root;
-use zanshin_ffi::diff::{diff_to_envelope, zanshin_diff};
+use zanshin_ffi::diff::{diff_to_envelope, zanshin_diff, zanshin_diff_lines};
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::{
@@ -200,6 +203,7 @@ fn assert_wire_is(payload: fbs::Diff<'_>, diff: &RevisionDiff) {
         assert_eq!((w.kind(), w.from_path()), (kind, None));
         assert_eq!((w.removed(), w.added()), (f.removed, f.added));
         assert_eq!(w.fingerprint(), Some(f.fingerprint.as_str()));
+        assert_eq!(w.left_line_count(), f.left_line_count);
         let hunks = w.hunks().expect("hunks present");
         assert_eq!(hunks.len(), f.hunks.len());
         for (wh, h) in hunks.iter().zip(&f.hunks) {
@@ -649,4 +653,102 @@ fn a_conflict_bad_input_and_an_unknown_revision_are_refused() {
             Some(FFI_INVALID_ARGUMENT)
         );
     }
+}
+
+// ── `zanshin_diff_lines` (Story 10.43) ───────────────────────────────────────────
+
+/// One `DiffLinesRequest` for `path` at `-r revision`, `start..end`, as a buffer.
+fn lines_request(kind: fbs::RequestKind, revision: &str, path: &str, whitespace: fbs::DiffWhitespace) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let revision = b.create_string(revision);
+    let path = b.create_string(path);
+    let req = fbs::DiffLinesRequest::create(
+        &mut b,
+        &fbs::DiffLinesRequestArgs {
+            kind,
+            revision: Some(revision),
+            path: Some(path),
+            whitespace,
+            start: 0,
+            end: 100,
+            ..Default::default()
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+fn call_lines(handle: u64, req: &[u8]) -> Vec<u8> {
+    // SAFETY: `handle` is open or 0 (refused); `req` is a live buffer for the call.
+    unsafe { read_and_free(zanshin_diff_lines(handle, req.as_ptr(), req.len())) }
+}
+
+/// `zanshin_diff_lines` carries exactly what `Repo::diff_lines` returns, after the pre-verb
+/// snapshot; `-w` reaches the read; bad input is refused.
+#[test]
+fn diff_lines_carry_the_repo_read() {
+    let fx = fixture();
+    for (path, whitespace, ws) in [
+        ("f.txt", fbs::DiffWhitespace::Exact, Whitespace::Exact),
+        ("w.txt", fbs::DiffWhitespace::IgnoreAllSpace, Whitespace::IgnoreAllSpace),
+    ] {
+        let bytes = call_lines(
+            fx.handle,
+            &lines_request(fbs::RequestKind::DiffLines, &fx.c, path, whitespace),
+        );
+        let env = parse_envelope(&bytes);
+        assert!(env.ok(), "{:?}", error_code(&bytes));
+        assert!(env.precondition().is_some(), "the pre-verb snapshot ran");
+        assert_eq!(env.data_type(), fbs::Payload::DiffLines);
+        let wire: Vec<_> = env
+            .data_as_diff_lines()
+            .expect("DiffLines payload")
+            .lines()
+            .expect("lines present")
+            .iter()
+            .map(|l| {
+                (
+                    (l.kind(), l.text().map(str::to_owned), l.left_line(), l.right_line()),
+                    segments_of(l),
+                )
+            })
+            .collect();
+        let expected = Repo::open(&fx.root)
+            .expect("open")
+            .diff_lines(&zanshin_jj::DiffLinesOptions {
+                revisions: DiffRevisions::Revision(Some(id(&fx.c))),
+                path: path.to_owned(),
+                whitespace: ws,
+                range: 0..100,
+            })
+            .expect("diff_lines");
+        let expected: Vec<_> = expected
+            .iter()
+            .map(|line| (kind_and_text(line), line.segments.clone()))
+            .collect();
+        assert_eq!(wire, expected, "{path}");
+        assert!(!wire.is_empty(), "{path}");
+    }
+
+    let unknown = "q".repeat(32);
+    let bytes = call_lines(
+        fx.handle,
+        &lines_request(
+            fbs::RequestKind::DiffLines,
+            &unknown,
+            "f.txt",
+            fbs::DiffWhitespace::Exact,
+        ),
+    );
+    assert_eq!(error_code(&bytes), Some(JJ_REVSET_RESOLUTION_ERROR));
+    let ok = lines_request(fbs::RequestKind::DiffLines, &fx.c, "f.txt", fbs::DiffWhitespace::Exact);
+    assert_eq!(error_code(&call_lines(0, &ok)), Some(FFI_INVALID_HANDLE));
+    let wrong_kind = lines_request(fbs::RequestKind::Diff, &fx.c, "f.txt", fbs::DiffWhitespace::Exact);
+    assert_eq!(
+        error_code(&call_lines(fx.handle, &wrong_kind)),
+        Some(FFI_INVALID_ARGUMENT)
+    );
+    // SAFETY: a null pointer is the documented refusal.
+    let null = unsafe { read_and_free(zanshin_diff_lines(fx.handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&null), Some(FFI_NULL_POINTER));
 }

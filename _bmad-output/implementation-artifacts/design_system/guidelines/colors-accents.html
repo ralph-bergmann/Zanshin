@@ -163,8 +163,8 @@ h1{margin:0 0 4px;font:600 17px/1.3 var(--font-sans);letter-spacing:-.01em}
       h(FileRow, { status: "A", path: "lib/swipe/velocity.dart", selectable: true, checked: true }),
       h(FileRow, { status: "D", path: "lib/legacy_swipe.dart", selectable: true })),
     h("div", null,
-      h(DiffHunk, { selected: true, selectable: true, className: "st-focus", range: "@@ −12,6 +12,9 @@", context: "class Swipe", lines: ["+  final v = velocity(dx);", "   return v;"] }),
-      h(DiffHunk, { selectable: true, range: "@@ −40,3 +43,4 @@", context: "build()", lines: ["-  legacy();", "+  next();"] })));
+      h(DiffHunk, { selectable: true, picked: [0], className: "st-focus", oldStart: 12, newStart: 12, lines: ["+  final v = velocity(dx);", "   return v;"] }),
+      h(DiffHunk, { selectable: true, oldStart: 40, newStart: 43, lines: [{ t: "unchanged", n: 26 }, "-  legacy();", "+  next();"] })));
   document.querySelectorAll("[data-diff]").forEach((el) => ReactDOM.createRoot(el).render(h(Diff)));
   setTimeout(measure, 60);
   document.querySelectorAll("#hc .zs-seg-btn").forEach((b) => b.addEventListener("click", () => {

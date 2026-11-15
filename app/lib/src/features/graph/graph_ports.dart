@@ -1050,6 +1050,16 @@ abstract interface class GraphDetails {
     DiffWhitespace whitespace = DiffWhitespace.exact,
   });
 
+  /// The unchanged lines of [path] in `jj diff -r <commitId>` at [whitespace] whose left number − 1 lies in [start] to
+  /// [end] (0-based, half-open), as the diff prints them as context (Story 10.43): what a gap row opens.
+  Future<List<HunkLine>> diffLines(
+    String commitId, {
+    required String path,
+    required int start,
+    required int end,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  });
+
   /// What `jj squash -r <changeId>` would ask its editor for (Story 9.15): the combined description, or null.
   Future<SquashPlan> squashPlan(String changeId);
 
@@ -1090,6 +1100,15 @@ class RepoGraphDetails implements GraphDetails {
     bool summary = false,
     DiffWhitespace whitespace = DiffWhitespace.exact,
   }) => _repo.handle.diff(revision: commitId, paths: paths, summary: summary, whitespace: whitespace);
+
+  @override
+  Future<List<HunkLine>> diffLines(
+    String commitId, {
+    required String path,
+    required int start,
+    required int end,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) => _repo.handle.diffLines(revision: commitId, path: path, start: start, end: end, whitespace: whitespace);
 
   @override
   Future<SquashPlan> squashPlan(String changeId) => _repo.handle.squashPlan(revision: changeId);

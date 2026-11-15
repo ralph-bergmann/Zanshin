@@ -155,8 +155,8 @@
         "message": "<DialogNavItem> doesn't accept that prop. Declared props: id, label, icon, count."
       },
       {
-        "selector": "JSXOpeningElement[name.name='DiffHunk'] > JSXAttribute > JSXIdentifier[name!=/^(?:range|oldStart|newStart|context|lines|mode|selectable|selected|lifted|onToggle|onGrab|className|key|ref|className|style|children)$/]",
-        "message": "<DiffHunk> doesn't accept that prop. Declared props: range, oldStart, newStart, context, lines, mode, selectable, selected, lifted, onToggle, onGrab, className."
+        "selector": "JSXOpeningElement[name.name='DiffHunk'] > JSXAttribute > JSXIdentifier[name!=/^(?:oldStart|newStart|lines|wordMarks|mode|selectable|lifted|parts|picked|onTogglePart|onShow|onHide|onExpand|className|key|ref|className|style|children)$/]",
+        "message": "<DiffHunk> doesn't accept that prop. Declared props: oldStart, newStart, lines, wordMarks, mode, selectable, lifted, parts, picked, onTogglePart, onShow, onHide, onExpand, className."
       },
       {
         "selector": "JSXOpeningElement[name.name='DiffHunk'] > JSXAttribute[name.name='mode'] > Literal[value!=/^(?:unified|split)$/]",

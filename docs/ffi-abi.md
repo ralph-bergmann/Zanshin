@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 115
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 116
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -339,9 +339,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Seventy-five of the 115 exported symbols take their arguments as a **FlatBuffers
+Seventy-six of the 116 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Sixty-three use the handle-scoped three-parameter shape:
+strings. Sixty-four use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -603,7 +603,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **115** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **116** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -679,6 +679,7 @@ or no `# Errors` block.
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 (+9.50) |
 | `zanshin_select_tree` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SelectTreeRequest` | `SelectedTree` (see § `zanshin_select_tree` — the GUI diff-editor contract) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.50 (`mode`: loop 9.9–9.12 second follow-on; `from`: 9.17) |
 | `zanshin_diff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffRequest` | `Diff` (see § `Diff` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 5.8 |
+| `zanshin_diff_lines` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffLinesRequest` | `DiffLines` (see § `DiffLines` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 10.43 |
 | `zanshin_resolve_list` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ResolveListRequest` | `ResolveList` (see § `zanshin_resolve_list`, `zanshin_resolve`, `zanshin_diffedit`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
 | `zanshin_resolve` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ResolveRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`, `jj.immutable`, `jj.stale_selection`, `jj.conflict_not_resolvable`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
 | `zanshin_diffedit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffeditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
@@ -2485,7 +2486,8 @@ Diff     { files: [FileDiff], operation_id, commit_ids: [string], from_commit_id
            description: FileDiff }                                         // 10.29 appended
 FileDiff { path, binary, mode_change, sections: [HunkKey], hunks: [Hunk],
            kind: ChangeKind, from_path, removed, added, fingerprint,         // 5.6 appended
-           whitespace_lines: [HunkLine] }                                  // 10.41 appended
+           whitespace_lines: [HunkLine],                                   // 10.41 appended
+           left_line_count: uint }                                         // 10.43 appended
 Hunk     { before_start, before_end, after_start, after_end, symbol,
            sections: [HunkKey], removed, added, lines: [HunkLine] }
 HunkLine { kind: HunkLineKind (Context | Removed | Added | Changed | ConflictHeader), text,
@@ -2528,6 +2530,10 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   line. Empty at exact, in summary mode, for binary content and under
   `diff.color-words.conflict = "pair"` on a conflicted side. The description block carries them
   too.
+- **Left line count (10.43).** `left_line_count` = the number of lines of the left side, cut like
+  `split_inclusive('\n')` (a last line without `\n` counts); 0 when either side is binary or the
+  left side is absent or empty; kept in summary mode. With the hunks' left numbers it tells a view
+  which unchanged runs a diff hides, so it can offer them through `zanshin_diff_lines`.
 - **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
   their input order. `binary` and mode-only files carry no hunks; in summary mode no file does.
   `binary` = either side's content is binary (a NUL byte in its first 8000 bytes), checked before
@@ -2566,7 +2572,7 @@ Dart: `decodeDiffEnvelopeInternal` (`packages/zanshin_core/lib/src/ffi/diff.dart
 `FileChangeKind`, `fromPath`, `removed`, `added`, `fingerprint`), `Hunk` (ranges as
 `({int start, int end})` records), `HunkLine` (`segments`, Story 5.2, an absent vector decoding
 as `[]`; `left` / `right`, Story 5.10, `null` for 0), `HunkLineKind`, `Segment`, `SegmentKind`;
-keys are `select_tree.dart`'s `HunkKey`.
+keys are `select_tree.dart`'s `HunkKey`. `FileDiff.leftLineCount` (Story 10.43, default 0).
 Exported from `zanshin_core.dart` since Story 5.8 (`Diff`, `DiffWhitespace`, `FileDiff`, `Hunk`,
 `HunkLine`, `HunkLineKind`; `Segment` and `SegmentKind` since Story 5.2).
 
@@ -2613,6 +2619,53 @@ DiffRequest { kind = Diff, revision, from, to, paths: [string], context: DiffCon
 Dart: `zanshinDiff` (`lib/src/ffi/diff.dart`, interior-NUL guard as `zanshinSelectTree`),
 `DiffCommand`, `ZanshinWorker.diff`, `RepoHandle.diff({revision, from, to, paths, context,
 whitespace, summary, interdiff})` → `Future<Diff>` (`Diff.description`).
+
+## `DiffLines` payload (Story 10.43)
+
+One file's unchanged lines in a left range, read on demand — `zanshin_jj::Repo::diff_lines`'s
+`Vec<HunkLine>`. Built by `zanshin_ffi::diff::diff_lines_to_envelope(&[HunkLine], &CallReport)`
+(infallible; the `CallReport` rides as on every envelope). Returned by `zanshin_diff_lines`
+(below).
+
+```
+DiffLines { lines: [HunkLine] }
+```
+
+- `lines`: always written (empty, not absent), in file order, each a `Context` line with both
+  numbers and its segments as the `Diff` payload carries them (at `-w` / `-b` a whitespace-only
+  pair keeps the CLI's marks). Empty when the diff lists no such file, the file is binary or no
+  unchanged line lies in the range.
+
+Dart: `decodeDiffLinesEnvelopeInternal` (`lib/src/ffi/diff.dart`) → `List<HunkLine>`.
+
+### `zanshin_diff_lines` (Story 10.43)
+
+The lines a diff with less context hides: `zanshin_jj::Repo::diff_lines` behind the
+handle-scoped request-buffer shape, answering the `DiffLines` payload above with the
+precondition report (the call runs the pre-verb snapshot and writes no other operation). No
+caching.
+
+```
+DiffLinesRequest { kind = DiffLines, revision, from, to, interdiff, path,
+                   whitespace: DiffWhitespace, start: uint, end: uint }
+```
+
+- `revision` / `from` / `to` / `interdiff` read exactly as `DiffRequest`'s, refusals included
+  (`revision` with `from` / `to`, and an interdiff with no side, are `jj.invalid_input` before the
+  snapshot).
+- The read is `Repo::diff` for `path` (a prefix filter, so the file is then picked by its exact
+  path) with unlimited `--context`, so the file is one hunk; it keeps that hunk's `Context` lines
+  whose left number − 1 lies in `start..end` (0-based, half-open). `path` is the file's
+  repo-relative path in jj's internal form, a rename's TARGET (`FileDiff.path`); its left side is
+  read at the source, as the diff reads it. An absent `path` is `jj.invalid_input` ("path is
+  required", before the snapshot). A range past the file's end is clipped. `whitespace`
+  = `-w` / `-b`, a value outside the enum `ffi.invalid_argument`.
+- Errors otherwise as `zanshin_diff`'s: `jj.revset_parse_error`, `jj.revset_resolution_error`,
+  `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`.
+
+Dart: `zanshinDiffLines` (`lib/src/ffi/diff.dart`, interior-NUL guard as `zanshinDiff`),
+`DiffLinesCommand`, `RepoHandle.diffLines({revision, from, to, interdiff, path, whitespace,
+start, end})` → `Future<List<HunkLine>>`.
 
 `ShowEntry` also carries `parent_tree_labels` / `tree_labels` since Story 5.8 (always written; empty
 = unlabeled, else one per id) — Dart `ShowEntry.parentTreeLabels` / `treeLabels`.

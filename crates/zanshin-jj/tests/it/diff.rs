@@ -11,8 +11,9 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
 use tempfile::TempDir;
 use zanshin_jj::{
-    Backend, ChangeId, ChangeKind, CommitId, DiffOptions, DiffRevisions, FileDiff, HunkLine, HunkLineKind,
-    HunksOptions, MutateError, OperationId, Repo, RevisionDiff, SegmentKind, SelectedTreeId, WarningKind, Whitespace,
+    Backend, ChangeId, ChangeKind, CommitId, DiffLinesOptions, DiffOptions, DiffRevisions, FileDiff, HunkLine,
+    HunkLineKind, HunksOptions, MutateError, OperationId, Repo, RevisionDiff, SegmentKind, SelectedTreeId, WarningKind,
+    Whitespace,
 };
 
 struct Fx {
@@ -994,4 +995,224 @@ fn revset_texts_resolve_to_their_commit() {
     assert_eq!(from_to.commit_ids, [a_commit]);
     assert_eq!(from_to.from_commit_id, Some(CommitId("0".repeat(40))));
     assert_eq!(from_to.files, parent.files);
+}
+
+/// `line 1\n` … `line <count>\n`.
+fn numbered(count: u32) -> String {
+    (1..=count).map(|n| format!("line {n}\n")).collect::<Vec<_>>().concat()
+}
+
+/// Story 10.43: `A` adds the 30-line `f.txt` and the binary `bin.dat`; `C` (`@`, on `A`) changes
+/// lines 5 and 25 of `f.txt` and the binary file, and adds `new.txt`.
+fn long() -> (Fx, (ChangeId, CommitId), (ChangeId, CommitId)) {
+    let mut fx = init();
+    write(&fx.root, "f.txt", &numbered(30));
+    write(&fx.root, "bin.dat", "a\0\n");
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    let changed = numbered(30)
+        .replace("line 5\n", "line five\n")
+        .replace("line 25\n", "line twenty-five\n");
+    write(&fx.root, "f.txt", &changed);
+    write(&fx.root, "bin.dat", "b\0\n");
+    write(&fx.root, "new.txt", "n\n");
+    let c = commit(&mut fx, "C\n");
+    let _ = fx.repo.take_warnings();
+    (fx, a, c)
+}
+
+fn lines_of(revisions: DiffRevisions, path: &str, range: std::ops::Range<u32>) -> DiffLinesOptions {
+    DiffLinesOptions {
+        revisions,
+        path: path.to_owned(),
+        range,
+        ..DiffLinesOptions::default()
+    }
+}
+
+/// Each line's numbers and text.
+fn numbers(lines: &[HunkLine]) -> Vec<(Option<u32>, Option<u32>, String)> {
+    lines.iter().map(|line| (line.left, line.right, line.text())).collect()
+}
+
+/// `left_line_count` counts the left side's lines: 0 for an added file and a binary one.
+#[test]
+fn left_line_count_counts_the_left_side() {
+    let (mut fx, _, (c, _)) = long();
+    let result = run(&mut fx, &revision(&c));
+    let count = |path: &str| {
+        result
+            .files
+            .iter()
+            .find(|file| file.path == path)
+            .expect("listed")
+            .left_line_count
+    };
+    assert_eq!(count("f.txt"), 30);
+    assert_eq!(count("new.txt"), 0, "no left side");
+    assert_eq!(count("bin.dat"), 0, "binary");
+}
+
+/// The read's lines are exactly the context lines of a diff with unlimited context, for the
+/// whole left range; a part of the range keeps its lines, a range past the end is clipped.
+#[test]
+fn diff_lines_are_the_context_lines_of_an_unlimited_diff() {
+    let (mut fx, _, (c, _)) = long();
+    let whole = fx
+        .repo
+        .diff_lines(&lines_of(DiffRevisions::Revision(Some(c.0.clone())), "f.txt", 0..30))
+        .expect("diff_lines");
+    let full = run(
+        &mut fx,
+        &DiffOptions {
+            paths: vec!["f.txt".to_owned()],
+            context: Some(1000),
+            ..revision(&c)
+        },
+    );
+    let context: Vec<HunkLine> = full.files[0]
+        .hunks
+        .iter()
+        .flat_map(|hunk| hunk.lines.iter().cloned())
+        .filter(|line| line.kind == HunkLineKind::Context)
+        .collect();
+    assert_eq!(whole, context);
+    assert_eq!(whole.len(), 28, "every line but the two changed ones");
+
+    let middle = fx
+        .repo
+        .diff_lines(&lines_of(DiffRevisions::Revision(Some(c.0.clone())), "f.txt", 2..6))
+        .expect("diff_lines");
+    assert_eq!(
+        numbers(&middle),
+        [
+            (Some(3), Some(3), "line 3\n".to_owned()),
+            (Some(4), Some(4), "line 4\n".to_owned()),
+            (Some(6), Some(6), "line 6\n".to_owned()),
+        ]
+    );
+    let past = fx
+        .repo
+        .diff_lines(&lines_of(DiffRevisions::Revision(Some(c.0.clone())), "f.txt", 28..100))
+        .expect("diff_lines");
+    assert_eq!(
+        numbers(&past),
+        [
+            (Some(29), Some(29), "line 29\n".to_owned()),
+            (Some(30), Some(30), "line 30\n".to_owned()),
+        ]
+    );
+    // An added file has no context; a path the diff does not list gives nothing.
+    for path in ["new.txt", "nope.txt", "f"] {
+        let none = fx
+            .repo
+            .diff_lines(&lines_of(DiffRevisions::Revision(Some(c.0.clone())), path, 0..30))
+            .expect("diff_lines");
+        assert!(none.is_empty(), "{path}: {none:?}");
+    }
+}
+
+/// Every revision form reads as `Repo::diff` reads it; an interdiff without sides and an unknown
+/// revision are refused as the diff refuses them.
+#[test]
+fn diff_lines_take_every_revision_form() {
+    let (mut fx, (a, _), (c, c_commit)) = long();
+    let expected = fx
+        .repo
+        .diff_lines(&lines_of(DiffRevisions::Revision(None), "f.txt", 10..14))
+        .expect("diff_lines");
+    assert_eq!(expected.len(), 4);
+    let forms = [
+        DiffRevisions::Revision(Some(c.0.clone())),
+        DiffRevisions::FromTo {
+            from: Some(a.0.clone()),
+            to: Some(c.0.clone()),
+        },
+        DiffRevisions::Interdiff {
+            from: Some(a.0.clone()),
+            to: Some(c.0.clone()),
+        },
+        DiffRevisions::Created(c_commit.0.clone()),
+    ];
+    for form in forms {
+        let lines = fx
+            .repo
+            .diff_lines(&lines_of(form.clone(), "f.txt", 10..14))
+            .expect("diff_lines");
+        assert_eq!(lines, expected, "{form:?}");
+    }
+    let refused = fx.repo.diff_lines(&lines_of(
+        DiffRevisions::Interdiff { from: None, to: None },
+        "f.txt",
+        0..30,
+    ));
+    assert!(matches!(refused, Err(MutateError::InvalidInput { .. })), "{refused:?}");
+    let unknown = fx.repo.diff_lines(&lines_of(
+        DiffRevisions::Revision(Some("yyyyyyyy".to_owned())),
+        "f.txt",
+        0..30,
+    ));
+    assert!(
+        matches!(unknown, Err(MutateError::RevsetResolutionError { .. })),
+        "{unknown:?}"
+    );
+}
+
+/// A renamed file is read at its source: its unchanged lines come from the old path.
+#[test]
+fn diff_lines_read_a_rename_at_its_source() {
+    let mut fx = init();
+    write(&fx.root, "old.txt", &numbered(10));
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    fs::remove_file(fx.root.join("old.txt")).expect("rm");
+    write(&fx.root, "new.txt", &numbered(10).replace("line 5\n", "line five\n"));
+    let c = commit(&mut fx, "C\n");
+    let lines = fx
+        .repo
+        .diff_lines(&lines_of(DiffRevisions::Revision(Some(c.0 .0)), "new.txt", 0..10))
+        .expect("diff_lines");
+    let expected: Vec<_> = (1..=10)
+        .filter(|n| *n != 5)
+        .map(|n| (Some(n), Some(n), format!("line {n}\n")))
+        .collect();
+    assert_eq!(numbers(&lines), expected);
+}
+
+/// At `-w` a whitespace-only pair is a context line with the CLI's marks; at exact it is changed
+/// and not returned.
+#[test]
+fn diff_lines_ignoring_whitespace_return_whitespace_only_pairs() {
+    let mut fx = init();
+    write(&fx.root, "f.txt", "a\n  b\nc\nd\n");
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    write(&fx.root, "f.txt", "a\nb\nc\nD\n");
+    let c = commit(&mut fx, "C\n");
+    let read = |fx: &mut Fx, whitespace: Whitespace| {
+        fx.repo
+            .diff_lines(&DiffLinesOptions {
+                whitespace,
+                ..lines_of(DiffRevisions::Revision(Some(c.0 .0.clone())), "f.txt", 0..4)
+            })
+            .expect("diff_lines")
+    };
+    let ignoring = read(&mut fx, Whitespace::IgnoreAllSpace);
+    assert_eq!(
+        ignoring.iter().map(|line| line.left).collect::<Vec<_>>(),
+        [Some(1), Some(2), Some(3)]
+    );
+    assert_eq!(
+        sides(&ignoring[1]),
+        (HunkLineKind::Context, "  b\n".to_owned(), "b\n".to_owned())
+    );
+    assert!(ignoring[1]
+        .segments
+        .iter()
+        .any(|segment| segment.kind == SegmentKind::Removed));
+    let exact = read(&mut fx, Whitespace::Exact);
+    assert_eq!(
+        exact.iter().map(|line| line.left).collect::<Vec<_>>(),
+        [Some(1), Some(3)]
+    );
 }

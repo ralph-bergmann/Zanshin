@@ -1181,6 +1181,20 @@ class _DemoDetails implements GraphDetails {
     );
   }
 
+  /// Story 10.43: a gap row's lines, made up for the demo ([demoUnchangedLines]).
+  @override
+  Future<List<HunkLine>> diffLines(
+    String commitId, {
+    required String path,
+    required int start,
+    required int end,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) async {
+    final ShowEntry entry = await show(commitId);
+    final FileChange? file = entry.fileChanges.where((f) => f.path == path).firstOrNull;
+    return file == null ? const <HunkLine>[] : demoUnchangedLines(_diffOf(file, summary: false).hunks, start, end);
+  }
+
   /// Story 10.25: the change's and its first parent's descriptions combined as jj's editor shows them, when both are
   /// set; else none.
   @override
@@ -1299,8 +1313,46 @@ class _DemoDetails implements GraphDetails {
       removed: hunks.fold(0, (sum, hunk) => sum + hunk.removed),
       added: hunks.fold(0, (sum, hunk) => sum + hunk.added),
       fingerprint: file.path.hashCode.toRadixString(16),
+      // Story 10.43: room for gap rows above, between and below the hunks.
+      leftLineCount: switch (file.kind) {
+        _ when binary => 0,
+        FileChangeKind.added || FileChangeKind.copied => 0,
+        FileChangeKind.removed => 2,
+        _ when rust => 2490,
+        _ => 64,
+      },
     );
   }
+}
+
+/// Story 10.43: made-up unchanged lines `start` to `end` (0-based left numbers) of a file with [hunks], each right
+/// number shifted as the last hunk line above it says.
+List<HunkLine> demoUnchangedLines(List<Hunk> hunks, int start, int end) {
+  final paired = <HunkLine>[
+    for (final Hunk hunk in hunks)
+      for (final HunkLine line in hunk.lines)
+        if (line.left != null && line.right != null) line,
+  ];
+  final lines = <HunkLine>[];
+  var shift = 0;
+  var above = 0;
+  for (int left = start + 1; left <= end; left++) {
+    while (above < paired.length && paired[above].left! < left) {
+      shift = paired[above].right! - paired[above].left!;
+      above++;
+    }
+    final text = '  // unchanged line $left\n';
+    lines.add(
+      HunkLine(
+        kind: HunkLineKind.context,
+        text: text,
+        left: left,
+        right: left + shift,
+        segments: <Segment>[Segment(kind: SegmentKind.equal, text: text)],
+      ),
+    );
+  }
+  return lines;
 }
 
 /// "Peek / Open" (Story 10.6): the commit callout as the hover opens it, for a mutable change, an immutable one, @
@@ -1783,7 +1835,8 @@ class _DropMenus extends StatelessWidget {
   }
 }
 
-/// A partly picked file in the inspector (Story 10.26): the mode row picked, hunk 1 and 3 picked, hunk 2 not.
+/// A partly picked file in the inspector (Story 10.26): the mode row picked, hunk 1 and 3 picked, hunk 2 not. Story
+/// 10.43: no hunk headers — one checkbox per part, and gap rows for the unchanged lines around the hunks.
 class _HunkSelection extends StatelessWidget {
   const _HunkSelection();
 
@@ -1811,18 +1864,20 @@ class _HunkSelection extends StatelessWidget {
       _hunk(20, _lines(21, '    log("[-x-]{+y+}");'), 'run'),
       _hunk(40, _lines(41, '    exit([-0-]{+1+})'), 'stop'),
     ];
-    final picked = <Hunk>{hunks[0], hunks[2]};
+    final picked = <HunkKey>{hunks[0].sections.single, hunks[2].sections.single};
     final diff = FileDiff(
       path: 'src/main.rs',
       kind: FileChangeKind.modified,
       fromPath: null,
       binary: false,
       modeChange: true,
-      sections: const [],
+      sections: <HunkKey>[for (final Hunk hunk in hunks) ...hunk.sections],
       hunks: hunks,
       removed: 3,
       added: 3,
       fingerprint: 'f',
+      // Story 10.43: gap rows above, between and below the hunks; the arrows open demo lines.
+      leftLineCount: 60,
     );
     return Stack(
       fit: StackFit.expand,
@@ -1839,8 +1894,9 @@ class _HunkSelection extends StatelessWidget {
                 error: null,
                 layout: DiffLayoutSetting.unified,
                 onLayoutChanged: (_) {},
-                hunkPicked: picked.contains,
-                onHunkToggled: (_) {},
+                partPicked: picked.contains,
+                onPartToggled: (_) {},
+                readLines: (start, end) async => demoUnchangedLines(hunks, start, end),
                 modePicked: true,
                 onModeToggled: () {},
               ),
@@ -1852,8 +1908,8 @@ class _HunkSelection extends StatelessWidget {
   }
 }
 
-/// Story 10.38: one hunk of three parts (jj's diff-editor sections), the second picked: the "3 parts" pill, a checkbox
-/// per part in the gutter, the mixed hunk header and the edge on the second part's lines.
+/// Story 10.38: one hunk of three parts (jj's diff-editor sections), the second picked: a checkbox per part in the
+/// gutter and the edge on the second part's lines; Story 10.43: a gap row for the 19 unchanged lines below.
 class _ThreeParts extends StatelessWidget {
   const _ThreeParts({required this.layout});
 
@@ -1902,6 +1958,7 @@ class _ThreeParts extends StatelessWidget {
       removed: 3,
       added: 4,
       fingerprint: 'f',
+      leftLineCount: 30,
     );
     return Stack(
       fit: StackFit.expand,
@@ -1918,10 +1975,9 @@ class _ThreeParts extends StatelessWidget {
                 error: null,
                 layout: layout,
                 onLayoutChanged: (_) {},
-                hunkPicked: (_) => null,
-                onHunkToggled: (_) {},
                 partPicked: (part) => part == _sections[1],
                 onPartToggled: (_) {},
+                readLines: (start, end) async => demoUnchangedLines(<Hunk>[hunk], start, end),
               ),
             ),
           ),
@@ -2080,13 +2136,9 @@ class _WhitespaceIgnoredState extends State<_WhitespaceIgnored> {
       removed: 27,
       added: 30,
       fingerprint: 'f',
+      // Story 10.43: the file goes on below the hunk.
+      leftLineCount: 64,
     );
-    // The view hands a hunk checkbox a hunk whose sections are the parts its rows touch.
-    bool? hunkPicked(Hunk hunk) {
-      final int n = hunk.sections.where(_picked.contains).length;
-      return n == 0 ? false : (n == hunk.sections.length ? true : null);
-    }
-
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -2102,14 +2154,7 @@ class _WhitespaceIgnoredState extends State<_WhitespaceIgnored> {
                 error: null,
                 layout: widget.layout,
                 onLayoutChanged: (_) {},
-                hunkPicked: hunkPicked,
-                onHunkToggled: (hunk) => setState(() {
-                  if (hunkPicked(hunk) ?? false) {
-                    _picked.removeAll(hunk.sections);
-                  } else {
-                    _picked.addAll(hunk.sections);
-                  }
-                }),
+                readLines: (start, end) async => demoUnchangedLines(<Hunk>[_hunk], start, end),
                 partPicked: _picked.contains,
                 onPartToggled: (part) => setState(() => _picked.remove(part) || _picked.add(part)),
                 whitespace: _whitespace,
@@ -2127,7 +2172,7 @@ class _WhitespaceIgnoredState extends State<_WhitespaceIgnored> {
 }
 
 /// Story 10.38 (deferred-work I1): a unified diff with a short line under a long one, in a bounded well scrolled fully
-/// right — the numbers and the part checkboxes stay at the left edge, the hunk header stays in view.
+/// right — the numbers and the part checkboxes stay at the left edge.
 class _PinnedNumbers extends StatefulWidget {
   const _PinnedNumbers();
 
@@ -2210,8 +2255,6 @@ class _PinnedNumbersState extends State<_PinnedNumbers> {
                 error: null,
                 layout: DiffLayoutSetting.unified,
                 onLayoutChanged: (_) {},
-                hunkPicked: (_) => null,
-                onHunkToggled: (_) {},
                 partPicked: (part) => part == _sections[1],
                 onPartToggled: (_) {},
               ),

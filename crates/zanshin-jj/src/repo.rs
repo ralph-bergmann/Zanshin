@@ -4503,6 +4503,41 @@ impl Repo {
         })
     }
 
+    /// One file's unchanged lines in a left range (Story 10.43): the context lines `jj diff`
+    /// with unlimited `--context` prints for that file, for the lines a diff with less context
+    /// hides.
+    ///
+    /// Reads [`Repo::diff`] for `options.path` with the same revisions and whitespace mode and
+    /// unlimited context, so the file is one hunk, and keeps its [`crate::HunkLineKind::Context`]
+    /// lines whose left number − 1 lies in `options.range` (0-based, half-open), in order — both
+    /// numbers and the segments as the diff gives them (at `-w` / `-b` a whitespace-only pair
+    /// comes back as context with the CLI's marks). A rename's left side is read at its source,
+    /// as the diff reads it. A range past the file's end is clipped; a path the diff does not
+    /// list (unchanged, or no such file) and a binary file give no lines. Warnings and config
+    /// resolution are [`Repo::diff`]'s.
+    ///
+    /// Writes NO operation beyond the pre-verb snapshot's (Story 9.26).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Repo::diff`]: an interdiff with neither side is refused before the snapshot.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn diff_lines(
+        &mut self,
+        options: &crate::DiffLinesOptions,
+    ) -> Result<Vec<crate::HunkLine>, crate::MutateError> {
+        if options.revisions == (crate::DiffRevisions::Interdiff { from: None, to: None }) {
+            return Err(crate::MutateError::invalid(
+                "at least one of `from` or `to` is required",
+            ));
+        }
+        self.with_verb(cli_command::DIFF, |repo, ctx| {
+            let templates =
+                crate::template::Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, repo.workspace());
+            crate::hunks::diff_lines(repo.workspace(), &ctx.config, &mut ctx.warnings, &templates, options)
+        })
+    }
+
     /// Lists a revision's conflicts with what a merge editor needs (Story 9.17) — the CLI's `jj
     /// resolve --list`, plus each file conflict's merge hunks.
     ///
@@ -5599,6 +5634,7 @@ mod tests {
         }
         records!(repo, DIFF, compute_hunks(&crate::HunksOptions::default()));
         records!(repo, DIFF, diff(&crate::DiffOptions::default()));
+        records!(repo, DIFF, diff_lines(&crate::DiffLinesOptions::default()));
         records!(repo, RESOLVE, resolve_list(&crate::ResolveListOptions::default()));
         let resolve = crate::ResolveOptions {
             revision: Some(none()),

@@ -319,6 +319,81 @@ void main() {
     );
   });
 
+  // Story 10.43.
+  test('a file decodes its left line count, an absent one as 0', () {
+    final Diff diff = decodeDiffEnvelope(
+      fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Diff,
+        data: fbs.DiffObjectBuilder(
+          files: [
+            fbs.FileDiffObjectBuilder(path: 'a.dart', leftLineCount: 120),
+            fbs.FileDiffObjectBuilder(path: 'b.dart'),
+          ],
+        ),
+      ).toBytes(),
+    );
+    expect(diff.files.map((f) => f.leftLineCount), [120, 0]);
+  });
+
+  test('diff lines decode in order, an absent vector as none', () {
+    final List<HunkLine> lines = decodeDiffLinesEnvelope(
+      fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.DiffLines,
+        data: fbs.DiffLinesObjectBuilder(
+          lines: [
+            fbs.HunkLineObjectBuilder(
+              kind: fbs.HunkLineKind.Context,
+              text: 'x\n',
+              leftLine: 9,
+              rightLine: 11,
+              segments: [_segment(fbs.SegmentKind.Equal, 'x\n')],
+            ),
+            fbs.HunkLineObjectBuilder(
+              kind: fbs.HunkLineKind.Context,
+              text: '  y\n',
+              leftLine: 10,
+              rightLine: 12,
+              segments: [_segment(fbs.SegmentKind.Removed, '  '), _segment(fbs.SegmentKind.Equal, 'y\n')],
+            ),
+          ],
+        ),
+      ).toBytes(),
+    );
+    expect(lines.map((l) => (l.kind, l.left, l.right, l.text)), [
+      (HunkLineKind.context, 9, 11, 'x\n'),
+      (HunkLineKind.context, 10, 12, '  y\n'),
+    ]);
+    expect(lines[1].segments.map((s) => (s.kind, s.text)), [(SegmentKind.removed, '  '), (SegmentKind.equal, 'y\n')]);
+    final List<HunkLine> none = decodeDiffLinesEnvelope(
+      fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.DiffLines,
+        data: fbs.DiffLinesObjectBuilder(),
+      ).toBytes(),
+    );
+    expect(none, isEmpty);
+  });
+
+  test('a diff lines error envelope throws, another payload throws ffi.unknown', () {
+    expect(
+      () => decodeDiffLinesEnvelope(
+        fbs.EnvelopeObjectBuilder(
+          ok: false,
+          error: fbs.FfiErrorObjectBuilder(code: 'jj.revset_resolution_error', context: 'no such revision'),
+        ).toBytes(),
+      ),
+      throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.revset_resolution_error')),
+    );
+    expect(
+      () => decodeDiffLinesEnvelope(
+        fbs.EnvelopeObjectBuilder(ok: true, dataType: fbs.PayloadTypeId.Diff, data: fbs.DiffObjectBuilder()).toBytes(),
+      ),
+      throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+    );
+  });
+
   test('every DiffWhitespace crosses as its wire value', () {
     expect(
       {for (final DiffWhitespace ws in DiffWhitespace.values) ws: ws.wire},

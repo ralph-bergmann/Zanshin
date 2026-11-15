@@ -217,10 +217,52 @@ class FakeOperationChangesSource implements OperationChangesSource {
     }
     return diffReply(call);
   }
+
+  /// Every `diffLines` call: the revision form, the path, the range and the whitespace mode.
+  final lineReads = <LineReadCall>[];
+
+  /// What `diffLines` answers.
+  var lines = const <HunkLine>[];
+
+  @override
+  Future<List<HunkLine>> diffLines({
+    required String path,
+    required int start,
+    required int end,
+    String? revision,
+    String? from,
+    String? to,
+    bool interdiff = false,
+    DiffWhitespace whitespace = DiffWhitespace.exact,
+  }) async {
+    lineReads.add((
+      revision: revision,
+      from: from,
+      to: to,
+      interdiff: interdiff,
+      path: path,
+      start: start,
+      end: end,
+      whitespace: whitespace,
+    ));
+    return lines;
+  }
 }
 
+/// One `diffLines` call to [FakeOperationChangesSource]: the revision form, the path, the range and the whitespace mode.
+typedef LineReadCall = ({
+  String? revision,
+  String? from,
+  String? to,
+  bool interdiff,
+  String path,
+  int start,
+  int end,
+  DiffWhitespace whitespace,
+});
+
 /// A one-hunk file diff of [path]: `-old` / `+new`.
-FileDiff testFileDiff(String path, {FileChangeKind kind = FileChangeKind.modified}) => FileDiff(
+FileDiff testFileDiff(String path, {FileChangeKind kind = FileChangeKind.modified, int leftLineCount = 0}) => FileDiff(
   path: path,
   kind: kind,
   fromPath: null,
@@ -254,6 +296,7 @@ FileDiff testFileDiff(String path, {FileChangeKind kind = FileChangeKind.modifie
   removed: 1,
   added: 1,
   fingerprint: 'f-$path',
+  leftLineCount: leftLineCount,
 );
 
 /// A diff of [paths]; with [description], an inter-diff's `JJ-COMMIT-DESCRIPTION` block.

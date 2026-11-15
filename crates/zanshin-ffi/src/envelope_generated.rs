@@ -190,13 +190,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 73;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 74;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 74] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 75] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -271,6 +271,7 @@ pub mod zanshin {
             RequestKind::FileEdit,
             RequestKind::FileDelete,
             RequestKind::Diff,
+            RequestKind::DiffLines,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -289,7 +290,7 @@ pub mod zanshin {
         /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 64 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 65 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -377,9 +378,10 @@ pub mod zanshin {
             pub const FileEdit: Self = Self(71);
             pub const FileDelete: Self = Self(72);
             pub const Diff: Self = Self(73);
+            pub const DiffLines: Self = Self(74);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 73;
+            pub const ENUM_MAX: u8 = 74;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -455,6 +457,7 @@ pub mod zanshin {
                 Self::FileEdit,
                 Self::FileDelete,
                 Self::Diff,
+                Self::DiffLines,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -533,6 +536,7 @@ pub mod zanshin {
                     Self::FileEdit => Some("FileEdit"),
                     Self::FileDelete => Some("FileDelete"),
                     Self::Diff => Some("Diff"),
+                    Self::DiffLines => Some("DiffLines"),
                     _ => None,
                 }
             }
@@ -4711,13 +4715,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 62;
+        pub const ENUM_MAX_PAYLOAD: u8 = 63;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 63] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 64] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -4781,6 +4785,7 @@ pub mod zanshin {
             Payload::GitColocationStatus,
             Payload::GitColocationResult,
             Payload::Diff,
+            Payload::DiffLines,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -4851,9 +4856,10 @@ pub mod zanshin {
             pub const GitColocationStatus: Self = Self(60);
             pub const GitColocationResult: Self = Self(61);
             pub const Diff: Self = Self(62);
+            pub const DiffLines: Self = Self(63);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 62;
+            pub const ENUM_MAX: u8 = 63;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -4918,6 +4924,7 @@ pub mod zanshin {
                 Self::GitColocationStatus,
                 Self::GitColocationResult,
                 Self::Diff,
+                Self::DiffLines,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -4985,6 +4992,7 @@ pub mod zanshin {
                     Self::GitColocationStatus => Some("GitColocationStatus"),
                     Self::GitColocationResult => Some("GitColocationResult"),
                     Self::Diff => Some("Diff"),
+                    Self::DiffLines => Some("DiffLines"),
                     _ => None,
                 }
             }
@@ -7568,6 +7576,292 @@ pub mod zanshin {
                 ds.field("whitespace", &self.whitespace());
                 ds.field("summary", &self.summary());
                 ds.field("interdiff", &self.interdiff());
+                ds.finish()
+            }
+        }
+        pub enum DiffLinesRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_diff_lines` (Story 10.43) — one file's unchanged lines in a left range
+        /// (`zanshin_jj::Repo::diff_lines`): the `Context` lines `jj diff` with unlimited `--context`
+        /// prints for that file.
+        ///
+        ///   revision / from / to / interdiff   read exactly as `DiffRequest`'s, refusals included
+        ///   path        the file's repo-relative path in jj's internal `/`-separated form — a rename's
+        ///               TARGET (`FileDiff.path`); its left side is read at the source, as the diff reads it
+        ///   whitespace  `-w` / `-b`
+        ///   start / end a 0-based half-open range of LEFT line numbers: line `n` (1-based) is returned
+        ///               when `start <= n - 1 < end`; a range past the file's end is clipped
+        pub struct DiffLinesRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DiffLinesRequest<'a> {
+            type Inner = DiffLinesRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DiffLinesRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 10;
+            pub const VT_INTERDIFF: ::flatbuffers::VOffsetT = 12;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 14;
+            pub const VT_WHITESPACE: ::flatbuffers::VOffsetT = 16;
+            pub const VT_START: ::flatbuffers::VOffsetT = 18;
+            pub const VT_END: ::flatbuffers::VOffsetT = 20;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DiffLinesRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DiffLinesRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DiffLinesRequest<'bldr>> {
+                let mut builder = DiffLinesRequestBuilder::new(_fbb);
+                builder.add_end(args.end);
+                builder.add_start(args.start);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_whitespace(args.whitespace);
+                builder.add_interdiff(args.interdiff);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(DiffLinesRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffLinesRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffLinesRequest::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffLinesRequest::VT_TO, None)
+                }
+            }
+            #[inline]
+            pub fn interdiff(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(DiffLinesRequest::VT_INTERDIFF, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffLinesRequest::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn whitespace(&self) -> DiffWhitespace {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<DiffWhitespace>(DiffLinesRequest::VT_WHITESPACE, Some(DiffWhitespace::Exact))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn start(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(DiffLinesRequest::VT_START, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn end(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(DiffLinesRequest::VT_END, Some(0)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DiffLinesRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("to", Self::VT_TO, false)?
+                    .visit_field::<bool>("interdiff", Self::VT_INTERDIFF, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<DiffWhitespace>("whitespace", Self::VT_WHITESPACE, false)?
+                    .visit_field::<u32>("start", Self::VT_START, false)?
+                    .visit_field::<u32>("end", Self::VT_END, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DiffLinesRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub to: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub interdiff: bool,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub whitespace: DiffWhitespace,
+            pub start: u32,
+            pub end: u32,
+        }
+        impl<'a> Default for DiffLinesRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DiffLinesRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    from: None,
+                    to: None,
+                    interdiff: false,
+                    path: None,
+                    whitespace: DiffWhitespace::Exact,
+                    start: 0,
+                    end: 0,
+                }
+            }
+        }
+
+        pub struct DiffLinesRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiffLinesRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(DiffLinesRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffLinesRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffLinesRequest::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffLinesRequest::VT_TO, to);
+            }
+            #[inline]
+            pub fn add_interdiff(&mut self, interdiff: bool) {
+                self.fbb_
+                    .push_slot::<bool>(DiffLinesRequest::VT_INTERDIFF, interdiff, false);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffLinesRequest::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_whitespace(&mut self, whitespace: DiffWhitespace) {
+                self.fbb_.push_slot::<DiffWhitespace>(
+                    DiffLinesRequest::VT_WHITESPACE,
+                    whitespace,
+                    DiffWhitespace::Exact,
+                );
+            }
+            #[inline]
+            pub fn add_start(&mut self, start: u32) {
+                self.fbb_.push_slot::<u32>(DiffLinesRequest::VT_START, start, 0);
+            }
+            #[inline]
+            pub fn add_end(&mut self, end: u32) {
+                self.fbb_.push_slot::<u32>(DiffLinesRequest::VT_END, end, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffLinesRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DiffLinesRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DiffLinesRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DiffLinesRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DiffLinesRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("from", &self.from());
+                ds.field("to", &self.to());
+                ds.field("interdiff", &self.interdiff());
+                ds.field("path", &self.path());
+                ds.field("whitespace", &self.whitespace());
+                ds.field("start", &self.start());
+                ds.field("end", &self.end());
                 ds.finish()
             }
         }
@@ -43260,6 +43554,10 @@ pub mod zanshin {
         /// run of listed lines has no number gap; a listed line with no `Added` / `Removed` segment is
         /// such an identical line. Empty at exact, in summary mode, for binary content and under
         /// `diff.color-words.conflict = "pair"` on a conflicted side.
+        ///
+        /// Story 10.43 appends `left_line_count`: the number of lines of the left side, cut like
+        /// `split_inclusive('\n')` (a last line without `\n` counts); 0 when either side is binary or the
+        /// left side is absent or empty; kept in summary mode.
         pub struct FileDiff<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -43286,6 +43584,7 @@ pub mod zanshin {
             pub const VT_ADDED: ::flatbuffers::VOffsetT = 20;
             pub const VT_FINGERPRINT: ::flatbuffers::VOffsetT = 22;
             pub const VT_WHITESPACE_LINES: ::flatbuffers::VOffsetT = 24;
+            pub const VT_LEFT_LINE_COUNT: ::flatbuffers::VOffsetT = 26;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -43297,6 +43596,7 @@ pub mod zanshin {
                 args: &'args FileDiffArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<FileDiff<'bldr>> {
                 let mut builder = FileDiffBuilder::new(_fbb);
+                builder.add_left_line_count(args.left_line_count);
                 if let Some(x) = args.whitespace_lines {
                     builder.add_whitespace_lines(x);
                 }
@@ -43427,6 +43727,13 @@ pub mod zanshin {
                     >>(FileDiff::VT_WHITESPACE_LINES, None)
                 }
             }
+            #[inline]
+            pub fn left_line_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(FileDiff::VT_LEFT_LINE_COUNT, Some(0)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FileDiff<'_> {
@@ -43447,6 +43754,7 @@ pub mod zanshin {
      .visit_field::<u32>("added", Self::VT_ADDED, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("fingerprint", Self::VT_FINGERPRINT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkLine>>>>("whitespace_lines", Self::VT_WHITESPACE_LINES, false)?
+     .visit_field::<u32>("left_line_count", Self::VT_LEFT_LINE_COUNT, false)?
      .finish();
                 Ok(())
             }
@@ -43468,6 +43776,7 @@ pub mod zanshin {
             pub whitespace_lines: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine<'a>>>>,
             >,
+            pub left_line_count: u32,
         }
         impl<'a> Default for FileDiffArgs<'a> {
             #[inline]
@@ -43484,6 +43793,7 @@ pub mod zanshin {
                     added: 0,
                     fingerprint: None,
                     whitespace_lines: None,
+                    left_line_count: 0,
                 }
             }
         }
@@ -43559,6 +43869,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDiff::VT_WHITESPACE_LINES, whitespace_lines);
             }
             #[inline]
+            pub fn add_left_line_count(&mut self, left_line_count: u32) {
+                self.fbb_
+                    .push_slot::<u32>(FileDiff::VT_LEFT_LINE_COUNT, left_line_count, 0);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileDiffBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FileDiffBuilder {
@@ -43587,6 +43902,7 @@ pub mod zanshin {
                 ds.field("added", &self.added());
                 ds.field("fingerprint", &self.fingerprint());
                 ds.field("whitespace_lines", &self.whitespace_lines());
+                ds.field("left_line_count", &self.left_line_count());
                 ds.finish()
             }
         }
@@ -43807,6 +44123,120 @@ pub mod zanshin {
                 ds.field("commit_ids", &self.commit_ids());
                 ds.field("from_commit_id", &self.from_commit_id());
                 ds.field("description", &self.description());
+                ds.finish()
+            }
+        }
+        pub enum DiffLinesOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One file's unchanged lines in a left range (Story 10.43), returned by `zanshin_diff_lines`:
+        /// `Context` lines in order, both numbers set, segments as the diff gives them (at `-w` / `-b` a
+        /// whitespace-only pair keeps the CLI's marks). `lines` is always present; empty when the diff
+        /// lists no such file, the file is binary or nothing unchanged lies in the range.
+        pub struct DiffLines<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DiffLines<'a> {
+            type Inner = DiffLines<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DiffLines<'a> {
+            pub const VT_LINES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DiffLines { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DiffLinesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DiffLines<'bldr>> {
+                let mut builder = DiffLinesBuilder::new(_fbb);
+                if let Some(x) = args.lines {
+                    builder.add_lines(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn lines(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine>>,
+                    >>(DiffLines::VT_LINES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DiffLines<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkLine>>>>("lines", Self::VT_LINES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct DiffLinesArgs<'a> {
+            pub lines: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkLine<'a>>>>,
+            >,
+        }
+        impl<'a> Default for DiffLinesArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DiffLinesArgs { lines: None }
+            }
+        }
+
+        pub struct DiffLinesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiffLinesBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_lines(
+                &mut self,
+                lines: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<HunkLine<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffLines::VT_LINES, lines);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffLinesBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DiffLinesBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DiffLines<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DiffLines<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DiffLines");
+                ds.field("lines", &self.lines());
                 ds.finish()
             }
         }
@@ -45014,6 +45444,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_diff_lines(&self) -> Option<DiffLines<'a>> {
+                if self.data_type() == Payload::DiffLines {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { DiffLines::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -45089,6 +45534,7 @@ pub mod zanshin {
           Payload::GitColocationStatus => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitColocationStatus>>("Payload::GitColocationStatus", pos),
           Payload::GitColocationResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitColocationResult>>("Payload::GitColocationResult", pos),
           Payload::Diff => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<Diff>>("Payload::Diff", pos),
+          Payload::DiffLines => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<DiffLines>>("Payload::DiffLines", pos),
           _ => Ok(()),
         }
      })?
@@ -45614,6 +46060,13 @@ pub mod zanshin {
                     }
                     Payload::Diff => {
                         if let Some(x) = self.data_as_diff() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::DiffLines => {
+                        if let Some(x) = self.data_as_diff_lines() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
