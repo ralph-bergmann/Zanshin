@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="../../styles.css"/>
-<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:16px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);width:78px;flex-shrink:0}.g{display:grid;grid-template-columns:270px minmax(0,1fr);gap:22px;align-items:start}.h{display:flex;align-items:center;gap:8px;padding:0 0 8px;font-size:12px;color:var(--text-dim)}.h b{font-size:12.5px;font-weight:600;color:var(--text)}.list{display:flex;flex-direction:column;gap:1px;margin:0 -8px}.keys{display:flex;align-items:center;gap:4px;margin-top:16px;font-size:11px;color:var(--text-dim)}.tree{margin-top:18px;display:flex;flex-direction:column;gap:1px;padding:6px;border-radius:12px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border)}</style>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:16px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);width:78px;flex-shrink:0}.g{display:grid;grid-template-columns:270px minmax(0,1fr);gap:22px;align-items:start}.hd{display:flex;align-items:center;gap:8px;padding:0 0 8px;font-size:12px;color:var(--text-dim)}.hd b{font-size:12.5px;font-weight:600;color:var(--text)}.list{display:flex;flex-direction:column;gap:1px;margin:0 -8px}.keys{display:flex;align-items:center;gap:4px;margin-top:16px;font-size:11px;color:var(--text-dim)}.tree{margin-top:18px;display:flex;flex-direction:column;gap:1px;padding:6px;border-radius:12px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border)}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -61,7 +61,7 @@
         {/* Story 10.42: calm — no status letter, no counts, a quiet word after the name; unchecked boxes show only while the pointer
             is over this pane or focus is inside it (.zs-check-reveal); picked and mixed always show. */}
         <div className="zs-check-reveal">
-          <div className="h"><span className="zs-file-gut" style={{ marginLeft: -8 }}><Checkbox size="sm" mixed label="Select all"/></span><b>Changes</b><span>5 files</span></div>
+          <div className="hd"><span className="zs-file-gut" style={{ marginLeft: -8 }}><Checkbox size="sm" mixed label="Select all"/></span><b>Changes</b><span>5 files</span></div>
           <div className="list" role="list">{files.map(([s, p, from], i) => <FileRow key={p} status={s} path={p} from={from} selected={sel === i} viewed={i === 4} selectable checked={i === 1} mixed={i === 0} onClick={() => setSel(i)}/>)}</div>
           {/* Story 10.39 / 10.42: the tree — a joined folder row (mixed, open glyph), a closed one, files by name under their folder */}
           <div className="list" role="tree" aria-label="Tree">
