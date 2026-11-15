@@ -5,7 +5,7 @@ created: '2026-11-15'
 status: 'done'
 baseline_revision: '26878f824b7e5ccb6aecfa89ffa63558a4f63932'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/.claude/skills/design-artifacts/SKILL.md'
@@ -125,6 +125,40 @@ deferred: []
   - `[low]` `[reject]` (intent) gaps and conflict headers are not right-clicked in a test — the fix is the one builder all of them reach.
   - `[false]` `[reject]` (intent) the spec, deferred-work and epic context are missing from the diff — left out of the review file on purpose; they are committed with the change, and nothing was deferred.
 
+### 2026-11-15 — Review pass (follow-up)
+- verdicts: 30 findings — high 0, medium 0, low 19, false 10, maybe-false 1
+- findings:
+  - `[low]` `[patch]` (blind) the opaque fold-row pin hides the row's 135° hatch over the gutter and number columns — the pin now paints the hatch itself (`row(hatch: true)`: a `CustomPaint` with `_FoldHatchPainter` between the opaque colour and the numbers, `inspector_diff.dart`); the alpha test also checks that only the fold row's pin is hatched.
+  - `[low]` `[patch]` (blind) `@inspectorSplitAllHint` still describes "the note under the buttons" — reworded to the only text beside Cancel; `flutter gen-l10n` rerun.
+  - `[low]` `[reject]` (blind) `lineCount` reads the whole file on the UI isolate — carried: same as the logged symlink/huge-file row; the `shortcut:` comment names the upgrade.
+  - `[false]` `[reject]` (blind) an empty file on disk with line 1 gets the past-end note while a removed last line elsewhere does not — the note is true (an empty file has no line 1) and the editor opens at the only position there is.
+  - `[low]` `[reject]` (blind) Copy path:line can disagree with Open — carried: same as the logged Copy path:line row.
+  - `[low]` `[reject]` (blind) Settings › General › Diffs shows the user value while the menu shows the workspace value — intent item 6 keeps Settings at user level; the menu's note explains the repo layer.
+  - `[false]` `[reject]` (blind) `fromRepo` misses the `envOverrides` layer — that layer carries only jj's environment variables (`JJ_USER`, `JJ_EMAIL`, …); `diff.color-words.context` cannot come from it.
+  - `[false]` `[reject]` (blind) nested anchors lose their parent/child menu link — no `ZsMenuAnchor` sits in another anchor's content: the graph card menu's content is an empty box, the diff options button is in the diff header outside the line menu's body, the file list and the diff are siblings.
+  - `[low]` `[reject]` (blind) a right-click on another row only closes the open menu — carried: same as the logged right-click row.
+  - `[maybe-false]` `[reject]` (blind) the empty `contextMenuBuilder` overlay may swallow the next click — needs a widget test with a left click after a header right-click; if true only low (one extra click), so rejected with this note.
+  - `[low]` `[reject]` (blind) focus is lost when the composer collapses — carried: same as the logged composer-focus row.
+  - `[low]` `[reject]` (blind) the DS flip measures once and does not clamp sideways — carried: same as the logged DS flip rows.
+  - `[low]` `[reject]` (blind) `DiffContext` lives in the projects feature — carried: same as the logged `DiffContext` row.
+  - `[false]` `[reject]` (blind) nothing tracks the unpublished DS change — `deferred-work.md` tracks it (the Story 10.38 item: Ralph publishes 10.35–10.40 together after this story).
+  - `[low]` `[reject]` (blind) the open-button close test does not check focus — the toggle runs the same anchor-area close as `zs_menu_test.dart`'s refocus test, which checks focus.
+  - `[low]` `[reject]` (edge) a right-click on another row is consumed, so it needs two right-clicks — carried: same as the logged right-click row.
+  - `[false]` `[reject]` (edge) `anchorRect` is in overlay space and the pointer position global — no nested `Overlay` exists in `app/lib` or `packages`; each window's root overlay sits at its view origin, so both share coordinates.
+  - `[low]` `[patch]` (edge) the `_open` comment names a second click or right-click on the anchor, which now only closes the menu — comment reworded to a caller's `open` while the menu shows (`zs_menu.dart`).
+  - `[false]` `[reject]` (edge) the anchor content left `RawMenuAnchor`'s `Shortcuts` (arrows, Esc) — `WidgetsApp`'s default shortcuts map the same keys to the same intents, so nothing changes for the content.
+  - `[low]` `[patch]` (edge) the fold-row hatch is no longer full width — same root cause as the blind fold-hatch row; fixed by it.
+  - `[low]` `[reject]` (edge) an added or context line at lines + 1 (a later change shortened the file by exactly one line) opens silently at the last line — rare, and the fix needs the line kind passed into `inspectorPathMenu`.
+  - `[low]` `[reject]` (edge) the DS `MenuButton` claims parity without the horizontal clamp — carried: same as the logged DS clamp row.
+  - `[false]` `[reject]` (verification gap) the `refocus: false` side of the outside close is untested — the proposed assertion (`button.hasPrimaryFocus` false after a click outside) fails: focus returns to the opener through the focus scope's history either way, so the branch has no distinct outcome; assertion reverted.
+  - `[low]` `[patch]` (verification gap) no test reads the side-by-side hunk header colour — the picked-hunk test now also pumps side by side and expects the raw `accentSoftHi` band.
+  - `[low]` `[patch]` (intent) the `splitsEverything` docstring still says "Split stays disabled" — reworded: the composer shows only its hint and Cancel.
+  - `[low]` `[reject]` (intent) line N + 1 opens at the last line with no note, beyond the literal item 5 — the previous pass's deliberate fix: a removed last line maps to lines + 1 (`diffNewLineAt`).
+  - `[false]` `[reject]` (intent) `readDiffContext` was deleted though Settings "keeps" it — Settings never called it (`settings_view_model.dart` reads through `configList` without a root); its user-level read is unchanged.
+  - `[false]` `[reject]` (intent) DS changes reach beyond `MenuButton` — the kit composer follows item 4 so the DS matches the app; no bad outcome.
+  - `[low]` `[reject]` (intent) tests check widget properties and fakes, not the running app — the Marionette check is the console session's manual check, as the spec says.
+  - `[false]` `[reject]` (intent) the hand-written `sourceHashes` were not checked — the sha256 prefixes of `MenuButton.jsx` and `ui_kits/desktop/inspector.jsx` match the bundle header.
+
 ## Design Notes
 
 - **Item 2, why the anchor area must leave the menu's tap group:** Flutter's `RawMenuAnchor` puts the builder's child in the menu's tap-region group, and nested `TapRegion`s cannot take a child out of it. Proposal: `ZsMenuAnchor.build` returns `Stack(fit: StackFit.passthrough, children: [widget.builder(context, _controller), Positioned.fill(child: RawMenuAnchor(…, builder: (_, _, _) => const SizedBox.expand()))])`. The anchor's `TapRegion` then wraps an empty, never-hit box of the same rect (so `anchorRect` and placement are unchanged), the content is outside the group, the panel's `onTapOutside` closes the menu and the anchor region's `consumeOutsideTaps` consumes the click; submenus keep the shared group. This applies to every `ZsMenuAnchor`: for a button-anchored menu the area is the button, so the click toggles it (the `ZsMenuButton` witness). Verify the consumption actually stops `ZsButton.onPressed` and the file rows' tap (a test per case); if `ZsButton` reacts to raw pointer events instead of the gesture arena, stop the reopen in `ZsMenuButton` instead.
@@ -154,6 +188,15 @@ deferred: []
 - `node --check design_system/_ds_bundle.js` -- passes (before and after).
 - Not run: `cargo make test` / `test-full` / `coverage` (the loop's gate rule); no Rust or FFI changed, so no cargo checks, codegen or parity oracle. Not done: Marionette check and the DS publish (console session).
 
+**Verification notes, follow-up review (2026-11-15, same gate rule):**
+- `flutter gen-l10n` in `app` -- run after the `@inspectorSplitAllHint` rewording; output committed.
+- `flutter test` in `packages/zanshin_ui` -- 475 passed (one run failed on the reverted focus assertion, see the triage log).
+- `cargo make test-app test/features/graph test/features/undo_timeline test/features/home test/features/settings test/features/projects test/widgetbook test/l10n test/architecture` -- 1945 passed (a first run failed on the new hatch finder, which matched the fold checkbox's painter too; narrowed to `_FoldHatchPainter`).
+- `dart analyze app packages/zanshin_ui` -- No issues found.
+- `dart format --set-exit-if-changed -o none` on `app/lib`, `app/test`, `app/widgetbook`, `app/integration_test`, `packages/zanshin_ui/lib`, `packages/zanshin_ui/test` -- 0 changed.
+- `shasum -a 256` of `MenuButton.jsx` and `ui_kits/desktop/inspector.jsx` -- prefixes match `_ds_bundle.js`'s `sourceHashes`.
+- Not run: the full gate (loop rule); no Rust, FFI or DS file changed in this pass.
+
 ## Auto Run Result
 
 Status: done
@@ -182,3 +225,26 @@ Status: done
 - No Marionette check of the pinned numbers, both menus or the Split hint (left to the console session, as the story says).
 - The DS `MenuButton` flip and the kit composer were not opened in a browser; the DS `DiffView` demo note still carries the old `diffOptionsNote` sentence.
 - `lineCount` reads the whole file on the UI isolate when the line menu opens (`shortcut:` comment).
+
+### Follow-up review pass (2026-11-15)
+
+Status: done
+
+**Summary.** A fresh four-layer review of the finished story. It found one visible regression: the opaque fold-row pin hid the 135° hatch over the gutter and number columns. The pin now paints the hatch itself, between its opaque colour and the numbers. The rest were small corrections: a stale ARB description, two stale comments, and a side-by-side test for the hunk header band.
+
+**Files changed.**
+- `app/lib/src/features/graph/inspector_diff.dart` -- `row(hatch:)`: the fold row's pin paints `_FoldHatchPainter` over its opaque backing.
+- `app/lib/src/features/graph/graph_inspector.dart` -- `splitsEverything` docstring.
+- `packages/zanshin_ui/lib/src/controls/zs_menu.dart` -- `_open` comment.
+- `app/lib/l10n/app_en.arb`, `app_localizations.dart` -- `@inspectorSplitAllHint` description.
+- `app/test/features/graph/inspector_diff_test.dart` -- hatch check in the alpha test; side-by-side header band check.
+
+**Review findings.** 30 findings: high 0, medium 0, low 19, false 10, maybe-false 1. Patched: 5 low entries (fold hatch, two layers reporting it; ARB description; `_open` comment; side-by-side header test; `splitsEverything` docstring). Deferred: none. Rejected, each with its reason in the triage log: 13 low (9 carried from the first pass: `lineCount` on the UI isolate, Copy path:line, right-click twice ×2, composer focus, DS flip and clamp ×2, `DiffContext` location; plus Settings showing the user value, the open-button focus test, a context line at lines + 1, line N + 1 opening at the last line, no Marionette check), 1 maybe-false (an empty context-menu overlay swallowing a click; low if true), and 10 false (empty file note, `envOverrides`, nested anchors, untracked DS publish, overlay coordinates, lost `Shortcuts`, the `refocus: false` test, `readDiffContext` deletion, DS scope, `sourceHashes`).
+
+**Follow-up review recommendation: false.** Follow-up pass: patched high 0, medium 0, low 5. No high patch, so the work has converged.
+
+**Verification.** See "Verification notes, follow-up review" above: zanshin_ui 475 passed, targeted app suites 1945 passed, analyze and format clean, l10n regenerated, `sourceHashes` checked.
+
+**Residual risks.**
+- Still no Marionette check of the pinned numbers (now with the fold hatch), the menus or the Split hint; left to the console session.
+- The fold-row hatch in the pin is drawn from the pin's own origin, so its lines may not line up exactly with the row's hatch at the pin's edge while scrolled sideways (cosmetic).
