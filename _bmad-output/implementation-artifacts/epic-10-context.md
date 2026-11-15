@@ -85,8 +85,8 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 
 ## Cross-Story Dependencies
 
-- Done: every story except 10.27 and 10.41 (open) and 10.18 (declined).
-- 10.41 replaces 10.33's merge-by-line-numbers of the exact and the ignoring read (`IgnoredLines`, `whitespaceRows`): rows come from the ignoring read only, hidden whitespace-only lines become gap rows with Show / Hide (no header pill, nothing dimmed — Ralph's design change of 2026-11-15), and the backend supplies those lines (FFI + `docs/ffi-abi.md` grow as needed). It builds on 10.33, 10.38 and 10.40; its DS DiffHunk change goes through the `design-artifacts` skill, published by a console session.
+- Done: every story except 10.27 (open, backlog) and 10.18 (declined).
+- Since 10.41 the ignoring diff (`-b` / `-w`) shows only the ignoring read's rows, exactly as `jj diff -w` / `-b` prints them; it replaced 10.33's merge-by-line-numbers of the two reads. Whitespace-only lines outside the context sit behind gap rows with Show / Hide (no header pill, nothing dimmed), changed whitespace is always marked, and the backend lists those lines. Exact parts that one whitespace pair spans are tied into one pickable part. Its DS DiffHunk publish waits for a console session.
 - 10.40 (done) is UI-only and fixed what 10.33, 10.35, 10.38 and 10.39 built: opaque pinned diff backings, context menus that close on any outside click (`ZsMenuAnchor` in `packages/zanshin_ui`), a right-click without a line menu that opens nothing, the Split composer when every change is picked, Open in Editor at a line past the file's end on disk, and the effective context-lines value. Its DS `MenuButton` change goes through the `design-artifacts` skill; the publish waits for a console session.
 - Since 10.40 every `ZsMenuAnchor` closes on any click outside its panel, the anchor's own area included; the click is consumed (a second right-click opens the next context menu), and a click in the anchor area returns focus to the opener.
 - 10.33 reuses 10.36's menu button and its grouped, checked menu, and picks whole parts from 10.38.
