@@ -151,8 +151,9 @@ pub struct FileDiff {
     /// `diff.color-words.conflict = "pair"` on a conflicted side.
     pub whitespace_lines: Vec<HunkLine>,
     /// The number of lines of the left side (Story 10.43), counted as [`HunkLine`] numbers count
-    /// them: a last line without a line break counts. 0 when either side is binary or the left
-    /// side is absent or empty. [`DiffOptions::summary`] mode keeps it.
+    /// them: a last line without a line break counts. 0 when either side is binary, the left
+    /// side is absent or empty, or under `diff.color-words.conflict = "pair"` on a conflicted
+    /// side (its hunks number conflict-term lines). [`DiffOptions::summary`] mode keeps it.
     pub left_line_count: u32,
 }
 
@@ -782,7 +783,7 @@ impl<'a> DiffReader<'a> {
                 mode_change,
             ),
             whitespace_lines,
-            left_line_count: if binary { 0 } else { line_count(texts.before) },
+            left_line_count: if binary || paired { 0 } else { line_count(texts.before) },
             hunks,
             removed,
             added,

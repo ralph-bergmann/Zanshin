@@ -782,6 +782,9 @@ fn a_paired_conflict_lists_no_whitespace_lines() {
     assert_eq!(listed, [(Some(1), Some(1), "a   b\n".to_owned())]);
     let paired = conflict_diff_of(Some("pair"), Whitespace::IgnoreAllSpace, texts);
     assert!(paired.whitespace_lines.is_empty(), "{paired:?}");
+    // Nor does it count the left side's lines: gap rows would mix both numberings.
+    assert_eq!(materialized.left_line_count, 5);
+    assert_eq!(paired.left_line_count, 0);
 }
 
 /// `materialize` (the default) diffs the conflict's marker text; `pair` diffs each conflict term

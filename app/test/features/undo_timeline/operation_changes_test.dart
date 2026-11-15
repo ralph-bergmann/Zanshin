@@ -425,6 +425,34 @@ void main() {
       await tester.pump();
     }
 
+    testWidgets('the description block shows its unchanged lines as a count only: no controls, no read', (
+      tester,
+    ) async {
+      final changes = FakeOperationChangesSource(
+        testOpShow(testOperation(1, now: _now), <OpChangedCommit>[
+          OpChangedCommit(commitId: _x, abandoned: false, addedCommitIds: <String>[_x], removedCommitIds: const []),
+        ]),
+        diff: (call) => Diff(
+          files: <FileDiff>[testFileDiff('a.txt')],
+          operationId: 'op',
+          commitIds: const <String>[],
+          description: testFileDiff('JJ-COMMIT-DESCRIPTION', leftLineCount: 12),
+        ),
+      );
+      await withView(tester, changes, () async {
+        final Finder block = find.byKey(const ValueKey<String>('operation-changes-description'));
+        expect(find.descendant(of: block, matching: find.text('11 unchanged lines')), findsOneWidget);
+        for (final control in <String>['show', 'down', 'up', 'all']) {
+          expect(
+            find.descendant(of: block, matching: find.bySemanticsIdentifier('inspector-unchanged-$control')),
+            findsNothing,
+            reason: control,
+          );
+        }
+        expect(changes.lineReads, isEmpty);
+      });
+    });
+
     testWidgets('a file diff has no hunk header and no boxes; its gap row reads its lines in the rewritten '
         "commit's interdiff form", (tester) async {
       final FakeOperationChangesSource changes = gapSource(_rewritten());

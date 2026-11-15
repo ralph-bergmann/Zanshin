@@ -1611,7 +1611,9 @@ class _DiffBodyState extends State<_DiffBody> {
     final List<({List<DiffRow> rows, bool gapBefore})> shown = diffUnchangedRows(
       base,
       anchors: hunks,
-      leftLineCount: widget.diff.leftLineCount,
+      // A file that changed only in whitespace has no hunk at `-w`: jj prints no context for it, so a gap could not
+      // open; it gets none.
+      leftLineCount: widget.ignoring?.hunks.isEmpty ?? false ? 0 : widget.diff.leftLineCount,
       open: _gaps,
     );
     final Future<List<HunkLine>> Function(int start, int end)? readLines = widget.readLines;

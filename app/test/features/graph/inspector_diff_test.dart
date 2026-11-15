@@ -107,7 +107,12 @@ Hunk _hunk(List<HunkLine> lines, {({int start, int end}) before = (start: 4, end
   lines: lines,
 );
 
-FileDiff _file({List<Hunk> hunks = const <Hunk>[], bool binary = false, bool modeChange = false}) => FileDiff(
+FileDiff _file({
+  List<Hunk> hunks = const <Hunk>[],
+  bool binary = false,
+  bool modeChange = false,
+  String fingerprint = 'f',
+}) => FileDiff(
   path: 'src/main.rs',
   kind: FileChangeKind.modified,
   fromPath: null,
@@ -117,7 +122,7 @@ FileDiff _file({List<Hunk> hunks = const <Hunk>[], bool binary = false, bool mod
   hunks: hunks,
   removed: 0,
   added: 0,
-  fingerprint: 'f',
+  fingerprint: fingerprint,
 );
 
 // Ralph's `text_field.dart` (Story 10.41): a `TextField` wrapped in `Semantics(`, as the pinned CLI prints it — old
@@ -1380,12 +1385,13 @@ void main() {
       Set<HunkKey> picked = const <HunkKey>{},
       DiffLayoutSetting layout = DiffLayoutSetting.unified,
       ValueChanged<HunkKey>? onPart,
+      String fingerprint = 'f',
     }) => shellHost(
       SizedBox(
         width: 420,
         child: InspectorDiffView(
           path: 'src/main.rs',
-          diff: _file(hunks: <Hunk>[parts(sections)]),
+          diff: _file(hunks: <Hunk>[parts(sections)], fingerprint: fingerprint),
           error: null,
           layout: layout,
           onLayoutChanged: (_) {},
@@ -1530,6 +1536,36 @@ void main() {
         await tester.pump();
         expect(<bool>[for (final t in texts) on(t)], <bool>[false, false, false, false], reason: '$layout: left');
       }
+    });
+
+    testWidgets('a reload under the pointer drops the hover edge: the hovered part index is not carried to new parts', (
+      tester,
+    ) async {
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      bool on(String text) =>
+          (tester
+                      .widget<Container>(
+                        find
+                            .descendant(
+                              of: find.ancestor(of: find.text(text), matching: find.byType(Stack)).first,
+                              matching: find.byKey(const ValueKey<String>('inspector-line-pin')),
+                            )
+                            .first,
+                      )
+                      .foregroundDecoration!
+                  as BoxDecoration)
+              .border !=
+          null;
+      await tester.pumpWidget(picks(const <HunkKey>[s1, s2, s3]));
+      await mouse.moveTo(tester.getCenter(partBoxes().at(1)));
+      await tester.pump();
+      expect(on('new 6b'), isTrue, reason: 'part 2 hovered');
+      // A new diff in which part index 1 is the run at line 11: no exit fires for the box that went.
+      await tester.pumpWidget(picks(const <HunkKey>[s2, s3], fingerprint: 'g'));
+      await tester.pump();
+      expect(on('new 11'), isFalse, reason: 'the stale hover does not light the new part 2');
     });
 
     testWidgets('scrolled fully right, a short line keeps its numbers and part checkbox at the left edge', (
@@ -2079,6 +2115,28 @@ void main() {
       );
       expect(find.text('⋯ 1 line changed whitespace only'), findsOneWidget);
       expect(find.bySemanticsIdentifier('inspector-fold-check'), findsNothing);
+    });
+
+    testWidgets('a file that changed only in whitespace has no unchanged gap at -w (jj prints no context for it); '
+        'exact it has its gaps', (tester) async {
+      final exact = FileDiff(
+        path: 'src/main.rs',
+        kind: FileChangeKind.modified,
+        fromPath: null,
+        binary: false,
+        modeChange: false,
+        sections: amount.sections,
+        hunks: <Hunk>[amount],
+        removed: 1,
+        added: 1,
+        fingerprint: 'f',
+        leftLineCount: 10,
+      );
+      await tester.pumpWidget(wsView(exact: exact, ignoring: unchanged));
+      expect(find.text('⋯ 1 line changed whitespace only'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('inspector-unchanged-text')), findsNothing);
+      await tester.pumpWidget(wsView(exact: exact, whitespace: DiffWhitespaceSetting.showAll));
+      expect(find.text('7 unchanged lines'), findsOneWidget, reason: 'lines 4 to 10');
     });
 
     testWidgets('text_field unified: the ignoring read\'s rows, one gap of 21 with Show, no header, one checkbox; Show '

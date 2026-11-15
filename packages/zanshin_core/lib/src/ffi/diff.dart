@@ -238,7 +238,8 @@ final class FileDiff {
 
   /// The number of lines of the left side (Story 10.43), counted as [HunkLine]
   /// numbers count them (a last line without `\n` counts); 0 when either side
-  /// is binary or the left side is absent or empty. Kept in summary mode.
+  /// is binary, the left side is absent or empty, or a conflicted side diffs
+  /// as `diff.color-words.conflict = "pair"`. Kept in summary mode.
   final int leftLineCount;
 }
 

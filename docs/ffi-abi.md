@@ -2531,8 +2531,9 @@ Segment  { kind: SegmentKind (Equal | Added | Removed), text }             // St
   `diff.color-words.conflict = "pair"` on a conflicted side. The description block carries them
   too.
 - **Left line count (10.43).** `left_line_count` = the number of lines of the left side, cut like
-  `split_inclusive('\n')` (a last line without `\n` counts); 0 when either side is binary or the
-  left side is absent or empty; kept in summary mode. With the hunks' left numbers it tells a view
+  `split_inclusive('\n')` (a last line without `\n` counts); 0 when either side is binary, the
+  left side is absent or empty, or a conflicted side diffs as `diff.color-words.conflict =
+  "pair"`; kept in summary mode. With the hunks' left numbers it tells a view
   which unchanged runs a diff hides, so it can offer them through `zanshin_diff_lines`.
 - **Vectors** are always written (empty, not absent); files, hunks, lines and sections keep
   their input order. `binary` and mode-only files carry no hunks; in summary mode no file does.

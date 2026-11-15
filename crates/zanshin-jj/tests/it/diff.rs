@@ -824,6 +824,7 @@ fn a_created_commit_diffs_without_copy_records_and_with_its_description() {
     assert_eq!(description.kind, ChangeKind::Modified);
     assert!(description.sections.is_empty());
     assert_eq!((description.removed, description.added), (0, 3));
+    assert_eq!(description.left_line_count, 0, "no old description");
     assert_eq!(
         shown(&description.hunks[0].lines),
         [
@@ -945,6 +946,7 @@ fn an_interdiff_shows_a_changed_description() {
     assert!(described.files.is_empty());
     let block = described.description.expect("a description block");
     assert_eq!((block.removed, block.added), (0, 2));
+    assert_eq!(block.left_line_count, 1, "the old description's lines");
     let expected = [
         (HunkLineKind::Context, "C\n".to_owned()),
         (HunkLineKind::Added, "\n".to_owned()),
@@ -1215,4 +1217,24 @@ fn diff_lines_ignoring_whitespace_return_whitespace_only_pairs() {
         exact.iter().map(|line| line.left).collect::<Vec<_>>(),
         [Some(1), Some(3)]
     );
+}
+
+/// A file whose only change is whitespace has no hunk at `-w`, so `jj diff -w` prints no context
+/// for it and the read returns nothing.
+#[test]
+fn diff_lines_of_a_whitespace_only_change_at_w_are_empty() {
+    let mut fx = init();
+    write(&fx.root, "f.txt", "a\n  b\nc\n");
+    let a = commit(&mut fx, "A\n");
+    fx.repo.new_change(std::slice::from_ref(&a.0), &[], &[]).expect("new");
+    write(&fx.root, "f.txt", "a\nb\nc\n");
+    let c = commit(&mut fx, "C\n");
+    let lines = fx
+        .repo
+        .diff_lines(&DiffLinesOptions {
+            whitespace: Whitespace::IgnoreAllSpace,
+            ..lines_of(DiffRevisions::Revision(Some(c.0 .0.clone())), "f.txt", 0..3)
+        })
+        .expect("diff_lines");
+    assert!(lines.is_empty(), "{lines:?}");
 }

@@ -25365,8 +25365,9 @@ class HunkObjectBuilder extends fb.ObjectBuilder {
 ///  `diff.color-words.conflict = "pair"` on a conflicted side.
 ///
 ///  Story 10.43 appends `left_line_count`: the number of lines of the left side, cut like
-///  `split_inclusive('\n')` (a last line without `\n` counts); 0 when either side is binary or the
-///  left side is absent or empty; kept in summary mode.
+///  `split_inclusive('\n')` (a last line without `\n` counts); 0 when either side is binary, the
+///  left side is absent or empty, or a conflicted side diffs as `diff.color-words.conflict =
+///  "pair"`; kept in summary mode.
 class FileDiff {
   FileDiff._(this._bc, this._bcOffset);
   factory FileDiff(List<int> bytes) {

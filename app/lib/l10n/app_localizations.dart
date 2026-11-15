@@ -2204,7 +2204,7 @@ abstract class AppLocalizations {
   /// **'⋯ {count, plural, =1{1 line} other{{count} lines}} changed whitespace only'**
   String inspectorFoldText(int count);
 
-  /// Tooltip of a folded whitespace-only row and of a gap row's Show button.
+  /// Tooltip of the Show button on a folded whitespace-only row and on a whitespace gap row.
   ///
   /// In en, this message translates to:
   /// **'Show these lines'**

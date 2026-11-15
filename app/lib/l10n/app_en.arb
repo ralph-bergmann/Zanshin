@@ -913,7 +913,7 @@
     "placeholders": {"count": {"type": "int", "example": "4"}}
   },
   "inspectorFoldShowTooltip": "Show these lines",
-  "@inspectorFoldShowTooltip": {"description": "Tooltip of a folded whitespace-only row and of a gap row's Show button."},
+  "@inspectorFoldShowTooltip": {"description": "Tooltip of the Show button on a folded whitespace-only row and on a whitespace gap row."},
   "inspectorFoldPick": "Pick these whitespace-only lines",
   "@inspectorFoldPick": {"description": "VoiceOver name and tooltip of an unchecked folded row's checkbox: Commit / Split takes the part's lines, and the row opens."},
   "inspectorFoldUnpick": "Unpick these whitespace-only lines",

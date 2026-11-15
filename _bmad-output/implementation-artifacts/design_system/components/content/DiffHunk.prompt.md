@@ -1,7 +1,7 @@
 One hunk inside a `DiffView`: its color-words lines, unified or side by side, with one checkbox per part and gap rows for hidden lines. No header.
 
 ~~~jsx
-<DiffHunk selectable parts={[null, 0]} picked={picked} onTogglePart={toggle} onExpand={open}
+<DiffHunk selectable parts={[null, null, 0]} picked={picked} onTogglePart={toggle} onExpand={open}
   lines={[{ t: "unchanged", n: 31, top: true }, " 58:58|  final res = await _http.post(_url, body: b.encode());", "~59:59|  if (res.statusCode [-!= 200-]{+== 409 && attempt < 3+}) {"]}/>
 ~~~
 
