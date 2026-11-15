@@ -49,6 +49,7 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 - Story 10.38: Inspector rebuild, part 1 — split layout, divider, Finder keys, hunk parts
 - Story 10.39: Inspector rebuild, part 2 — file rows, tree or flat, copy, Reveal, Open in Editor
 - Story 10.40: Inspector follow-ups from Ralph's first use of 10.33–10.39
+- Story 10.41: The ignoring diff shows exactly `jj diff -w`
 
 ## Requirements & Constraints
 
@@ -71,11 +72,11 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 - **Theme:** every colour and size comes from the design-system token layer; `GraphTheme` derives the graph roles from it and falls back to night. Selection, focus, drop targets, the go-to pulse and the flash use the accent role (`--accent*`, `--focus-ring`); gold is only @ and the one primary action. Immutable changes carry the hatch, not a glyph.
 - **Motion** is the FLIP model: moved cards glide 460 ms, births grow from their anchor, changed cards flash 2.4 s. Under reduce motion, movement goes to 0 but colour and opacity fades stay.
 - **Settings vs state:** global preferences (diff layout, whitespace mode, file list tree/flat, split ratios per layout, editor) live in the settings package; context lines write jj's own `diff.color-words.context` at user scope, while the menu shows the effective value (repo config included), like the CLI. Per-project view state (Viewed marks, stack toggles) lives in a state file per project, `projects/<stateId>.json` beside `settings.json` (`SettingsStore.projectStates`, 10.37), never in the repo or `.jj/`.
-- **Diff and hunk selection:** whole files pass paths; partial selections pass the `TreeId` from the `select_tree` call, never `-i`. A hunk's parts are jj's builtin diff-editor sections (`Hunk.sections`); the smallest pick is a part, never single lines. Rust computes word segments; Dart only draws them.
+- **Diff and hunk selection:** whole files pass paths; partial selections pass the `TreeId` from the `select_tree` call, never `-i`. A hunk's parts are jj's builtin diff-editor sections (`Hunk.sections`); the smallest pick is a part, never single lines. Rust computes word segments and is the only place that compares lines; Dart only draws them. While whitespace is ignored (`-b` / `-w`), the rows are the ignoring read's alone, exactly as `jj diff -w` / `-b` prints them; picks still map to the exact parts, since `jj split` has no `-w`.
 
 ## UX & Interaction Patterns
 
-- The design export (`design/`, `JJ Desktop Client Floating.html`, `Inspector Study.html`) and the design system (`design_system/`) are the reference, as inspiration, not a 1:1 template. Tokens and CSS win over DS prose. A decision recorded in the epic wins over the export. Small gaps get a marked Claude proposal; NEEDS DESIGN questions are for architecture or scope only.
+- The design export (`design/`, `JJ Desktop Client Floating.html`, `Inspector Study.html`, `Whitespace Study.html`) and the design system (`design_system/`) are the reference, as inspiration, not a 1:1 template. Tokens and CSS win over DS prose. A decision recorded in the epic wins over the export. Small gaps get a marked Claude proposal; NEEDS DESIGN questions are for architecture or scope only.
 - Where the design does not fit jj, build along jj's behaviour; that is not a question for Ralph.
 - Each story records the DS sync it was built against ("DS synced through #N"; #26 is current). A re-download with a higher N: the next visual story reads the new sync entries, adds dated notes and updates the token layer in the same change. Nothing under `design/` or `design_system/` is edited by hand; DS changes (e.g. a new `MenuButton`) go through the `design-artifacts` skill.
 - The inspector is a floating glass panel. After 10.38 it has no fixed maximum width; at least 320 points of graph must stay visible. Its layout switches by width (files above vs beside the diff, with hysteresis), and the unified diff's line numbers stay pinned at the left edge while text scrolls sideways.
@@ -84,7 +85,8 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 
 ## Cross-Story Dependencies
 
-- Done: every story except 10.27 (open) and 10.18 (declined).
+- Done: every story except 10.27 and 10.41 (open) and 10.18 (declined).
+- 10.41 replaces 10.33's merge-by-line-numbers of the exact and the ignoring read (`IgnoredLines`, `whitespaceRows`): rows come from the ignoring read only, hidden whitespace-only lines become gap rows with Show / Hide (no header pill, nothing dimmed — Ralph's design change of 2026-11-15), and the backend supplies those lines (FFI + `docs/ffi-abi.md` grow as needed). It builds on 10.33, 10.38 and 10.40; its DS DiffHunk change goes through the `design-artifacts` skill, published by a console session.
 - 10.40 (done) is UI-only and fixed what 10.33, 10.35, 10.38 and 10.39 built: opaque pinned diff backings, context menus that close on any outside click (`ZsMenuAnchor` in `packages/zanshin_ui`), a right-click without a line menu that opens nothing, the Split composer when every change is picked, Open in Editor at a line past the file's end on disk, and the effective context-lines value. Its DS `MenuButton` change goes through the `design-artifacts` skill; the publish waits for a console session.
 - Since 10.40 every `ZsMenuAnchor` closes on any click outside its panel, the anchor's own area included; the click is consumed (a second right-click opens the next context menu), and a click in the anchor area returns focus to the opener.
 - 10.33 reuses 10.36's menu button and its grouped, checked menu, and picks whole parts from 10.38.
