@@ -1022,6 +1022,7 @@ class InspectorDiffView extends StatelessWidget {
     this.viewed = false,
     this.onViewedChanged,
     this.readLines,
+    this.linesRevision,
     this.partPicked,
     this.onPartToggled,
     this.modePicked,
@@ -1071,6 +1072,10 @@ class InspectorDiffView extends StatelessWidget {
   /// Reads the file's unchanged lines whose left number − 1 lies in `start` to `end` (0-based, half-open), as the diff
   /// prints them as context (Story 10.43): what a gap row opens. Null: gap rows show their count only.
   final Future<List<HunkLine>> Function(int start, int end)? readLines;
+
+  /// The revision [readLines] reads at (the inspector: commit and whitespace mode). When it changes while the diff's
+  /// fingerprint and ranges stay, every open gap reads its lines again and stays as far open; null: never changes.
+  final Object? linesRevision;
 
   /// Whether a part (a section) is picked; null: no part checkboxes.
   final bool Function(HunkKey part)? partPicked;
@@ -1187,6 +1192,7 @@ class InspectorDiffView extends StatelessWidget {
               wordMarks: wordMarks,
               bounded: bounded,
               readLines: readLines,
+              linesRevision: linesRevision,
               partPicked: partPicked,
               onPartToggled: onPartToggled,
               lineMenu: lineMenu,
@@ -1447,6 +1453,7 @@ class _DiffBody extends StatefulWidget {
     required this.wordMarks,
     required this.bounded,
     required this.readLines,
+    required this.linesRevision,
     required this.partPicked,
     required this.onPartToggled,
     required this.lineMenu,
@@ -1461,6 +1468,7 @@ class _DiffBody extends StatefulWidget {
   final bool wordMarks;
   final bool bounded;
   final Future<List<HunkLine>> Function(int start, int end)? readLines;
+  final Object? linesRevision;
   final bool Function(HunkKey part)? partPicked;
   final ValueChanged<HunkKey>? onPartToggled;
   final List<ZsMenuEntry> Function(BuildContext context, int line)? lineMenu;
@@ -1494,7 +1502,8 @@ class _DiffBodyState extends State<_DiffBody> {
   void _toggleGap(int key) => setState(() => _opened.remove(key) || _opened.add(key));
 
   // The unchanged gaps the user opened (Story 10.43), by their first left line; the key resets them with the file and
-  // the mode, a new diff (another fingerprint) here. A read in flight belongs to its generation.
+  // the mode, a new diff (another fingerprint) here, and a new lines revision reads them again. A read in flight belongs
+  // to its generation.
   final _gaps = <int, DiffGapOpen>{};
   final _reading = <int>{};
   var _generation = 0;
@@ -1520,10 +1529,47 @@ class _DiffBodyState extends State<_DiffBody> {
       _generation++;
       // A box that unmounts under the pointer reports no exit.
       _hot = null;
+    } else if (oldWidget.linesRevision != widget.linesRevision) {
+      // Same changes at another revision (a rewrite): the unchanged lines may differ, so open gaps read again.
+      _reading.clear();
+      _generation++;
+      for (final MapEntry<int, DiffGapOpen>(:key, :value) in _gaps.entries.toList()) {
+        unawaited(_reread(key, value));
+      }
     }
     if (widget.partPicked == null) {
       _hot = null;
     }
+  }
+
+  /// Reads the open gap at [key] again over its range and keeps its [open] extent; meanwhile its old lines show and its
+  /// controls are inert. A refusal or an empty read closes it.
+  Future<void> _reread(int key, DiffGapOpen open) async {
+    final Future<List<HunkLine>> Function(int start, int end)? read = widget.readLines;
+    final int? end = open.lines.lastOrNull?.left;
+    if (read == null || end == null) {
+      _gaps.remove(key);
+      return;
+    }
+    final int generation = _generation;
+    _reading.add(key);
+    List<HunkLine>? lines;
+    try {
+      lines = await read(key, end);
+    } on ZanshinFfiException {
+      // The read already logged it.
+    }
+    if (!mounted || generation != _generation) {
+      return;
+    }
+    setState(() {
+      _reading.remove(key);
+      if (lines == null || lines.isEmpty) {
+        _gaps.remove(key);
+      } else {
+        _gaps[key] = DiffGapOpen(down: open.down, up: open.up, lines: lines);
+      }
+    });
   }
 
   /// Opens [gap] by [how]: its first 20 lines, its last 20, or all of them. The first use reads the gap's whole range

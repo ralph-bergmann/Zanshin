@@ -121,6 +121,7 @@ class InspectorViewModel extends ChangeNotifier {
   String? _commitId;
   String? _focused;
   FileDiff? _focusedDiff;
+  ({String commitId, DiffWhitespace whitespace})? _focusedRevision;
   FileDiff? _previousDiff;
   FileDiff? _focusedIgnoring;
   FileDiff? _previousIgnoring;
@@ -175,6 +176,10 @@ class InspectorViewModel extends ChangeNotifier {
 
   /// The focused file's diff; null while it loads, after a refusal, and when the reply lists no such file.
   FileDiff? get focusedDiff => _focusedDiff;
+
+  /// The commit and whitespace mode the last focused diff was read at; gap rows read their lines there ([diffLines]).
+  /// Kept while a [previousDiff] shows; null before the first read, after a refusal and without a diff.
+  ({String commitId, DiffWhitespace whitespace})? get focusedRevision => _focusedRevision;
 
   /// The diff shown before [focus] switched files, kept while the new one loads so the view keeps its height (and
   /// its scroll offset); null once the new diff or a refusal arrives.
@@ -459,20 +464,21 @@ class InspectorViewModel extends ChangeNotifier {
     _loadFocus();
   }
 
-  /// The unchanged lines a gap row of [path] opens (Story 10.43): `-r` the shown change at the current whitespace mode,
-  /// as the diff reads it. A refusal is logged like the diff's and rethrown: the gap stays closed.
+  /// The unchanged lines a gap row of [path] opens (Story 10.43): `-r` the shown diff's commit at its whitespace mode
+  /// ([focusedRevision]) — after a rewrite the old diff shows until the new one arrives. A refusal is logged like the
+  /// diff's and rethrown: the gap stays closed.
   Future<List<HunkLine>> diffLines(String path, int start, int end) async {
-    final String? commitId = _commitId;
-    if (commitId == null) {
+    final ({String commitId, DiffWhitespace whitespace})? revision = _focusedRevision;
+    if (revision == null) {
       return const <HunkLine>[];
     }
     try {
       return await details.diffLines(
-        commitId,
+        revision.commitId,
         path: path,
         start: start,
         end: end,
-        whitespace: diffWhitespaceOf(_whitespace),
+        whitespace: revision.whitespace,
       );
     } on ZanshinFfiException catch (error) {
       _log.warning('diff lines refused: ${error.code}');
@@ -488,6 +494,7 @@ class InspectorViewModel extends ChangeNotifier {
     final String? commitId = _commitId;
     if (path == null || commitId == null || _summary == null) {
       _focusedDiff = null;
+      _focusedRevision = null;
       _focusedIgnoring = null;
       _focusError = null;
       return;
@@ -502,6 +509,7 @@ class InspectorViewModel extends ChangeNotifier {
         FileDiff? fileOf(Diff diff) => diff.files.where((file) => file.path == path).firstOrNull;
         if (serial == _focusSerial) {
           _focusedDiff = fileOf(diffs.first);
+          _focusedRevision = _focusedDiff == null ? null : (commitId: commitId, whitespace: mode);
           _focusedIgnoring = diffs.length > 1 ? ignoringOf(path, fileOf(diffs.last)) : null;
           _previousDiff = null;
           _previousIgnoring = null;
@@ -512,6 +520,7 @@ class InspectorViewModel extends ChangeNotifier {
         _log.warning('diff refused: ${error.code}');
         if (serial == _focusSerial) {
           _focusedDiff = null;
+          _focusedRevision = null;
           _focusedIgnoring = null;
           _previousDiff = null;
           _previousIgnoring = null;
@@ -1038,6 +1047,7 @@ class InspectorViewModel extends ChangeNotifier {
     _commitId = null;
     _focused = null;
     _focusedDiff = null;
+    _focusedRevision = null;
     _previousDiff = null;
     _focusedIgnoring = null;
     _previousIgnoring = null;
@@ -3166,6 +3176,7 @@ class _ChangesState extends State<_Changes> {
                   // The dimmed previous file's diff takes no picks: they would land on the focused path.
                   // The previous file's lines belong to its own path: its gaps show their counts only.
                   readLines: model.previousDiff == null ? (start, end) => model.diffLines(focused, start, end) : null,
+                  linesRevision: model.focusedRevision,
                   partPicked: pickHunks ? (part) => model.partPicked(focused, part) : null,
                   onPartToggled: (part) => model.togglePart(focused, part),
                   modePicked: pickHunks ? model.modePicked(focused) : null,

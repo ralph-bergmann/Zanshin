@@ -873,6 +873,7 @@ void main() {
       Future<List<HunkLine>> Function(int start, int end)? read,
       DiffLayoutSetting layout = DiffLayoutSetting.unified,
       bool scoped = false,
+      Object? linesRevision,
     }) {
       final Widget view = InspectorDiffView(
         path: 'src/main.rs',
@@ -881,6 +882,7 @@ void main() {
         layout: layout,
         onLayoutChanged: (_) {},
         readLines: read,
+        linesRevision: linesRevision,
       );
       return shellHost(SizedBox(width: 520, child: scoped ? InspectorCheckReveal(child: view) : view));
     }
@@ -1096,6 +1098,52 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('7 unchanged lines'), findsNothing);
       expect(find.text('u9'), findsOneWidget);
+    });
+
+    testWidgets('a re-read in flight after a new lines revision: inert controls; a new diff before it lands closes '
+        'the gap', (tester) async {
+      final reads = <Completer<List<HunkLine>>>[];
+      Future<List<HunkLine>> read(int start, int end) {
+        final completer = Completer<List<HunkLine>>();
+        reads.add(completer);
+        return completer.future;
+      }
+
+      await tester.pumpWidget(gapView(gapped(), read: read, linesRevision: 'c'));
+      await tester.tap(find.bySemanticsIdentifier('inspector-unchanged-down'));
+      await tester.pump();
+      reads.single.complete(lines(24, 120));
+      await tester.pumpAndSettle();
+      expect(find.text('76 unchanged lines'), findsOneWidget, reason: '20 of the bottom 96 open');
+      expect(find.text('u25'), findsOneWidget);
+
+      // Same diff at another revision: the open gap reads again, its old lines show meanwhile.
+      await tester.pumpWidget(gapView(gapped(), read: read, linesRevision: 'd'));
+      expect(reads, hasLength(2), reason: 'the re-read');
+      expect(find.text('u25'), findsOneWidget, reason: 'the old lines stay while it runs');
+      await tester.tap(find.bySemanticsIdentifier('inspector-unchanged-down'));
+      await tester.pump();
+      expect(reads, hasLength(2), reason: 'the controls are inert while the re-read runs');
+
+      // The diff reloads with another fingerprint before the re-read lands: its lines must not show.
+      final reloaded = FileDiff(
+        path: 'src/main.rs',
+        kind: FileChangeKind.modified,
+        fromPath: null,
+        binary: false,
+        modeChange: false,
+        sections: const <HunkKey>[],
+        hunks: gapped().hunks,
+        removed: 1,
+        added: 1,
+        fingerprint: 'another',
+        leftLineCount: 120,
+      );
+      await tester.pumpWidget(gapView(reloaded, read: read, linesRevision: 'd'));
+      reads.last.complete(lines(24, 120));
+      await tester.pumpAndSettle();
+      expect(find.text('96 unchanged lines'), findsOneWidget, reason: 'closed');
+      expect(find.text('u25'), findsNothing, reason: 'no stale lines');
     });
 
     testWidgets('↑ on a gap of more than 20 opens its last 20 lines above the hunk below', (tester) async {

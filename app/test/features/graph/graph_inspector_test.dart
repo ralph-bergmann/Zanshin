@@ -50,6 +50,10 @@ const _root = 'zzzzzzzzzzzz';
 
 const _keys = <String>[_at, _mutable, _merge, _left, _right, _root];
 
+/// The commit-id prefix [_layout] gives every key (`c<key>`); a test sets another one to rewrite every change. The
+/// fake details read the key behind the prefix.
+var _commit = 'c';
+
 /// @ → m → the merge of p and q (both immutable) → the root, at operation [op].
 RecordedGraphLayout _layout(String op, {List<String>? changeIds}) {
   const int imm = RecordedGraphLayout.flagImmutable;
@@ -61,7 +65,7 @@ RecordedGraphLayout _layout(String op, {List<String>? changeIds}) {
     parentCounts: const <int>[1, 1, 2, 1, 1, 0],
     flags: const <int>[0, 0, 0, imm, imm, imm],
     prefixLengths: const <int>[1, 3, 2, 2, 2, 1],
-    commitIds: <String>[for (final String key in _keys) 'c$key'],
+    commitIds: <String>[for (final String key in _keys) '$_commit$key'],
     changeIds: changeIds,
     timestamps: <int?>[for (final _ in _keys) DateTime.utc(2026, 10, 30, 11).millisecondsSinceEpoch],
     refs: const <List<GraphRef>>[
@@ -296,9 +300,11 @@ class _Details implements GraphDetails {
     return diffOf(changeId, paths: paths, summary: summary);
   }
 
-  /// Every `diffLines` call: the commit id, the path, the range and the whitespace mode; [lines] answers it.
+  /// Every `diffLines` call: the commit id, the path, the range and the whitespace mode; [lines] answers it,
+  /// [refuseLines] refuses it.
   final lineReads = <(String, String, int, int, DiffWhitespace)>[];
   var lines = const <HunkLine>[];
+  ZanshinFfiException? refuseLines;
 
   @override
   Future<List<HunkLine>> diffLines(
@@ -309,6 +315,9 @@ class _Details implements GraphDetails {
     DiffWhitespace whitespace = DiffWhitespace.exact,
   }) async {
     lineReads.add((commitId, path, start, end, whitespace));
+    if (refuseLines case final error?) {
+      throw error;
+    }
     return lines;
   }
 
@@ -498,6 +507,7 @@ void main() {
 
   setUp(() async {
     ops = 0;
+    _commit = 'c';
     source = ScriptedGraphSource(respond: (_) => _layout('op${ops++}'));
     details = _Details();
     actions = _Actions(details);
@@ -4155,6 +4165,66 @@ void main() {
       expect(details.lineReads, isEmpty);
       details.heldDiffs.single.$3.complete(details.diffOf(_mutable, paths: <String>['q.txt']));
       await settle(tester);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.43: after a rewrite a gap reads the commit on screen, then the new one, and stays open', (
+      tester,
+    ) async {
+      gappedParts();
+      await pump(tester, width: 1000);
+      await settle(tester);
+      // An operation rewrites the change with the same changes to p.txt; its new diff is held.
+      details.holdDiff = true;
+      _commit = 'd';
+      await reload(tester);
+      await settle(tester);
+      expect(details.heldDiffs, hasLength(1), reason: 'the new focus read');
+      await showAll(tester);
+      expect(details.lineReads, <(String, String, int, int, DiffWhitespace)>[
+        ('c$_mutable', 'p.txt', 10, 40, DiffWhitespace.exact),
+      ], reason: 'the diff on screen is still c…');
+      expect(find.text('tail 40'), findsOneWidget);
+      details.lines = <HunkLine>[
+        for (var n = 11; n <= 40; n++) HunkLine(kind: HunkLineKind.context, text: 'new $n\n', left: n, right: n),
+      ];
+      details.heldDiffs.single.$3.complete(details.diffOf(_mutable, paths: <String>['p.txt']));
+      await settle(tester);
+      expect(details.lineReads, <(String, String, int, int, DiffWhitespace)>[
+        ('c$_mutable', 'p.txt', 10, 40, DiffWhitespace.exact),
+        ('d$_mutable', 'p.txt', 10, 40, DiffWhitespace.exact),
+      ]);
+      expect(find.text('tail 40'), findsNothing);
+      expect(find.text('new 40'), findsOneWidget, reason: "the new commit's lines");
+      expect(find.text('30 unchanged lines'), findsNothing, reason: 'still open whole');
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.43: a refused re-read after a rewrite closes the gap', (tester) async {
+      gappedParts();
+      await pump(tester, width: 1000);
+      await settle(tester);
+      await showAll(tester);
+      expect(find.text('tail 40'), findsOneWidget);
+      details.refuseLines = const ZanshinFfiException('jj.internal', 'no');
+      _commit = 'd';
+      await reload(tester);
+      await settle(tester);
+      expect(details.lineReads.last.$1, 'd$_mutable');
+      expect(find.text('tail 40'), findsNothing);
+      expect(find.text('30 unchanged lines'), findsOneWidget, reason: 'closed again');
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.43: an operation that keeps the shown commit reads no gap again', (tester) async {
+      gappedParts();
+      await pump(tester, width: 1000);
+      await settle(tester);
+      await showAll(tester);
+      await reload(tester);
+      await settle(tester);
+      expect(details.lineReads, hasLength(1), reason: 'the same commit: its lines stay');
+      expect(find.text('tail 40'), findsOneWidget);
       await unmount(tester);
     });
   });
