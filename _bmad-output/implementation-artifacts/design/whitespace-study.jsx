@@ -35,21 +35,29 @@ const rows = () => {
   return r;
 };
 
-// Folded: like `jj diff -w`, the re-indented lines outside the context give way to a gap row.
-const folded = (all) => {
+// Like `jj diff -w`, the re-indented lines outside the context give way to a gap row; open, the row stays
+// above its lines and closes them again.
+const withGaps = (all, open) => {
   const out = [];
   const near = (i) => all.slice(Math.max(0, i - 3), i + 4).some((l) => l.k !== " ");
   for (let i = 0; i < all.length; i++) {
     if (near(i)) { out.push(all[i]); continue; }
     const last = out[out.length - 1];
-    if (last && last.k === "gap") last.n++; else out.push({ k: "gap", n: 1 });
+    if (last && last.k === "gap") last.lines.push(all[i]); else out.push({ k: "gap", lines: [all[i]] });
   }
-  return out;
+  return open ? out.flatMap((l) => l.k === "gap" ? [{ ...l, open: true }, ...l.lines] : [l]) : out;
 };
 
-const Line = ({ l }) => {
+const Line = ({ l, onToggle }) => {
   if (l.k === "gap") {
-    return <div className="wss-gap"><span className="isd-nums"><span>⋯</span><span>⋯</span></span><span className="wss-gaptxt">{l.n} more lines with only whitespace changes</span></div>;
+    const n = l.lines.length;
+    return (
+      <div className="wss-gap">
+        <span className="isd-nums"><span>⋯</span><span>⋯</span></span>
+        <span className="wss-gaptxt">{l.open ? `${n} lines with only whitespace changes` : `${n} more lines with only whitespace changes`}</span>
+        <button className="isd-wstag wss-gapbtn" onClick={onToggle} title={l.open ? "Hide these lines again" : "Show these lines"}>{l.open ? "Hide" : "Show"}</button>
+      </div>
+    );
   }
   const cls = "isd-line k" + (l.k === "+" ? "a" : l.k === "-" ? "r" : "c");
   // A re-indented line: its new text with the two added spaces marked, as jj diff -w marks them.
@@ -67,8 +75,7 @@ const Line = ({ l }) => {
 function Hunk({ title, note, startOpen }) {
   const [open, setOpen] = useState(startOpen);
   const all = rows();
-  const shown = open ? all : folded(all);
-  const ws = all.filter((l) => l.ws).length;
+  const shown = withGaps(all, open);
   return (
     <section className="wss-panel">
       <h2>{title}</h2>
@@ -83,12 +90,9 @@ function Hunk({ title, note, startOpen }) {
             <div className="isd-hunk">
               <div className="isd-hhd">
                 <code>@@ −73,34 +77,37 @@</code>
-                <button className="isd-wstag wss-pill" onClick={() => setOpen(!open)} title={open ? "Hide the marks again" : "Show every line that changed only in whitespace"}>
-                  {ws} lines changed whitespace only · {open ? "Hide" : "Show"}
-                </button>
                 <span className="isd-stat"><span className="stat-add">+4</span><span className="stat-rem">−1</span></span>
               </div>
-              {shown.map((l, i) => <Line key={i} l={l}/>)}
+              {shown.map((l, i) => <Line key={i} l={l} onToggle={() => setOpen(!open)}/>)}
             </div>
           </div>
         </div>
@@ -103,13 +107,13 @@ function App() {
       <header className="wss-head">
         <b>Whitespace Study</b> — text_field.dart, the hunk that wraps <code>TextField</code> in <code>Semantics</code>.
         The lines come from <code>jj diff -w</code> itself; Zanshin no longer mixes in the exact diff's lines.
-        Click the pill in a hunk header to switch.
+        Show and Hide sit on the gap row, so the hunk header stays free.
       </header>
       <div className="wss-row">
         <Hunk startOpen={false} title="1 · Whitespace ignored (default)"
-          note="Exactly what jj diff -w shows: one real change at the top, one added “),” at the bottom. The re-indented lines are context with their added indentation marked, as jj marks it; the ones far from a change collapse to a gap. The header says how many lines changed only in whitespace."/>
+          note="Exactly what jj diff -w shows: one real change at the top, one added “),” at the bottom. The re-indented lines are context with their added indentation marked, as jj marks it; the ones far from a change collapse to a gap row that says how many and offers Show."/>
         <Hunk startOpen={true} title="2 · After “Show”"
-          note="The gap opens: every line that changed only in whitespace is back where it belongs, with both numbers and the same marks. Nothing was deleted, the lines only moved right."/>
+          note="The gap opens below its row: every line that changed only in whitespace is back where it belongs, with both numbers and the same marks. The row stays above them and offers Hide."/>
       </div>
       <footer className="wss-foot">
         A part that changed <i>only</i> whitespace (no line left under <code>jj diff -w</code>) keeps its folded row, with the same words:

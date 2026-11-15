@@ -11,7 +11,7 @@ html,body{overflow:auto}
 .wss-panel .isd-diff{max-height:none}
 .wss-panel .isd-dbody{overflow-x:auto;overflow-y:visible}
 .wss-mode{margin-left:auto;font:11px var(--font-mono);color:var(--text-faint);white-space:nowrap}
-.wss-pill{margin:0 0 0 4px}
+.wss-gapbtn{margin:0 0 0 10px}
 .wss-gap{display:flex;align-items:center;font:11.5px/22px var(--font-mono);background:var(--fl-hover)}
 .wss-gap .isd-nums{background:transparent}
 .wss-gaptxt{padding-left:18px;font:11.5px var(--font-sans);color:var(--text-faint)}
