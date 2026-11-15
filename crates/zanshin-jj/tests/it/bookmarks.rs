@@ -1053,8 +1053,8 @@ fn list_refusals() {
     };
     let err = repo.list_bookmarks(&conflict).expect_err("clap conflict");
     assert!(
-        matches!(&err, BookmarkError::InvalidInput { reason }
-            if reason == "the argument '--all-remotes' cannot be used with '--tracked'"),
+        matches!(&err, BookmarkError::InvalidInput { reason, hints }
+            if reason == "the argument '--all-remotes' cannot be used with '--tracked'" && hints.is_empty()),
         "{err:?}"
     );
     assert_eq!(head(&fx.path), before, "refused before the snapshot");
@@ -1065,13 +1065,26 @@ fn list_refusals() {
         ..Default::default()
     };
     let err = repo.list_bookmarks(&bad_pattern).expect_err("pattern");
-    assert!(matches!(&err, BookmarkError::InvalidInput { .. }), "{err:?}");
+    // The CLI's `jj bookmark list bogus:x` @ v0.47.0: its error text and its hint, verbatim.
+    assert!(
+        matches!(&err, BookmarkError::InvalidInput { reason, hints }
+            if reason == "Failed to parse name pattern: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n1 | \
+                          bogus:x\n  | ^-----^\n  |\n  = Invalid string pattern\n2: Invalid string pattern kind \
+                          `bogus:`"
+                && hints.len() == 1
+                && hints[0].starts_with("Try prefixing with one of `exact:`")),
+        "{err:?}"
+    );
     let bad_remote = BookmarkListOptions {
         remotes: strings(&["glob:\"[\""]),
         ..Default::default()
     };
     let err = repo.list_bookmarks(&bad_remote).expect_err("remote pattern");
-    assert!(matches!(&err, BookmarkError::InvalidInput { .. }), "{err:?}");
+    assert!(
+        matches!(&err, BookmarkError::InvalidInput { reason, hints }
+            if reason.starts_with("Failed to parse name pattern: Invalid string pattern\n") && hints.is_empty()),
+        "{err:?}"
+    );
     let parse = BookmarkListOptions {
         revisions: strings(&["("]),
         ..Default::default()

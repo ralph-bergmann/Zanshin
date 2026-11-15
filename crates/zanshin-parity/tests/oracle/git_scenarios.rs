@@ -1288,7 +1288,8 @@ fn tag_track_outcome(repo: &mut zanshin_jj::Repo, untrack: bool, names: &[&str],
 }
 
 /// Every tag scenario: `set` on `@` and on `-r`, refused and allowed moves, the no-op, an empty
-/// target and clap's empty name; `delete` by glob, of a pushed tag and of an unknown name; `track`
+/// target and clap's empty name; `delete` by glob, of a pushed tag, of an unknown name and of a
+/// pattern that does not parse (refused after the snapshot of an edited working copy); `track`
 /// by symbol and by pattern, already tracked, `untrack`, `untrack` of `@git` and of an untracked
 /// tag, and the mixed-syntax refusal.
 #[allow(clippy::too_many_lines)] // WHY: one flat table reads better than a dozen helper fns
@@ -1360,6 +1361,15 @@ pub fn tag_scenarios() -> Vec<Scenario> {
             |repo, _, _| tag_delete_outcome(repo, &["nope"]),
             |_| strings(&["tag", "delete", "nope"]),
         ),
+        Scenario {
+            files: &[("c.txt", "c, edited before a pattern refusal\n")],
+            ..tag(
+                "tag_delete_bad_pattern",
+                TAGGED,
+                |repo, _, _| tag_delete_outcome(repo, &["bogus:x"]),
+                |_| strings(&["tag", "delete", "bogus:x"]),
+            )
+        },
         tag(
             "tag_track_symbol",
             TAG_PUSHED_UNTRACKED,

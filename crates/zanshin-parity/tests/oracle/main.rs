@@ -341,6 +341,7 @@ parity!(
     tag_delete_glob,
     tag_delete_tracked,
     tag_delete_unmatched,
+    tag_delete_bad_pattern,
     tag_track_symbol,
     tag_track_pattern,
     tag_track_already_tracked,
@@ -574,7 +575,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 498);
+    assert_eq!(SCENARIO_IDS.len(), 499);
 }
 
 #[test]

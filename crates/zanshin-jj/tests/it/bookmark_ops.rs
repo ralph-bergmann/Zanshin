@@ -514,17 +514,19 @@ fn delete_refuses_a_malformed_pattern_and_an_empty_pattern_list() {
     let mut repo = Repo::open(&fx.path).unwrap();
     let (before, _) = head_op(&mut repo);
 
-    let malformed = repo.bookmark_delete(&["nosuchkind:foo".to_owned()]).unwrap_err();
-    // jj-lib's OWN reason must survive to the caller, not just the wrapper prefix: every
-    // bad pattern shares the kind "Invalid string pattern", and the part that says WHICH
-    // construct is wrong lives behind `#[source]`. Asserting the whole string here is what
-    // makes dropping the chain a test failure rather than a silent loss of the remedy.
+    let malformed = repo.bookmark_delete(&["bogus:x".to_owned()]).unwrap_err();
+    // The CLI's `Error:` text of `jj bookmark delete bogus:x` @ v0.47.0 and its hint, verbatim:
+    // the part that says WHICH construct is wrong lives behind `#[source]`, so the whole text
+    // is asserted.
     assert!(
         matches!(
             &malformed,
-            MutateError::InvalidInput { reason, .. }
-                if reason == "failed to parse name pattern: Invalid string pattern: \
-                              Invalid string pattern kind `nosuchkind:`"
+            MutateError::InvalidInput { reason, hints }
+                if reason == "Failed to parse name pattern: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n1 \
+                              | bogus:x\n  | ^-----^\n  |\n  = Invalid string pattern\n2: Invalid string pattern \
+                              kind `bogus:`"
+                    && hints.len() == 1
+                    && hints[0].starts_with("Try prefixing with one of `exact:`, `glob:`")
         ),
         "unexpected error: {malformed:?}"
     );

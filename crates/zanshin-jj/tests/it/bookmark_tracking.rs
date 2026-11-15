@@ -275,14 +275,29 @@ fn forget_refuses_no_patterns_before_and_a_bad_one_after_the_snapshot() {
     assert_clap_refusal(&mut fx, &err, "bookmark forget requires at least one name", &before);
     let err = fx
         .repo
-        .bookmark_forget(&names(&["glob:\"[\""]), false)
-        .expect_err("bad glob");
+        .bookmark_forget(&names(&["a b"]), false)
+        .expect_err("a syntax error");
     assert_refused_after_snapshot(
         &mut fx,
         &err,
-        "failed to parse name pattern: Invalid string pattern: error parsing glob '[': unclosed character class; \
-         missing ']'",
+        "Failed to parse name pattern: Syntax error\nCaused by:  --> 1:3\n  |\n1 | a b\n  |   ^---\n  |\n  = expected \
+         <EOI>, `|`, `&`, or `~`",
     );
+    assert_eq!(
+        invalid_reason(&err).1,
+        ["See https://docs.jj-vcs.dev/latest/revsets/ or use `jj help -k revsets` for revsets syntax and how to quote \
+          symbols."],
+        "the CLI's revsets syntax hint"
+    );
+}
+
+/// The CLI's error text for the pattern `glob:"["` under `head` (`jj bookmark track 'glob:"["'`
+/// @ v0.47.0); its glob error carries no hint.
+fn bad_glob_reason(head: &str) -> String {
+    format!(
+        "Failed to parse {head}: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n1 | glob:\"[\"\n  | ^------^\n  \
+         |\n  = Invalid string pattern\n2: error parsing glob '[': unclosed character class; missing ']'"
+    )
 }
 
 // ── track ──────────────────────────────────────────────────────────────────────
@@ -382,32 +397,23 @@ fn track_of_tracked_or_unmatched_refs_warns_and_writes_no_operation() {
 
 #[test]
 fn track_and_untrack_refuse_bad_arguments_after_the_snapshot() {
-    let cases: [(&[&str], &[&str], &str); 4] = [
+    let cases: [(&[&str], &[&str], String); 4] = [
         (
             &["a", "b@origin"],
             &[],
-            "Cannot specify both <bookmark> patterns and <bookmark>@<remote> symbols",
+            "Cannot specify both <bookmark> patterns and <bookmark>@<remote> symbols".to_owned(),
         ),
         (
             &["b@origin"],
             &["origin"],
-            "--remote cannot be used with <bookmark>@<remote> symbols",
+            "--remote cannot be used with <bookmark>@<remote> symbols".to_owned(),
         ),
-        (
-            &["glob:\"[\""],
-            &[],
-            "failed to parse name pattern or remote symbol: Invalid string pattern: error parsing glob '[': \
-             unclosed character class; missing ']'",
-        ),
-        (
-            &["a"],
-            &["glob:\"[\""],
-            "failed to parse name pattern: Invalid string pattern: error parsing glob '[': unclosed character \
-             class; missing ']'",
-        ),
+        (&["glob:\"[\""], &[], bad_glob_reason("name pattern or remote symbol")),
+        (&["a"], &["glob:\"[\""], bad_glob_reason("name pattern")),
     ];
     for untrack in [false, true] {
-        for (texts, remotes, expected) in cases {
+        for (texts, remotes, expected) in &cases {
+            let expected = expected.as_str();
             let mut fx = base();
             fs::write(fx.root.join("dirty.txt"), "dirty\n").expect("write");
             let call = if untrack {

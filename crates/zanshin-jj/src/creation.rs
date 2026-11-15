@@ -313,6 +313,7 @@ fn init_native(options: &InitOptions, created: &mut Created) -> Result<Repo, Rep
     if options.colocate.is_some() || options.object_hash.is_some() {
         return Err(RepoError::InvalidInput {
             reason: "colocation and the object hash apply only to the Git backend".to_owned(),
+            hints: Vec::new(),
         });
     }
     let root = std::fs::canonicalize(&options.path).map_err(|e| RepoError::InitFailed {
@@ -381,7 +382,10 @@ fn fetch_error(e: GitFetchError, cancel: Option<&CancelGuard>) -> RepoError {
 /// `git remote add`; any other `add_remote` failure is a clone failure.
 fn add_remote_error(e: GitRemoteManagementError) -> RepoError {
     match e {
-        GitRemoteManagementError::RemoteName(_) => RepoError::InvalidInput { reason: e.to_string() },
+        GitRemoteManagementError::RemoteName(_) => RepoError::InvalidInput {
+            reason: e.to_string(),
+            hints: Vec::new(),
+        },
         other => clone_failed(other.to_string()),
     }
 }
@@ -424,9 +428,9 @@ fn clone_steps(
     let is_specific = options.branches.is_some() || options.tags.is_some();
     let specific = |texts: &Option<Vec<String>>| -> Result<Option<StringExpression>, RepoError> {
         match texts {
-            Some(texts) => crate::bookmark_ops::union_expression(texts)
+            Some(texts) => crate::bookmark_ops::union_patterns(texts)
                 .map(Some)
-                .map_err(|e| RepoError::InvalidInput { reason: e.to_string() }),
+                .map_err(|(reason, hints)| RepoError::InvalidInput { reason, hints }),
             None => Ok(is_specific.then(StringExpression::none)),
         }
     };
@@ -870,7 +874,7 @@ mod tests {
 
         assert!(matches!(
             add_remote_error(GitRemoteManagementError::RemoteName(GitRemoteNameError::ReservedForLocalGitRepo)),
-            RepoError::InvalidInput { reason } if reason.contains("reserved")
+            RepoError::InvalidInput { reason, hints } if reason.contains("reserved") && hints.is_empty()
         ));
         assert!(matches!(
             add_remote_error(GitRemoteManagementError::InternalGitError(gix::Error::from_error(

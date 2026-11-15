@@ -24,11 +24,12 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 /// Maps a [`BookmarkError`] onto its registered code, the reason in `context`; a failed pre-verb
 /// snapshot goes through the shared [`map_precondition_err`]. Story 9.19 adds the four arms of
-/// the list arguments, all onto codes `map_mutate_err` / `map_topology_err` already emit.
+/// the list arguments, all onto codes `map_mutate_err` / `map_topology_err` already emit, each with
+/// its CLI hints.
 fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
     let (code, reason, hints) = match e {
         BookmarkError::Precondition(e) => return map_precondition_err(e),
-        BookmarkError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason, Vec::new()),
+        BookmarkError::InvalidInput { reason, hints } => (JJ_INVALID_INPUT, reason, hints),
         BookmarkError::RevsetParseError { reason, hints } => (JJ_REVSET_PARSE_ERROR, reason, hints),
         BookmarkError::RevsetResolutionError { reason, hints } => (JJ_REVSET_RESOLUTION_ERROR, reason, hints),
         BookmarkError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason, Vec::new()),
@@ -342,15 +343,18 @@ mod tests {
     }
 
     /// Story 9.19: the four list-argument arms map onto the registered codes, reason in context;
-    /// the revset arms carry their CLI hints (Story 9.25 closing run).
+    /// the revset arms (Story 9.25 closing run) and the pattern refusal carry their CLI hints.
     #[test]
     fn map_bookmarks_err_maps_the_list_argument_refusals() {
         let hints = || vec!["Did you mean `description`?".to_owned()];
         for (e, code, expected_hints) in [
             (
-                BookmarkError::InvalidInput { reason: "r".into() },
+                BookmarkError::InvalidInput {
+                    reason: "r".into(),
+                    hints: hints(),
+                },
                 JJ_INVALID_INPUT,
-                vec![],
+                hints(),
             ),
             (
                 BookmarkError::RevsetParseError {

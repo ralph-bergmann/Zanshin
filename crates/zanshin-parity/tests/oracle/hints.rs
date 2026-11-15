@@ -5,6 +5,7 @@
 //! not-found "Working copy parent: …" render `templates.commit_summary`. Each witness refuses
 //! through Zanshin and through the pinned `jj` on the SAME repo (a refusal writes no operation, so
 //! both see one state) and compares Zanshin's hint with the CLI's `Hint: ` stderr line verbatim.
+//! The name-pattern witnesses (Story 9.59 closing run) compare the whole error text too.
 
 use std::ops::ControlFlow;
 use std::path::Path;
@@ -143,6 +144,84 @@ fn next_not_found_hint_renders_the_working_copy_parent_summary() {
         .expect_err("nothing after @");
     assert_eq!(err.hints(), std::slice::from_ref(&cli), "{err:?}");
     assert!(cli.ends_with(" b-mark | B"), "{cli}");
+}
+
+/// The CLI's refusal of `args`: its `Error:` text without the label (every line before the first
+/// `Hint: ` line) and its `Hint: ` lines without the label.
+#[track_caller]
+fn cli_error(args: &[&str], root: &Path) -> (String, Vec<String>) {
+    let run = jj(root, args);
+    assert!(!run.success, "the CLI refuses {args:?}");
+    let lines: Vec<&str> = run
+        .stderr
+        .lines()
+        .skip_while(|line| !line.starts_with("Error: "))
+        .collect();
+    let error = lines
+        .iter()
+        .take_while(|line| !line.starts_with("Hint: "))
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let error = error
+        .strip_prefix("Error: ")
+        .unwrap_or_else(|| panic!("no Error line in:\n{}", run.stderr));
+    let hints = lines
+        .iter()
+        .filter_map(|line| line.strip_prefix("Hint: "))
+        .map(ToOwned::to_owned)
+        .collect();
+    (error.to_owned(), hints)
+}
+
+/// A refused verb's `jj.invalid_input` reason and hints.
+#[track_caller]
+fn refusal<T: std::fmt::Debug>(result: Result<T, zanshin_jj::MutateError>) -> (String, Vec<String>) {
+    let err = result.expect_err("Zanshin refuses");
+    let reason = err.to_string();
+    let reason = reason.strip_prefix("invalid input: ").expect("an InvalidInput refusal");
+    (reason.to_owned(), err.hints())
+}
+
+/// Story 9.59 closing run: a name pattern that does not parse refuses with the CLI's error text —
+/// "Failed to parse name pattern: …" and the error's `Caused by:` lines — and its hint, verbatim.
+#[test]
+fn bad_name_pattern_refuses_with_the_cli_error_text_and_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(&["git", "init"], &[BASE]);
+    let cli = cli_error(&["tag", "delete", "bogus:x"], &root);
+    let mut repo = Repo::open(&root).expect("open");
+    assert_eq!(refusal(repo.tag_delete(&["bogus:x".to_owned()])), cli);
+    assert!(
+        cli.0
+            .starts_with("Failed to parse name pattern: Invalid string pattern\n"),
+        "{}",
+        cli.0
+    );
+    assert!(
+        cli.1
+            .first()
+            .is_some_and(|h| h.starts_with("Try prefixing with one of ")),
+        "{:?}",
+        cli.1
+    );
+}
+
+/// The same for the tracking verbs' head, "name pattern or remote symbol", on a syntax error.
+#[test]
+fn bad_track_pattern_refuses_with_the_cli_error_text_and_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(&["git", "init"], &[BASE]);
+    let cli = cli_error(&["bookmark", "track", "a b"], &root);
+    let mut repo = Repo::open(&root).expect("open");
+    assert_eq!(refusal(repo.bookmark_track(&["a b".to_owned()], &[])), cli);
+    assert!(
+        cli.0
+            .starts_with("Failed to parse name pattern or remote symbol: Syntax error\n"),
+        "{}",
+        cli.0
+    );
+    assert_eq!(cli.1.len(), 1, "{:?}", cli.1);
 }
 
 /// Fix run 10.2–10.5: a second workspace whose `@`'s tree the default one rewrote is stale (a new

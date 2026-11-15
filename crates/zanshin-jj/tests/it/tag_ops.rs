@@ -263,10 +263,23 @@ fn delete_refusals() {
     fs::write(fx.root.join("dirty.txt"), "dirty\n").expect("write");
     let err = fx.repo.tag_delete(&[]).expect_err("no names");
     assert_clap_refusal(&mut fx, &err, "tag delete requires at least one name", &before);
-    let err = fx.repo.tag_delete(&names(&["glob:\"[\""])).expect_err("bad glob");
-    assert!(
-        invalid_reason(&err).0.starts_with("failed to parse name pattern"),
-        "{err:?}"
+    let err = fx
+        .repo
+        .tag_delete(&names(&["bogus:x"]))
+        .expect_err("no such pattern kind");
+    let (reason, hints) = invalid_reason(&err);
+    assert_eq!(
+        reason,
+        "Failed to parse name pattern: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n1 | bogus:x\n  | \
+         ^-----^\n  |\n  = Invalid string pattern\n2: Invalid string pattern kind `bogus:`",
+        "the CLI's `jj tag delete bogus:x` error text"
+    );
+    assert_eq!(
+        hints,
+        [
+            "Try prefixing with one of `exact:`, `glob:`, `regex:`, `substring:`, or one of these with `-i` suffix \
+          added (e.g. `glob-i:`) for case-insensitive matching"
+        ]
     );
     assert!(
         fx.repo.take_precondition().is_some(),
@@ -522,6 +535,15 @@ fn track_refusals() {
         "--remote cannot be used with <tag>@<remote> symbols",
         &before,
     );
+    // `jj tag track 'glob:"["'` @ v0.47.0: the track head, the glob's cause, no hint.
+    let err = fx.repo.tag_track(&names(&["glob:\"[\""]), &[]).expect_err("bad glob");
+    let (reason, hints) = invalid_reason(&err);
+    assert!(
+        reason.starts_with("Failed to parse name pattern or remote symbol: Invalid string pattern\nCaused by:\n")
+            && reason.ends_with("\n2: error parsing glob '[': unclosed character class; missing ']'"),
+        "{reason}"
+    );
+    assert!(hints.is_empty(), "{hints:?}");
 }
 
 // ── list ───────────────────────────────────────────────────────────────────────

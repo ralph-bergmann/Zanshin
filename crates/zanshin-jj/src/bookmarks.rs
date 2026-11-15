@@ -10,9 +10,9 @@
 //! local target. Re-resolves to the head operation per call (ADR-0002) and never shells to the
 //! `jj` CLI (AR-AP-1).
 //!
-//! Ports `cmd_bookmark_list` (`cli/src/commands/bookmark/list.rs:135-213`), `RefFilterPredicates`,
+//! Ports `cmd_bookmark_list` (`cli/src/commands/bookmark/list.rs:124-249`), `RefFilterPredicates`,
 //! `collect_items`, `SortKey`, `parse_sort_keys` and `sort` (`cli/src/commit_ref_list.rs`) and
-//! `warn_unmatched_local_or_remote_bookmarks` (`bookmark/mod.rs:205-226`), all @ v0.46.0.
+//! `warn_unmatched_local_or_remote_bookmarks` (`bookmark/mod.rs:205-229`), all @ v0.47.0.
 //!
 //! # Deliberate divergences from the CLI
 //!
@@ -100,7 +100,7 @@ pub struct Bookmark {
 }
 
 /// One `--sort` key of `jj bookmark list` (Story 9.19) — the CLI's `SortKey`
-/// (`commit_ref_list.rs:123-147` @ v0.46.0). A `…Desc` key is the CLI's spelling with a trailing
+/// (`commit_ref_list.rs:123-147` @ v0.47.0). A `…Desc` key is the CLI's spelling with a trailing
 /// `-` (`name-`, `author-date-`, …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BookmarkSortKey {
@@ -164,7 +164,7 @@ impl BookmarkSortKey {
 }
 
 /// The arguments of [`crate::Repo::list_bookmarks`] (Story 9.19) — the CLI's `BookmarkListArgs`
-/// (`bookmark/list.rs:52-133` @ v0.46.0) without `-T`. The default is the CLI's own: no argument
+/// (`bookmark/list.rs:49-122` @ v0.47.0) without `-T`. The default is the CLI's own: no argument
 /// given. An empty list means the argument was not given (clap never yields an empty one).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BookmarkListOptions {
@@ -202,6 +202,9 @@ pub enum BookmarkError {
     InvalidInput {
         /// Human-readable reason the input was rejected.
         reason: String,
+        /// The CLI's hint lines for the refusal (a pattern parse failure's), verbatim and in the
+        /// CLI's order; empty for clap's conflicts.
+        hints: Vec<String>,
     },
     /// A `revisions` text is syntactically invalid or names an unknown function (Story 9.19).
     #[error("invalid revset: {reason}")]
@@ -251,7 +254,7 @@ fn rev(e: RevsetError) -> BookmarkError {
     }
 }
 
-/// Refuses clap's `conflicts_with = "all_remotes"` (`bookmark/list.rs:66-80` @ v0.46.0) — before
+/// Refuses clap's `conflicts_with = "all_remotes"` (`bookmark/list.rs:66-78` @ v0.47.0) — before
 /// the pre-verb snapshot ([`crate::Repo::list_bookmarks`]), as the CLI parses its arguments first.
 ///
 /// # Errors
@@ -269,12 +272,13 @@ pub(crate) fn check_list_flags(options: &BookmarkListOptions) -> Result<(), Book
     match conflicting.iter().find(|(_, given)| *given) {
         Some((flag, _)) => Err(BookmarkError::InvalidInput {
             reason: format!("the argument '--all-remotes' cannot be used with '{flag}'"),
+            hints: Vec::new(),
         }),
         None => Ok(()),
     }
 }
 
-/// The CLI's `RefFilterPredicates` (`commit_ref_list.rs:45-61` @ v0.46.0) — shared with the tag
+/// The CLI's `RefFilterPredicates` (`commit_ref_list.rs:45-61` @ v0.47.0) — shared with the tag
 /// list (Story 9.59).
 pub(crate) struct Predicates {
     /// Matches local names.
@@ -345,7 +349,7 @@ impl Item<'_> {
     }
 }
 
-/// The CLI's `collect_items` (`commit_ref_list.rs:63-121` @ v0.46.0): per name in view order, the
+/// The CLI's `collect_items` (`commit_ref_list.rs:63-121` @ v0.47.0): per name in view order, the
 /// local item (with its tracked remote refs) and then one item per untracked remote ref. Bookmarks
 /// and tags (Story 9.59) share it.
 pub(crate) fn collect_items<'a>(
@@ -395,7 +399,7 @@ pub(crate) fn collect_items<'a>(
     items
 }
 
-/// The CLI's `sort` (`commit_ref_list.rs:184-207` @ v0.46.0): loads the primaries' commits when a
+/// The CLI's `sort` (`commit_ref_list.rs:184-207` @ v0.47.0): loads the primaries' commits when a
 /// key needs them, then [`sort_inner`]. Bookmarks and tags (Story 9.59) share it; each maps the
 /// store failure into its own error.
 pub(crate) fn sort(
@@ -414,7 +418,7 @@ pub(crate) fn sort(
     Ok(())
 }
 
-/// The CLI's `sort_inner` (`commit_ref_list.rs:209-298` @ v0.46.0): one stable pass per key, least
+/// The CLI's `sort_inner` (`commit_ref_list.rs:209-298` @ v0.47.0): one stable pass per key, least
 /// significant first, skipping trailing `name` keys because the items already come in name order.
 fn sort_inner(
     items: &mut [Item<'_>],
@@ -452,7 +456,7 @@ fn sort_inner(
     }
 }
 
-/// `warn_unmatched_local_or_remote_bookmarks` (`bookmark/mod.rs:205-226` @ v0.46.0): one warning
+/// `warn_unmatched_local_or_remote_bookmarks` (`bookmark/mod.rs:205-229` @ v0.47.0): one warning
 /// naming every exact name with neither a local bookmark nor a bookmark on any remote.
 pub(crate) fn warn_unmatched(sink: &mut Warnings, view: &jj_lib::view::View, expression: &StringExpression) {
     let unmatched: Vec<String> = expression
@@ -475,7 +479,7 @@ pub(crate) fn warn_unmatched(sink: &mut Warnings, view: &jj_lib::view::View, exp
 }
 
 /// Lists the rows `jj bookmark list` with `options` prints, in its order (FR-JJ-8, Stories 9.29
-/// and 9.19) — `cmd_bookmark_list` (`bookmark/list.rs:135-213` @ v0.46.0) without its template.
+/// and 9.19) — `cmd_bookmark_list` (`bookmark/list.rs:124-249` @ v0.47.0) without its template.
 ///
 /// Names and revisions are OR-ed; `revisions` match LOCAL targets only (parsed and unioned, their
 /// diagnostics under "In revset expression", intersected with `bookmarks()`). The remote filter is
@@ -507,9 +511,9 @@ pub(crate) fn list_bookmarks(
 ) -> Result<Vec<Bookmark>, BookmarkError> {
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let view = readonly.view();
-    let invalid = |reason| BookmarkError::InvalidInput { reason };
+    let invalid = |(reason, hints)| BookmarkError::InvalidInput { reason, hints };
 
-    // Like `cmd_git_push()`, names and revisions are OR-ed (`list.rs:143-147`).
+    // Like `cmd_git_push()`, names and revisions are OR-ed (`list.rs:133-138` @ v0.47.0).
     let name_expr = if !options.names.is_empty() {
         crate::bookmark_ops::union_patterns(&options.names).map_err(invalid)?
     } else if !options.revisions.is_empty() {
@@ -531,7 +535,7 @@ pub(crate) fn list_bookmarks(
     let ignored_tracked_remote = jj_lib::git::get_git_backend(readonly.store())
         .is_ok()
         .then_some(jj_lib::git::REMOTE_NAME_FOR_LOCAL_GIT_REPO);
-    // `--tracked` implies `--remote=~git` by default (`list.rs:171-179`).
+    // `--tracked` implies `--remote=~git` by default (`list.rs:163-172` @ v0.47.0).
     let remote_expr = if !options.remotes.is_empty() {
         crate::bookmark_ops::union_patterns(&options.remotes).map_err(invalid)?
     } else if let (true, Some(ignored)) = (options.tracked, ignored_tracked_remote) {
@@ -574,7 +578,7 @@ struct Lister<'a> {
 }
 
 impl Lister<'_> {
-    /// Appends one item's rows: its primary, then its tracked remote rows (`list.rs:197-200`).
+    /// Appends one item's rows: its primary, then its tracked remote rows (`list.rs:196-199` @ v0.47.0).
     fn push_rows(&self, item: &Item<'_>, out: &mut Vec<Bookmark>) -> Result<(), BookmarkError> {
         let name = item.name.as_str();
         match &item.primary {
@@ -725,8 +729,9 @@ mod tests {
         ] {
             let err = check_list_flags(&options).expect_err("clap refuses it");
             assert!(
-                matches!(&err, BookmarkError::InvalidInput { reason }
-                    if *reason == format!("the argument '--all-remotes' cannot be used with '{flag}'")),
+                matches!(&err, BookmarkError::InvalidInput { reason, hints }
+                    if *reason == format!("the argument '--all-remotes' cannot be used with '{flag}'")
+                        && hints.is_empty()),
                 "{err:?}"
             );
         }
@@ -826,7 +831,7 @@ mod tests {
         })
     }
 
-    /// The CLI's `prepare_data_sort_and_snapshot` (`commit_ref_list.rs:353-450` @ v0.46.0): five
+    /// The CLI's `prepare_data_sort_and_snapshot` (`commit_ref_list.rs:353-450` @ v0.47.0): five
     /// refs, sorted by name, then by `sort_keys`, rendered as the CLI's snapshot rows.
     fn sorted_rows(sort_keys: &[K]) -> Vec<String> {
         let people = ["bob", "alice", "eve", "bob", "bob"];
@@ -925,7 +930,7 @@ mod tests {
             .collect()
     }
 
-    /// The CLI's own sort tests (`commit_ref_list.rs:528-749` @ v0.46.0), expectations verbatim
+    /// The CLI's own sort tests (`commit_ref_list.rs:528-749` @ v0.47.0), expectations verbatim
     /// (trailing blanks trimmed): every key, both directions, and multi-key orders.
     const SORT_CASES: &[(&[K], &[&str])] = &[
         (

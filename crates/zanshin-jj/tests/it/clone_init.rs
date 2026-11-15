@@ -350,7 +350,8 @@ fn an_invalid_remote_name_is_invalid_input_and_cleans_up() {
             ..Default::default()
         });
         assert!(
-            matches!(outcome.result, Err(RepoError::InvalidInput { ref reason }) if reason.contains(expected)),
+            matches!(outcome.result, Err(RepoError::InvalidInput { ref reason, ref hints })
+                if reason.contains(expected) && hints.is_empty()),
             "{name}: {:?}",
             outcome.result
         );
@@ -358,8 +359,8 @@ fn an_invalid_remote_name_is_invalid_input_and_cleans_up() {
     }
 }
 
-/// A `-b` pattern that does not parse is refused (the destination was already created, as in the
-/// CLI, and stays).
+/// A `-b` pattern that does not parse is refused with the CLI's error text and hint (`jj git clone
+/// -b bogus:x` @ v0.47.0); the destination was already created, as in the CLI, and stays.
 #[test]
 fn an_unparsable_branch_pattern_is_refused() {
     let parent = TempDir::new().unwrap();
@@ -367,13 +368,21 @@ fn an_unparsable_branch_pattern_is_refused() {
     let outcome = clone(&CloneOptions {
         source: "file:///nowhere".to_owned(),
         destination: dst.clone(),
-        branches: Some(vec!["glob:[".to_owned()]),
+        branches: Some(vec!["bogus:x".to_owned()]),
         ..Default::default()
     });
-    assert!(
-        matches!(outcome.result, Err(RepoError::InvalidInput { .. })),
-        "{:?}",
-        outcome.result
+    let err = outcome.result.expect_err("the pattern does not parse");
+    assert_eq!(
+        err.to_string(),
+        "invalid input: Failed to parse name pattern: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n1 | \
+         bogus:x\n  | ^-----^\n  |\n  = Invalid string pattern\n2: Invalid string pattern kind `bogus:`"
+    );
+    assert_eq!(
+        err.hints(),
+        [
+            "Try prefixing with one of `exact:`, `glob:`, `regex:`, `substring:`, or one of these with `-i` suffix \
+          added (e.g. `glob-i:`) for case-insensitive matching"
+        ]
     );
     assert!(dst.is_dir() && fs::read_dir(&dst).unwrap().count() == 0);
 }

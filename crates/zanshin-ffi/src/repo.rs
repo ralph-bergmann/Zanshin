@@ -107,7 +107,7 @@ fn map_repo_err_code(e: RepoError) -> FfiErrorObj {
             code: JJ_GIT_REPO_EXISTS.to_owned(),
             context: Some(path.display().to_string()),
         },
-        RepoError::InvalidInput { reason } => FfiErrorObj {
+        RepoError::InvalidInput { reason, .. } => FfiErrorObj {
             report: None,
             hints: Vec::new(),
             code: JJ_INVALID_INPUT.to_owned(),
@@ -2083,10 +2083,11 @@ mod tests {
         );
         let e = map_repo_err(RepoError::InvalidInput {
             reason: "bad pattern".to_owned(),
+            hints: vec!["h".to_owned()],
         });
         assert_eq!(
-            (e.code.as_str(), e.context.as_deref()),
-            (JJ_INVALID_INPUT, Some("bad pattern"))
+            (e.code.as_str(), e.context.as_deref(), e.hints.as_slice()),
+            (JJ_INVALID_INPUT, Some("bad pattern"), ["h".to_owned()].as_slice())
         );
         assert!(matches!(object_hash(fbs::ObjectHash::Sha1), Ok(Some(ObjectHash::Sha1))));
         assert!(matches!(

@@ -838,7 +838,7 @@ const REVSET_SYNTAX_HINT: &str = "See https://docs.jj-vcs.dev/latest/revsets/ or
 
 /// The CLI's `revset_parse_error_hint` (`cli/src/command_error.rs:892-923` @ v0.46.0): only for
 /// the bottom error of the alias chain, usually the root cause.
-fn parse_hint(err: &RevsetParseError) -> Option<String> {
+pub(crate) fn parse_hint(err: &RevsetParseError) -> Option<String> {
     use RevsetParseErrorKind as P;
     let bottom = std::iter::successors(Some(err), |e| e.origin()).last()?;
     match bottom.kind() {

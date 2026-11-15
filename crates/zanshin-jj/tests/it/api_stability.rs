@@ -1079,7 +1079,10 @@ fn bookmark_move_and_list_surface_resolves() {
     assert_ne!(list, zanshin_jj::BookmarkListOptions::default());
 
     let errors = [
-        zanshin_jj::BookmarkError::InvalidInput { reason: "i".to_owned() },
+        zanshin_jj::BookmarkError::InvalidInput {
+            reason: "i".to_owned(),
+            hints: Vec::new(),
+        },
         zanshin_jj::BookmarkError::RevsetParseError {
             reason: "p".to_owned(),
             hints: Vec::new(),
@@ -2715,7 +2718,10 @@ fn story_9_20_push_clone_init_resolves() {
     };
     _ = zanshin_jj::RepoError::DestinationNotEmpty { path: PathBuf::new() };
     _ = zanshin_jj::RepoError::GitRepoExists { path: PathBuf::new() };
-    _ = zanshin_jj::RepoError::InvalidInput { reason: String::new() };
+    _ = zanshin_jj::RepoError::InvalidInput {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
     // Story 9.20 closing run: the clone's `git` subprocess failure is typed.
     _ = zanshin_jj::RepoError::NetworkError { reason: String::new() };
     _ = zanshin_jj::MutateError::PushRefRefused {

@@ -17,14 +17,14 @@
 //! the CLI's "No bookmarks to delete."
 //!
 //! Ports `cli/src/commands/bookmark/create.rs`, `.../delete.rs` and the
-//! `has_tracked_remote_bookmarks` helper from `cli/src/cli_util.rs:3478-3486`, all @ v0.46.0.
+//! `has_tracked_remote_bookmarks` helper from `cli/src/cli_util.rs:3557-3567`, all @ v0.47.0.
 //!
-//! `create` auto-tracks like the CLI (`create.rs:88-111` @ v0.46.0, Story 9.54's closing run):
+//! `create` auto-tracks like the CLI (`create.rs:89-113` @ v0.47.0, Story 9.54's closing run):
 //! every created name a remote's `remotes.<r>.auto-track-bookmarks` ∪
 //! `auto-track-created-bookmarks` matcher accepts is tracked on that remote, if the remote has a
 //! view.
 //!
-//! # Deliberate divergences from the CLI at v0.46.0
+//! # Deliberate divergences from the CLI at v0.47.0
 //!
 //! - **Names are DECODED values, not CLI argument text.** The CLI validates a create name
 //!   with `revset_util::parse_bookmark_name` = `revset::parse_symbol`, i.e. the user must
@@ -41,12 +41,12 @@
 //!   "No bookmarks to delete." are stdout chatter; the machine-readable equivalent of the last
 //!   one is already in the contract: an unchanged `new_op_id` means nothing happened. The
 //!   WARNINGS — "Target revision is empty.", `warn_unmatched_local_bookmarks`' "No matching
-//!   bookmarks for names: …" (`bookmark/mod.rs:185-203`) and "Auto-tracking bookmark that exists
-//!   on the remote: …" (`create.rs:104-108` @ v0.46.0) — ride the call's warnings as
+//!   bookmarks for names: …" (`bookmark/mod.rs:185-203` @ v0.47.0) and "Auto-tracking bookmark that exists
+//!   on the remote: …" (`create.rs:105-110` @ v0.47.0) — ride the call's warnings as
 //!   `jj.bookmark_target_empty` / `jj.bookmark_names_unmatched` (Story 9.32) /
 //!   `jj.bookmark_auto_track_existing`.
 //!
-//! # Move, advance and rename (Story 9.19, ports of `bookmark/{move,advance,rename}.rs` @ v0.46.0)
+//! # Move, advance and rename (Story 9.19, ports of `bookmark/{move,advance,rename}.rs` @ v0.47.0)
 //!
 //! - **Move and advance address bookmarks by EXACT name** — the CLI's `exact:"…"` pattern, never
 //!   its default glob (the epic's 2026-10-14 decision): a GUI names the bookmark it moves, and a
@@ -63,7 +63,7 @@
 //!   under each is dropped (warnings carry code and message only).
 //!
 //! # Set, forget, track and untrack (Story 9.11, ports of `bookmark/{set,forget,track,untrack}.rs`
-//! @ v0.46.0)
+//! @ v0.47.0)
 //!
 //! - **Two name currencies, as the CLI has them.** `set` takes DECODED names, as `create` does
 //!   (its clap parser is `parse_bookmark_name`); `forget` takes pass-through string patterns, as
@@ -76,7 +76,8 @@
 //! - **No terminal UX.** "Created/Moved N bookmarks …", "No bookmarks to forget.", "Forgot N
 //!   local/remote bookmarks.", "Started/Stopped tracking N remote bookmarks." and `track`'s listing
 //!   of conflicted bookmarks after its finish are dropped (an unchanged `new_op_id` says nothing
-//!   happened; `list_bookmarks` re-reads the rows); so is the parse-error hint, as for `delete`.
+//!   happened; `list_bookmarks` re-reads the rows). A pattern parse failure refuses
+//!   `jj.invalid_input` with the CLI's error text and its hint ([`pattern_parse_error`]).
 //!   The warnings ride the call's warnings: `jj.remote_bookmarks_unmatched`,
 //!   `jj.bookmark_remotes_unmatched`, `jj.bookmark_already_tracked`, `jj.bookmark_not_tracked`,
 //!   `jj.bookmark_git_tracking_untrack`, plus the shared `jj.bookmark_target_empty`,
@@ -100,7 +101,7 @@ use jj_lib::transaction::Transaction;
 use jj_lib::view::View;
 use jj_lib::workspace::Workspace;
 
-use crate::mutate::{self, finish_or_no_op_at, flatten_chain, MutateError, MutationResult};
+use crate::mutate::{self, finish_or_no_op_at, MutateError, MutationResult};
 use crate::snapshot::VerbContext;
 use crate::warning::{WarningKind, Warnings};
 use crate::ChangeId;
@@ -122,10 +123,10 @@ pub(crate) fn validate_names(noun: &str, verb: &str, names: &[String]) -> Result
 }
 
 /// Whether `bookmark` has any TRACKED remote bookmark — the CLI's
-/// `cli_util.rs:3478-3486` `has_tracked_remote_bookmarks`.
+/// `cli_util.rs:3557-3567` `has_tracked_remote_bookmarks` @ v0.47.0.
 ///
 /// On a GIT-backed repo the default-ignored remote is excluded — jj-lib's reserved `git`
-/// (`cli_util.rs:3465-3474` `default_ignored_remote_name`) — which is why a colocated `foo@git`
+/// (`frontend/src/revset_util.rs:34-45` `default_ignored_remote_name` @ v0.47.0) — which is why a colocated `foo@git`
 /// does NOT block `create foo` there. The exclusion is git-specific: on any other backend the
 /// matcher is `StringMatcher::all()`, so nothing is ignored and a tracked `foo@git` DOES block.
 fn has_tracked_remote_bookmarks(repo: &dyn jj_lib::repo::Repo, bookmark: &RefName) -> bool {
@@ -142,7 +143,7 @@ fn has_tracked_remote_bookmarks(repo: &dyn jj_lib::repo::Repo, bookmark: &RefNam
 }
 
 /// The remotes a bookmark verb considers: all but the default-ignored one — jj-lib's reserved `git`
-/// on a GIT-backed repo (`cli_util.rs:3465-3474` `default_ignored_remote_name` @ v0.46.0), every
+/// on a GIT-backed repo (`frontend/src/revset_util.rs:34-45` `default_ignored_remote_name` @ v0.47.0), every
 /// remote otherwise. Shared by [`has_tracked_remote_bookmarks`] and [`rename`].
 fn ignored_remote_matcher(store: &jj_lib::store::Store) -> StringMatcher {
     match default_ignored_remote(store) {
@@ -151,9 +152,9 @@ fn ignored_remote_matcher(store: &jj_lib::store::Store) -> StringMatcher {
     }
 }
 
-/// The CLI's `default_ignored_remote_name` (`cli_util.rs:3463-3474` @ v0.46.0): jj-lib's reserved
-/// `git` on a GIT-backed repo, no remote otherwise. `forget` skips it when untracking, `track` /
-/// `untrack` leave it out of their default remote filter (Story 9.11), and so do the tag verbs
+/// The CLI's `default_ignored_remote_name` (`frontend/src/revset_util.rs:34-45` @ v0.47.0): jj-lib's
+/// reserved `git` on a GIT-backed repo, no remote otherwise. `forget` skips it when untracking, `track`
+/// / `untrack` leave it out of their default remote filter (Story 9.11), and so do the tag verbs
 /// (Story 9.59).
 pub(crate) fn default_ignored_remote(store: &jj_lib::store::Store) -> Option<&'static RemoteName> {
     jj_lib::git::get_git_backend(store)
@@ -161,50 +162,40 @@ pub(crate) fn default_ignored_remote(store: &jj_lib::store::Store) -> Option<&'s
         .then_some(jj_lib::git::REMOTE_NAME_FOR_LOCAL_GIT_REPO)
 }
 
-/// Renders a pattern parse failure the way the CLI's two lines do — its message plus its
-/// `Caused by:` — as one string, and WITHOUT the terminal rendering in between.
-///
-/// `RevsetParseError`'s own `Display` is a multi-line pest caret diagram pointing into the
-/// pattern text, which is terminal presentation the GUI replaces (ADR-0003) — flattening the
-/// whole error would ship an ASCII drawing into `error.context`. But the kind ALONE is
-/// useless: every malformed glob, regex and unknown prefix renders as the same "Invalid
-/// string pattern". jj-lib keeps the part a user can act on — "error parsing glob '[':
-/// unclosed character class; missing ']'", "Invalid string pattern kind bogus:" — behind
-/// `#[source]`. So: the kind as the head, then the flattened `source()` chain.
-///
-/// `what` names the parsed thing in the head: "name pattern", or `track`/`untrack`'s "name pattern
-/// or remote symbol" (`revset_util.rs:399-402` @ v0.46.0).
-fn describe_pattern_parse_error(what: &str, e: &RevsetParseError) -> String {
-    let mut reason = format!("failed to parse {what}: {}", e.kind());
-    if let Some(source) = std::error::Error::source(e) {
-        reason.push_str(": ");
-        reason.push_str(&flatten_chain(source));
-    }
-    reason
+/// A pattern parse failure as the CLI's `user_error_with_message` reports it
+/// (`revset_util.rs:333-339` / `:354-364` @ v0.47.0): the `Error:` text — "Failed to parse
+/// {what}: {kind}" plus the error's own `Caused by:` lines, its pest caret diagram included — and
+/// `revset_parse_error_hint`'s line. `what` is "name pattern", or `track`/`untrack`'s "name pattern
+/// or remote symbol".
+fn pattern_parse_error(what: &str, err: &RevsetParseError) -> (String, Vec<String>) {
+    let mut lines = vec![format!("Failed to parse {what}: {}", err.kind())];
+    lines.extend(crate::warning::caused_by(Some(err)));
+    (lines.join("\n"), crate::revset::parse_hint(err).into_iter().collect())
 }
 
-/// Parses each pattern and UNIONS them — the CLI's `revset_util.rs:364-384` @ v0.46.0
+/// Parses each pattern and UNIONS them — the CLI's `revset_util.rs:322-343` @ v0.47.0
 /// `parse_union_name_patterns`, minus its `ui` diagnostics printing.
 ///
 /// A bare word is a GLOB, not an exact name (`jj_lib::revset`'s `expect_string_expression`
 /// lowers an identifier or quoted string to `StringPattern::glob`) — though a glob without
 /// metacharacters IS exact, which is what [`StringExpression::exact_strings`] then reports.
 pub(crate) fn union_expression(patterns: &[String]) -> Result<StringExpression, MutateError> {
-    union_patterns(patterns).map_err(MutateError::invalid)
+    union_patterns(patterns).map_err(|(reason, hints)| MutateError::InvalidInput { reason, hints })
 }
 
-/// [`union_expression`] with the refusal as its plain reason — `bookmark list`'s name and remote
-/// patterns map it into [`crate::BookmarkError::InvalidInput`] (Story 9.19).
-pub(crate) fn union_patterns(patterns: &[String]) -> Result<StringExpression, String> {
+/// [`union_expression`] with the refusal as its plain `(reason, hints)` — `bookmark list`'s name
+/// and remote patterns map it into [`crate::BookmarkError::InvalidInput`] (Story 9.19), `clone`'s
+/// branch patterns into [`crate::RepoError::InvalidInput`].
+pub(crate) fn union_patterns(patterns: &[String]) -> Result<StringExpression, (String, Vec<String>)> {
     // The CLI prints this sink's DIAGNOSTICS through `print_parse_diagnostics`
-    // (`revset_util.rs:364-384` @ v0.46.0), a `ui.warning_*` site. Dropped here because jj-lib
-    // 0.46 still emits no diagnostic for string patterns, so the sink always stays empty (the "Not
+    // (`revset_util.rs:341` @ v0.47.0), a `ui.warning_*` site. Dropped here because jj-lib 0.47
+    // still emits no diagnostic for string patterns, so the sink always stays empty (the "Not
     // ported / out of scope" entry of `docs/rust-error-codes.md` § Warning Codes).
     let mut diagnostics = RevsetDiagnostics::new();
     let mut expressions = Vec::with_capacity(patterns.len());
     for pattern in patterns {
-        let expression = parse_string_expression(&mut diagnostics, pattern)
-            .map_err(|e| describe_pattern_parse_error("name pattern", &e))?;
+        let expression =
+            parse_string_expression(&mut diagnostics, pattern).map_err(|e| pattern_parse_error("name pattern", &e))?;
         expressions.push(expression);
     }
     Ok(StringExpression::union_all(expressions))
@@ -224,8 +215,8 @@ pub(crate) fn join_symbols(names: &[RefNameBuf]) -> String {
         .join(", ")
 }
 
-/// The CLI's auto-tracking of one CREATED bookmark (`create.rs:93-110`, `set.rs:101-117` @
-/// v0.46.0), shared by [`create`] and [`set`]: on every remote, in name order, whose matcher
+/// The CLI's auto-tracking of one CREATED bookmark (`create.rs:97-112`, `set.rs:105-120` @
+/// v0.47.0), shared by [`create`] and [`set`]: on every remote, in name order, whose matcher
 /// accepts `name` and that has a remote view in `base` (the pre-call view), `name@remote` becomes
 /// tracked (`MutableRepo::track_remote_bookmark` merges the remote target into the local one);
 /// when that view already holds the name, `jj.bookmark_auto_track_existing` is warned first.
@@ -263,16 +254,16 @@ fn auto_track_created(
 /// pre-verb snapshot has just brought up to date (Story 9.26).
 ///
 /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST, exactly as the CLI's
-/// loop is (`create.rs:64-83` returns on the first offender, before its transaction opens):
+/// loop is (`create.rs:65-84` @ v0.47.0 returns on the first offender, before its transaction opens):
 /// a run whose second name already exists creates nothing at all, not even the first.
 ///
 /// Description: `create bookmark {names} pointing to commit {id}` with `names` joined `", "`
-/// in argument order and `id` the FULL commit hex (`create.rs:123-131`).
+/// in argument order and `id` the FULL commit hex (`create.rs:124-132` @ v0.47.0).
 ///
 /// A target that is empty and undescribed (`Commit::is_discardable`) warns
-/// `jj.bookmark_target_empty` after both guards passed (`create.rs:84-86`, Story 9.32).
+/// `jj.bookmark_target_empty` after both guards passed (`create.rs:85-87` @ v0.47.0, Story 9.32).
 ///
-/// Auto-tracking (`create.rs:88-111` @ v0.46.0): after that warning every remote's
+/// Auto-tracking (`create.rs:89-113` @ v0.47.0): after that warning every remote's
 /// `remotes.<r>.auto-track-bookmarks` ∪ `auto-track-created-bookmarks` matcher is parsed — all of
 /// them, even when no name matches — and then, per name in argument order, the local target is
 /// set and the name is tracked (`MutableRepo::track_remote_bookmark`, which merges the remote
@@ -306,7 +297,7 @@ pub(crate) fn create(
     let ref_names = validate_names("bookmark", "create", names)?;
 
     // ONE head load for the whole verb, as the CLI has. The revision has to resolve before
-    // the transaction opens (CLI order, `create.rs:57-60`) because the op-log description
+    // the transaction opens (CLI order, `create.rs:59-61` @ v0.47.0) because the op-log description
     // embeds the target's full commit hex — so this repo is resolved here and then handed
     // to `finish_or_no_op_at`, which starts its transaction from THIS view rather than
     // loading the head again. See that function's doc for why a second load would be wrong.
@@ -323,13 +314,13 @@ pub(crate) fn create(
         id = target_id.hex(),
     );
     // Read here, while `ctx` is not yet lent to the transaction, but refused only where the CLI
-    // parses (`create.rs:89-91`): after both guards and the empty-target warning.
+    // parses (`create.rs:90-92` @ v0.47.0): after both guards and the empty-target warning.
     let auto_track = crate::config::remote_auto_track_bookmarks_for_new_bookmarks(&ctx.config);
     let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, sink| {
         // Both guards for EVERY name run before ANY write, and returning `Err` from here
         // drops the transaction unwritten — so a refusal creates nothing, not even the
         // names that precede the offender. The CLI reaches the same observable outcome by
-        // running its loop before it opens a transaction at all (`create.rs:64-83`); the
+        // running its loop before it opens a transaction at all (`create.rs:65-84` @ v0.47.0); the
         // difference is invisible from outside, and checking inside the transaction is what
         // lets both the guards and the writes see the single view loaded above.
         for name in &ref_names {
@@ -351,7 +342,7 @@ pub(crate) fn create(
         }
         let auto_track = auto_track.map_err(mutate::cfg)?;
         // The CLI reads "has a view" and "already on the remote" off the view BEFORE any write
-        // (`create.rs:92`, `readonly_repo`), which is also the view the guards read.
+        // (`create.rs:93` @ v0.47.0, `readonly_repo`), which is also the view the guards read.
         let base = tx.base_repo().clone();
         for name in &ref_names {
             tx.repo_mut()
@@ -374,7 +365,7 @@ pub(crate) fn create(
 /// operators), so a bookmark whose name contains `*`, `?` or `[` needs `exact:"…"`.
 ///
 /// Matching NOTHING is a SUCCESS, never a refusal: no operation is written and the returned
-/// `new_op_id` is the PRE-CALL op-log head (`delete.rs:63-67` likewise returns before opening
+/// `new_op_id` is the PRE-CALL op-log head (`delete.rs:64-67` @ v0.47.0 likewise returns before opening
 /// a transaction). A CONFLICTED local bookmark is deleted like any other —
 /// `RefTarget::absent()` removes it regardless.
 ///
@@ -384,11 +375,11 @@ pub(crate) fn create(
 /// 9.11) is the verb that does not.
 ///
 /// Description: `delete bookmark {names}` with the MATCHED names joined `", "` in VIEW
-/// (lexicographic) order (`delete.rs:79-89`).
+/// (lexicographic) order (`delete.rs:79-89` @ v0.47.0).
 ///
 /// An EXACT pattern — a bare name without glob metacharacters included — that names no local
 /// bookmark warns `jj.bookmark_names_unmatched`, before the no-op check, exactly where the CLI
-/// warns (`delete.rs:63`, Story 9.32).
+/// warns (`delete.rs:63` @ v0.47.0, Story 9.32).
 ///
 /// # Errors
 ///
@@ -419,7 +410,7 @@ pub(crate) fn delete(
         .local_bookmarks_matching(&matcher)
         .map(|(name, _)| name.to_owned())
         .collect();
-    // `warn_unmatched_local_bookmarks` (`bookmark/mod.rs:185-203`).
+    // `warn_unmatched_local_bookmarks` (`bookmark/mod.rs:185-203` @ v0.47.0).
     let unmatched: Vec<String> = expression
         .exact_strings()
         .map(RefName::new)
@@ -444,7 +435,7 @@ pub(crate) fn delete(
 }
 
 /// The arguments of [`crate::Repo::bookmark_move`] (Story 9.19) — the CLI's `BookmarkMoveArgs`
-/// (`bookmark/move.rs:44-70` @ v0.46.0).
+/// (`bookmark/move.rs:45-72` @ v0.47.0).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BookmarkMoveOptions {
     /// The local bookmarks to move, by EXACT name (the CLI's `exact:"…"` pattern, never its
@@ -490,7 +481,7 @@ fn exact_names(names: &[String]) -> StringExpression {
     }
 }
 
-/// `warn_unmatched_local_bookmarks` (`bookmark/mod.rs:185-203` @ v0.46.0): one warning naming
+/// `warn_unmatched_local_bookmarks` (`bookmark/mod.rs:185-203` @ v0.47.0): one warning naming
 /// every exact name with no local bookmark.
 fn warn_unmatched_local(sink: &mut Warnings, view: &jj_lib::view::View, expression: &StringExpression) {
     let unmatched: Vec<String> = expression
@@ -534,7 +525,7 @@ fn matching_locals(
     Ok(names)
 }
 
-/// The shared tail of `move` and `advance` (`move.rs:114-178`, `advance.rs:149-198` @ v0.46.0):
+/// The shared tail of `move` and `advance` (`move.rs:114-175`, `advance.rs:154-217` @ v0.47.0):
 /// drop the no-ops, finish without an operation when none is left, refuse the first backwards
 /// move unless `backwards` is `None`, warn an empty target, then point every bookmark at it.
 fn point_bookmarks(
@@ -588,7 +579,7 @@ fn point_bookmarks(
     Ok(finished.mutation)
 }
 
-/// Refuses clap's required `source` group of `bookmark move` (`move.rs:45` @ v0.46.0): at least
+/// Refuses clap's required `source` group of `bookmark move` (`move.rs:46` @ v0.47.0): at least
 /// one of `names` and `from` — before the pre-verb snapshot ([`crate::Repo::bookmark_move`]), as
 /// the CLI parses its arguments first.
 ///
@@ -605,7 +596,7 @@ pub(crate) fn check_move_args(options: &BookmarkMoveOptions) -> Result<(), Mutat
 }
 
 /// Moves existing local bookmarks to one revision (Story 9.19) — the CLI's `jj bookmark move`
-/// (`bookmark/move.rs:72-179` @ v0.46.0), names given EXACTLY.
+/// (`bookmark/move.rs:74-175` @ v0.47.0), names given EXACTLY.
 ///
 /// The checks run in the CLI's order: at least one of `names`/`from` (clap's required group,
 /// [`check_move_args`], before the snapshot), resolve `to` (default `@`), evaluate `from` (unioned, its diagnostics under "In revset
@@ -617,7 +608,7 @@ pub(crate) fn check_move_args(options: &BookmarkMoveOptions) -> Result<(), Mutat
 /// point every matched bookmark at the target as a NORMAL target, so a conflicted one is resolved.
 ///
 /// Description: `point bookmark {names} to commit {id}` with the moved names in view order and the
-/// full commit hex (`move.rs:164-176`).
+/// full commit hex (`move.rs:162-173` @ v0.47.0).
 ///
 /// # Errors
 ///
@@ -663,7 +654,7 @@ pub(crate) fn r#move(
 }
 
 /// The hint the CLI puts on every failure to resolve `bookmark advance`'s DEFAULT target
-/// (`bookmark/advance.rs:90-99` @ v0.46.0).
+/// (`bookmark/advance.rs:94-103` @ v0.47.0).
 const ADVANCE_TO_HINT: &str =
     "`revsets.bookmark-advance-to` controls the default target. You can also specify a specific target with `--to`.";
 
@@ -704,7 +695,7 @@ fn advance_target(
 }
 
 /// Advances the closest bookmarks to a revision (Story 9.19) — the CLI's `jj bookmark advance`
-/// (`bookmark/advance.rs:68-199` @ v0.46.0), names given EXACTLY.
+/// (`bookmark/advance.rs:74-217` @ v0.47.0), names given EXACTLY.
 ///
 /// The target is `to`, or `revsets.bookmark-advance-to` (default `@`) resolved to exactly one
 /// commit. With `names`, those local bookmarks are the candidates (unmatched names warn
@@ -763,8 +754,8 @@ pub(crate) fn advance(
     point_bookmarks(workspace, ctx, readonly, Matched { target, names }, Some(&refusal))
 }
 
-/// Refuses an EMPTY rename name — the one refusal `parse_bookmark_name` (`rename.rs:37-43` @
-/// v0.46.0, clap's `value_parser`) makes in every spelling — before the pre-verb snapshot
+/// Refuses an EMPTY rename name — the one refusal `parse_bookmark_name` (`rename.rs:36-42` @
+/// v0.47.0, clap's `value_parser`) makes in every spelling — before the pre-verb snapshot
 /// ([`crate::Repo::bookmark_rename`]), as the CLI parses its arguments first.
 ///
 /// # Errors
@@ -779,12 +770,12 @@ pub(crate) fn check_rename_args(old: &str, new: &str) -> Result<(), MutateError>
 
 /// What a rename transaction found that the CLI warns about only after its finish.
 struct RenameFacts {
-    /// The old name had a present, tracked remote bookmark (`rename.rs:96-98`).
+    /// The old name had a present, tracked remote bookmark (`rename.rs:110-112` @ v0.47.0).
     tracked_present_old_remotes: bool,
 }
 
 /// Renames a local bookmark (Story 9.19) — the CLI's `jj bookmark rename` (`bookmark/rename.rs:
-/// 49-201` @ v0.46.0). `old` and `new` are DECODED names, as [`create`]'s are.
+/// 49-209` @ v0.47.0). `old` and `new` are DECODED names, as [`create`]'s are.
 ///
 /// The checks run in the CLI's order: "No such bookmark: {old}"; without `overwrite_existing` a
 /// present `new` refuses — so `old == new` without it refuses too; `old == new` is then a success
@@ -798,7 +789,7 @@ struct RenameFacts {
 /// of `new` warn `jj.bookmark_tracked_remotes_exist`. On a GIT-backed repo the remote `git` is
 /// left out of all of it, as in the CLI.
 ///
-/// Description: `rename bookmark {old} to {new}`, both as revset symbols (`rename.rs:156-163`).
+/// Description: `rename bookmark {old} to {new}`, both as revset symbols (`rename.rs:161-169` @ v0.47.0).
 ///
 /// # Errors
 ///
@@ -913,7 +904,7 @@ pub(crate) fn rename(
     Ok(finished.mutation)
 }
 
-/// Refuses clap's `required = true` and an EMPTY name of `bookmark set` (`set.rs:54-56` @ v0.46.0,
+/// Refuses clap's `required = true` and an EMPTY name of `bookmark set` (`set.rs:57-59` @ v0.47.0,
 /// its `value_parser` is `parse_bookmark_name`) — before the pre-verb snapshot
 /// ([`crate::Repo::bookmark_set`]), as the CLI parses its arguments first.
 ///
@@ -941,7 +932,7 @@ pub(crate) fn check_names_given(noun: &str, verb: &str, names: &[String]) -> Res
 }
 
 /// Creates or moves local bookmarks to one revision by name (Story 9.11) — the CLI's `jj bookmark
-/// set` (`bookmark/set.rs:61-153` @ v0.46.0). `names` are DECODED names, as [`create`]'s are.
+/// set` (`bookmark/set.rs:62-151` @ v0.47.0). `names` are DECODED names, as [`create`]'s are.
 ///
 /// `revision` resolves as [`create`]'s (`None` = `@`). Per name in ARGUMENT order, fail-fast: a
 /// name is NEW when its local target is absent and it has no tracked remote bookmark (an absent
@@ -1019,8 +1010,8 @@ pub(crate) fn set(
     Ok(finished.mutation)
 }
 
-/// Forgets bookmarks (Story 9.11) — the CLI's `jj bookmark forget` (`bookmark/forget.rs:61-131` @
-/// v0.46.0): the local bookmark goes WITHOUT becoming a deletion to push.
+/// Forgets bookmarks (Story 9.11) — the CLI's `jj bookmark forget` (`bookmark/forget.rs:61-129` @
+/// v0.47.0): the local bookmark goes WITHOUT becoming a deletion to push.
 ///
 /// `patterns` are pass-through string patterns, unioned, a bare one a GLOB (as [`delete`]'s). They
 /// match bookmark NAMES with a local or a remote row (`View::bookmarks`); an exact name with
@@ -1085,9 +1076,9 @@ pub(crate) fn forget(
 /// `tag untrack` (Story 9.59).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Tracking {
-    /// `jj bookmark track` (`bookmark/track.rs` @ v0.46.0) / `jj tag track`.
+    /// `jj bookmark track` (`bookmark/track.rs` @ v0.47.0) / `jj tag track`.
     Track,
-    /// `jj bookmark untrack` (`bookmark/untrack.rs` @ v0.46.0) / `jj tag untrack`.
+    /// `jj bookmark untrack` (`bookmark/untrack.rs` @ v0.47.0) / `jj tag untrack`.
     Untrack,
 }
 
@@ -1095,14 +1086,15 @@ pub(crate) enum Tracking {
 pub(crate) type MatchedRemote = (RemoteRefSymbolBuf, bool);
 
 /// Splits `BOOKMARK[@REMOTE]` / `TAG[@REMOTE]` texts into name patterns and remote symbols — the
-/// CLI's `parse_name_patterns_or_remote_symbols` (`revset_util.rs:386-416` @ v0.46.0), minus its
-/// parse diagnostics (none for string patterns in jj-lib 0.46, as [`union_patterns`] notes) and its
-/// hint.
+/// CLI's `parse_name_patterns_or_remote_symbols` (`revset_util.rs:345-380` @ v0.47.0), minus its
+/// parse diagnostics (none for string patterns in jj-lib 0.47, as [`union_patterns`] notes).
 pub(crate) fn parse_names_or_symbols(
     texts: &[String],
 ) -> Result<(Vec<StringExpression>, Vec<RemoteRefSymbolBuf>), MutateError> {
-    let wrap =
-        |e: RevsetParseError| MutateError::invalid(describe_pattern_parse_error("name pattern or remote symbol", &e));
+    let wrap = |e: RevsetParseError| {
+        let (reason, hints) = pattern_parse_error("name pattern or remote symbol", &e);
+        MutateError::InvalidInput { reason, hints }
+    };
     let mut diagnostics = RevsetDiagnostics::new();
     let mut patterns = Vec::new();
     let mut symbols = Vec::new();
@@ -1117,8 +1109,8 @@ pub(crate) fn parse_names_or_symbols(
     Ok((patterns, symbols))
 }
 
-/// The CLI's mixed-syntax refusals of `track` / `untrack` (`bookmark/track.rs:84-95`,
-/// `bookmark/untrack.rs:80-91` @ v0.46.0, `tag/track.rs:80-88`, `tag/untrack.rs:83-91` @ v0.47.0),
+/// The CLI's mixed-syntax refusals of `track` / `untrack` (`bookmark/track.rs:84-94`,
+/// `bookmark/untrack.rs:84-94`, `tag/track.rs:80-88`, `tag/untrack.rs:83-91` @ v0.47.0),
 /// `noun` (`bookmark`, `tag`) in their `<noun>` placeholders.
 pub(crate) fn refuse_mixed_syntax(
     noun: &str,
@@ -1139,7 +1131,7 @@ pub(crate) fn refuse_mixed_syntax(
     Ok(())
 }
 
-/// The CLI's `resolve_trackable_remote_bookmarks` (`bookmark/mod.rs:117-145` @ v0.46.0): a symbol
+/// The CLI's `resolve_trackable_remote_bookmarks` (`bookmark/mod.rs:117-146` @ v0.47.0): a symbol
 /// is trackable when its remote bookmark is present, or its local bookmark is present and its
 /// remote has a view; sorted and deduplicated. The others warn `jj.remote_bookmarks_unmatched`.
 fn resolve_trackable(sink: &mut Warnings, view: &View, symbols: &[RemoteRefSymbolBuf]) -> Vec<MatchedRemote> {
@@ -1167,7 +1159,7 @@ fn resolve_trackable(sink: &mut Warnings, view: &View, symbols: &[RemoteRefSymbo
     trackable
 }
 
-/// The CLI's `trackable_remote_bookmarks_matching` (`bookmark/mod.rs:147-163` @ v0.46.0): the
+/// The CLI's `trackable_remote_bookmarks_matching` (`bookmark/mod.rs:148-163` @ v0.47.0): the
 /// present-or-tracked remote bookmarks matching both matchers, then — per matching remote view —
 /// every matching LOCAL name that view lacks, as an absent (so untracked) `ABSENT_REMOTE_REF`.
 fn trackable_matching(view: &View, bookmarks: &StringMatcher, remotes: &StringMatcher) -> Vec<MatchedRemote> {
@@ -1182,7 +1174,7 @@ fn trackable_matching(view: &View, bookmarks: &StringMatcher, remotes: &StringMa
     present.chain(absent).collect()
 }
 
-/// The CLI's `warn_unmatched_remotes` (`bookmark/mod.rs:229-243` @ v0.46.0, `tag/mod.rs:166-180` @
+/// The CLI's `warn_unmatched_remotes` (`bookmark/mod.rs:231-246`, `tag/mod.rs:166-180` @
 /// v0.47.0): one `kind` warning naming every exact remote name with no remote view.
 pub(crate) fn warn_unmatched_remotes(
     kind: WarningKind,
@@ -1202,7 +1194,7 @@ pub(crate) fn warn_unmatched_remotes(
 }
 
 /// Starts or stops tracking remote bookmarks (Story 9.11) — the CLI's `jj bookmark track` /
-/// `untrack` (`bookmark/track.rs:76-148`, `untrack.rs:69-142` @ v0.46.0), by `tracking`.
+/// `untrack` (`bookmark/track.rs:74-142`, `untrack.rs:71-148` @ v0.47.0), by `tracking`.
 ///
 /// `names` are `BOOKMARK[@REMOTE]` texts passed through: a `name@remote` symbol names one remote
 /// bookmark exactly (revset-quoted where needed, e.g. `"a b"@origin`), anything else is a string
@@ -1301,7 +1293,7 @@ pub(crate) fn track_or_untrack(
 
 /// What `jj bookmark move <name> --to <target>` would do to the one LOCAL bookmark named exactly
 /// `name` (Story 9.31) — the plan of `cmd_bookmark_move` (`cli/src/commands/bookmark/move.rs` @
-/// v0.46.0) for an exact name.
+/// v0.47.0) for an exact name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BookmarkMovePlan {
     /// Nothing to move: no local bookmark has that name, or it already points at the target (the
@@ -1317,7 +1309,7 @@ pub(crate) enum BookmarkMovePlan {
 /// Plans moving the local bookmark `name` to `target`, an already-resolved commit — the CLI
 /// resolves `--to` before it matches names. A bookmark already at `target`, or no local bookmark
 /// of that exact name, is [`BookmarkMovePlan::NoOp`]; otherwise the CLI's `is_fast_forward`
-/// (`bookmark/mod.rs:165-182`) decides between [`BookmarkMovePlan::FastForward`] and
+/// (`bookmark/mod.rs:165-182` @ v0.47.0) decides between [`BookmarkMovePlan::FastForward`] and
 /// [`BookmarkMovePlan::Backwards`]. Reads the view of `repo` only. `drop_actions`' bookmark row
 /// and the `bookmark move` / `advance` verbs ([`r#move`], [`advance`], Story 9.19) call this one
 /// fn, so a row and the verb agree by construction.
@@ -1341,7 +1333,7 @@ pub(crate) fn plan_bookmark_move(
     })
 }
 
-/// The CLI's `is_fast_forward` (`bookmark/mod.rs:165-182` @ v0.46.0): some present add of the old
+/// The CLI's `is_fast_forward` (`bookmark/mod.rs:165-182` @ v0.47.0): some present add of the old
 /// target is an ancestor of the new one — "any", not "all", so a conflicted bookmark can be
 /// resolved by moving it to a descendant of one side. An absent old target is a fast-forward.
 fn is_fast_forward(
@@ -1406,50 +1398,63 @@ mod tests {
         assert_eq!(join_symbols(&[]), "");
     }
 
-    /// A malformed pattern is the caller's problem, and jj-lib's ACTIONABLE reason is
-    /// forwarded — not merely its kind, which is the same opaque "Invalid string pattern"
-    /// for every bad glob, bad regex and unknown prefix. The detail lives behind
-    /// `#[source]`, so these assertions name the offending construct: a `kind()`-only
-    /// rendering, or one that dropped the chain, would fail here.
+    /// The reason and hints of a refusal `union_expression` / `parse_names_or_symbols` made.
+    #[track_caller]
+    fn refusal(err: &MutateError) -> (String, Vec<String>) {
+        let rendered = err.to_string();
+        let reason = rendered
+            .strip_prefix("invalid input: ")
+            .expect("an InvalidInput refusal");
+        (reason.to_owned(), err.hints())
+    }
+
+    /// The CLI's revset-syntax hint, `revset_parse_error_hint`'s line for a syntax error.
+    const SYNTAX_HINT: &str = "See https://docs.jj-vcs.dev/latest/revsets/ or use `jj help -k revsets` for revsets \
+                               syntax and how to quote symbols.";
+
+    /// A malformed pattern refuses with the CLI's `Error:` text verbatim (`jj bookmark delete …` @
+    /// v0.47.0): the head with the kind, then the error's own `Caused by:` lines — the pest
+    /// diagram and jj-lib's actionable source ("error parsing glob …", "… kind `bogus:`") — and
+    /// `revset_parse_error_hint`'s line where the CLI prints one.
     #[test]
-    fn union_matcher_forwards_jj_libs_own_reason_for_a_malformed_pattern() {
-        let bad_glob = union_matcher(&["glob:\"[\"".to_owned()]).expect_err("an unterminated glob class");
-        assert!(
-            matches!(
-                &bad_glob,
-                MutateError::InvalidInput { reason, .. }
-                    if reason == "failed to parse name pattern: Invalid string pattern: \
-                                  error parsing glob '[': unclosed character class; missing ']'"
-            ),
-            "unexpected error: {bad_glob:?}"
+    fn union_matcher_refuses_with_the_cli_error_text_and_hint() {
+        let bad_glob = refusal(&union_matcher(&["glob:\"[\"".to_owned()]).expect_err("an unterminated glob class"));
+        assert_eq!(
+            bad_glob,
+            (
+                "Failed to parse name pattern: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n1 | glob:\"[\"\n  \
+                 | ^------^\n  |\n  = Invalid string pattern\n2: error parsing glob '[': unclosed character class; \
+                 missing ']'"
+                    .to_owned(),
+                vec![]
+            )
         );
 
-        let bad_kind = union_matcher(&["bogus:foo".to_owned()]).expect_err("no such pattern kind");
-        assert!(
-            matches!(
-                &bad_kind,
-                MutateError::InvalidInput { reason, .. }
-                    if reason == "failed to parse name pattern: Invalid string pattern: \
-                                  Invalid string pattern kind `bogus:`"
-            ),
-            "unexpected error: {bad_kind:?}"
+        let bad_kind = refusal(&union_matcher(&["bogus:x".to_owned()]).expect_err("no such pattern kind"));
+        assert_eq!(
+            bad_kind,
+            (
+                "Failed to parse name pattern: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n1 | bogus:x\n  | \
+                 ^-----^\n  |\n  = Invalid string pattern\n2: Invalid string pattern kind `bogus:`"
+                    .to_owned(),
+                vec![
+                    "Try prefixing with one of `exact:`, `glob:`, `regex:`, `substring:`, or one of these with `-i` \
+                     suffix added (e.g. `glob-i:`) for case-insensitive matching"
+                        .to_owned()
+                ]
+            )
         );
 
-        // A SYNTAX error carries no source, so the kind is the whole reason — and the
-        // renderer must not append a stray separator for an absent chain.
-        let bad_syntax = union_matcher(&["foo bar baz".to_owned()]).expect_err("trailing garbage");
-        assert!(
-            matches!(
-                &bad_syntax,
-                MutateError::InvalidInput { reason, .. } if reason == "failed to parse name pattern: Syntax error"
-            ),
-            "unexpected error: {bad_syntax:?}"
-        );
-
-        // What must NOT survive: jj-lib's pest caret diagram, which is terminal rendering.
-        assert!(
-            !bad_glob.to_string().contains("-->"),
-            "the pest caret diagram is terminal UX and must not reach error.context"
+        // A SYNTAX error has no source: one `Caused by:` line, then the syntax hint.
+        let bad_syntax = refusal(&union_matcher(&["foo bar baz".to_owned()]).expect_err("trailing garbage"));
+        assert_eq!(
+            bad_syntax,
+            (
+                "Failed to parse name pattern: Syntax error\nCaused by:  --> 1:5\n  |\n1 | foo bar baz\n  |     ^---\n  \
+                 |\n  = expected <EOI>, `|`, `&`, or `~`"
+                    .to_owned(),
+                vec![SYNTAX_HINT.to_owned()]
+            )
         );
     }
 
@@ -1556,34 +1561,44 @@ mod tests {
         assert!(!matcher.is_match("d"), "`~` subtracts");
     }
 
-    /// The parse refusal's head is the CLI's "name pattern or remote symbol" one, with jj-lib's
-    /// actionable source appended; a non-string expression (`x@`) is refused as such.
+    /// The parse refusal carries the CLI's "name pattern or remote symbol" head (`jj bookmark track
+    /// …` @ v0.47.0) for both parse steps: `parse_program` (a syntax error) and
+    /// `expect_string_expression` (a bad glob, or `x@`, which is no string expression).
     #[test]
     fn parse_names_or_symbols_refuses_with_the_track_head() {
-        let bad_glob = parse_names_or_symbols(&["glob:\"[\"".to_owned()]).expect_err("unterminated class");
+        let (reason, hints) =
+            refusal(&parse_names_or_symbols(&["glob:\"[\"".to_owned()]).expect_err("unterminated class"));
+        assert!(
+            reason
+                .starts_with("Failed to parse name pattern or remote symbol: Invalid string pattern\nCaused by:\n1: "),
+            "{reason}"
+        );
+        assert!(
+            reason.ends_with("\n2: error parsing glob '[': unclosed character class; missing ']'"),
+            "{reason}"
+        );
+        assert!(hints.is_empty(), "{hints:?}");
+
+        let syntax = refusal(&parse_names_or_symbols(&["a b".to_owned()]).expect_err("trailing garbage"));
         assert_eq!(
-            bad_glob
-                .to_string()
-                .split_once(": ")
-                .map(|(_, rest)| rest.to_owned())
-                .unwrap_or_default(),
-            "failed to parse name pattern or remote symbol: Invalid string pattern: error parsing glob '[': \
-             unclosed character class; missing ']'",
-            "{bad_glob}"
+            syntax,
+            (
+                "Failed to parse name pattern or remote symbol: Syntax error\nCaused by:  --> 1:3\n  |\n1 | a b\n  |   \
+                 ^---\n  |\n  = expected <EOI>, `|`, `&`, or `~`"
+                    .to_owned(),
+                vec![SYNTAX_HINT.to_owned()]
+            )
         );
-        let syntax = parse_names_or_symbols(&["a b".to_owned()]).expect_err("trailing garbage");
-        assert!(
-            syntax
-                .to_string()
-                .ends_with("failed to parse name pattern or remote symbol: Syntax error"),
-            "{syntax}"
-        );
-        let workspace = parse_names_or_symbols(&["x@".to_owned()]).expect_err("an @workspace is no string");
-        assert!(
-            workspace
-                .to_string()
-                .ends_with("failed to parse name pattern or remote symbol: Invalid string expression"),
-            "{workspace}"
+
+        let workspace = refusal(&parse_names_or_symbols(&["x@".to_owned()]).expect_err("an @workspace is no string"));
+        assert_eq!(
+            workspace,
+            (
+                "Failed to parse name pattern or remote symbol: Invalid string expression\nCaused by:  --> 1:1\n  |\n1 \
+                 | x@\n  | ^^\n  |\n  = Invalid string expression"
+                    .to_owned(),
+                vec![]
+            )
         );
     }
 

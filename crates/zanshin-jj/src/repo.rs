@@ -75,6 +75,9 @@ pub enum RepoError {
     InvalidInput {
         /// Human-readable reason, the CLI's text where it has one.
         reason: String,
+        /// The CLI's hint lines for the refusal (a clone pattern parse failure's), verbatim and in
+        /// the CLI's order; empty otherwise.
+        hints: Vec<String>,
     },
     /// The path is already a jj workspace (`.jj/` is present).
     #[error("already a jj repository: {path}")]
@@ -110,16 +113,17 @@ pub enum RepoError {
 
 impl RepoError {
     /// The jj CLI's hint lines for this refusal, verbatim and in the CLI's order (Story 9.56) —
-    /// `init`'s existing-Git-repo hint (`cli/src/commands/git/init.rs:233-236` @ v0.46.0) and a
-    /// clone's fetch hints; empty otherwise. `NotARepo` carries none: it does not tell a `.git`
-    /// directory apart, so the CLI's "It looks like this is a git repo." hint is not ported.
+    /// `init`'s existing-Git-repo hint (`cli/src/commands/git/init.rs:233-236` @ v0.46.0), a
+    /// clone's fetch hints and a clone pattern parse failure's hint; empty otherwise. `NotARepo`
+    /// carries none: it does not tell a `.git` directory apart, so the CLI's "It looks like this is
+    /// a git repo." hint is not ported.
     #[must_use]
     pub fn hints(&self) -> Vec<String> {
         match self {
             Self::GitRepoExists { .. } => vec![
                 "To create a repo backed by the existing Git repo, run `jj git init --colocate` instead.".to_owned(),
             ],
-            Self::CloneFailed { hints, .. } => hints.clone(),
+            Self::CloneFailed { hints, .. } | Self::InvalidInput { hints, .. } => hints.clone(),
             _ => Vec::new(),
         }
     }
