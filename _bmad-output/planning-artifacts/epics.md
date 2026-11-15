@@ -12945,6 +12945,37 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Related:** 10.33, 10.35, 10.38, 10.39.
 
+### Story 10.41: The ignoring diff shows exactly `jj diff -w` [UI/bridge]
+*(Added 2026-11-15, Ralph — console session. Ralph found `packages/design/lib/src/widgets/text_field.dart` (a `TextField` wrapped in `Semantics(`) shown wrong while whitespace is ignored: lines looked deleted that were only re-indented.)*
+
+**Design round: done.** `design/Whitespace Study.html` (`whitespace-study.jsx/.css`), approved by Ralph on 2026-11-15 ("sieht gut und richtig aus").
+
+**The defect.** Story 10.33 shows the EXACT read's lines and dims, folds or swaps them by matching line numbers with the `-b` / `-w` read (`IgnoredLines`, `whitespaceRows` in `app/lib/src/features/graph/inspector_diff.dart`). The two reads can align lines differently. In `text_field.dart` the exact diff anchors on the identical line `      ),` (old 96 = new 110), so `onChanged` … `buildCounter` read as added above and removed below; `jj diff -w` (and `git diff -w`) align every field as re-indented. Merging by numbers then shows neither diff. Reproduced with jj 0.47.1 in a temp repo (console session 2026-11-15).
+
+**Scope.**
+1. **Rows.** While whitespace is ignored (`-b` or `-w`), a file's hunks and lines are the ignoring read's, exactly as `jj diff -w` / `-b` prints them (color-words, the effective context). Nothing of the exact read is mixed into the rows. Lines that differ only in whitespace are context lines with both numbers.
+2. **The count.** A hunk whose range holds lines that changed only in whitespace shows a pill in its header after the range: "N lines changed whitespace only · Show". N counts every such line of the hunk, also those outside the context.
+3. **Show / Hide.** Show brings every such line of that hunk back at its place, with both numbers: the changed whitespace marked (jj's segments: added indentation in the added word colour, removed in the removed one), the text dimmed. The pill then reads "· Hide". Per hunk, for the session, reset with the file and the mode, as 10.33's opened parts.
+4. **A part with only whitespace changes** (no line left under `-w`) keeps its fold row "⋯ N lines changed whitespace only · Show" (10.33); its Show reveals its lines in the same marked form as item 3.
+5. **Picks.** The checkboxes stay on jj's exact parts (`Hunk.sections`, the builtin diff editor's), since `jj split` has no `-w`: a part takes all its lines, whitespace included. Each shown row belongs to the exact part holding its line (a removed line by its left number, an added one by its right, a whitespace-only line by either); a part's checkbox sits on its first shown row; the hunk checkbox is three-state over the parts its rows touch. A picked part shows its hunk's whitespace-only lines as after Show (10.33's rule: a pick never takes a line you did not see). The per-line pill "whitespace only" of 10.33 goes.
+6. **Both layouts.** Side by side shows a whitespace-only line as a pair, marked as in item 3.
+7. **Rust stays the only place that compares lines.** The count and the whitespace-only lines (also outside the context) come from the backend with the ignoring read, if the current read does not carry them; the FFI and `docs/ffi-abi.md` grow as needed.
+8. **DS.** DiffHunk gets the header pill and the marked whitespace-only line (DESIGN-SYSTEM-SYNC entry); the publish waits for a console session.
+
+**Non-goals.** A change to the exact (Show all whitespace) view; `-w` for Split.
+
+**Depends on.** 10.33, 10.38, 10.40 (done).
+
+**Witnesses.**
+- `text_field.dart`'s case (old `return TextField(` … , new `return Semantics(` / `identifier` / `child: TextField(` … `),`) under `-w`: the rows equal `jj diff -w --color-words`; the header says 27 lines; no line shows as removed below `buildCounter`.
+- After Show: the 27 lines at their place, numbers 77 83 … 103 109, the two added spaces marked; Hide returns to the rows of `jj diff -w`.
+- The automation_overview_page.dart case (a part with a real change and re-indented lines): rows equal `jj diff -w`, the count in the header.
+- A part with only whitespace changes keeps its fold row; picking it then splitting takes its lines.
+- Picking the `text_field.dart` part checks one box and Split takes the whole exact part.
+- Marionette, by the console session: both layouts against `design/Whitespace Study.html`.
+
+**Related:** 10.33, 10.38, 10.40.
+
 ---
 
 ## Epic 11: Floating app shell (Flutter UI)

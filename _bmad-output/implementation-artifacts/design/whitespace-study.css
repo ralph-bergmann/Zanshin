@@ -1,0 +1,22 @@
+/* WHITESPACE STUDY — text_field.dart while whitespace is ignored (2026-11-15). Builds on inspector-study.css. */
+html,body{overflow:auto}
+.wss-win{min-height:100%;box-sizing:border-box;padding:20px;background:var(--isd-win)}
+.wss-head,.wss-foot{max-width:1280px;margin:0 0 16px;font-size:13px;line-height:1.5;color:var(--text-dim)}
+.wss-head b{color:var(--text)}
+.wss-head code,.wss-foot code{font:12px var(--font-mono);color:var(--text)}
+.wss-row{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.wss-panel{flex:1 1 560px;min-width:0;max-width:700px}
+.wss-panel h2{margin:0 0 4px;font-size:14px;font-weight:600;color:var(--text)}
+.wss-note{margin:0 0 10px;min-height:54px;font-size:12px;line-height:1.5;color:var(--text-dim)}
+.wss-panel .isd-diff{max-height:none}
+.wss-panel .isd-dbody{overflow-x:auto;overflow-y:visible}
+.wss-mode{margin-left:auto;font:11px var(--font-mono);color:var(--text-faint);white-space:nowrap}
+.wss-pill{margin:0 0 0 4px}
+.wss-gap{display:flex;align-items:center;font:11.5px/22px var(--font-mono);background:var(--fl-hover)}
+.wss-gap .isd-nums{background:transparent}
+.wss-gaptxt{padding-left:18px;font:11.5px var(--font-sans);color:var(--text-faint)}
+/* a re-indented line while its marks show: the added indentation marked, the text dimmed */
+.wss-ws .isd-txt{color:var(--text-dim)}
+.wss-wsmark{background:color-mix(in oklch,var(--add) 38%,transparent);border-radius:2px}
+.wss-foot{margin-top:20px}
+.wss-fold{max-width:560px;margin-top:8px;border:1px solid var(--fl-border);border-radius:8px;overflow:hidden}
