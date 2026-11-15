@@ -318,8 +318,19 @@ class _ZsMenuAnchorState extends State<ZsMenuAnchor> {
     _close(refocus: false);
   }
 
+  // RawMenuAnchor puts its builder's child in the menu's tap group, so a click there would count as inside. The
+  // anchor wraps an empty, never-hit box of the content's rect instead: a click anywhere outside the panel (the content
+  // too, the menu button itself) closes the menu and is consumed, while placement keeps the content's rect.
   @override
-  Widget build(BuildContext context) => RawMenuAnchor(
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.passthrough,
+    children: <Widget>[
+      widget.builder(context, _controller),
+      Positioned.fill(child: _anchor()),
+    ],
+  );
+
+  Widget _anchor() => RawMenuAnchor(
     controller: _menu,
     consumeOutsideTaps: true,
     onOpenRequested: (position, show) {
@@ -347,8 +358,9 @@ class _ZsMenuAnchorState extends State<ZsMenuAnchor> {
         delegate: _MenuLayout(anchor: info.anchorRect, position: info.position),
         child: TapRegion(
           groupId: info.tapRegionGroupId,
-          // A root anchor closes only its submenus on an outside tap; the menu closes itself.
-          onTapOutside: (_) => _close(refocus: false),
+          // A root anchor closes only its submenus on an outside tap; the menu closes itself. A click in the anchor's own
+          // area is consumed, so the opener gets focus back there (a list keeps taking its keys).
+          onTapOutside: (event) => _close(refocus: info.anchorRect.contains(event.position)),
           child: Semantics(
             identifier: widget.identifier,
             child: ZsMenuPanel(
@@ -373,7 +385,7 @@ class _ZsMenuAnchorState extends State<ZsMenuAnchor> {
         ),
       ),
     ),
-    builder: (context, controller, child) => widget.builder(context, _controller),
+    builder: (context, controller, child) => const SizedBox.expand(),
   );
 }
 

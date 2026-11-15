@@ -327,6 +327,82 @@ void main() {
     expect(find.text('New change'), findsNothing);
   });
 
+  testWidgets("a click inside the anchor's own area closes the menu and is consumed", (tester) async {
+    final controller = ZsMenuController();
+    var taps = 0;
+    await tester.pumpWidget(
+      zsHost(
+        ColoredBox(
+          color: const Color(0x00000000),
+          child: SizedBox.expand(
+            child: Align(
+              child: ZsMenuAnchor(
+                controller: controller,
+                entries: _entries(),
+                builder: (context, _) => Focus(
+                  focusNode: button,
+                  child: GestureDetector(
+                    key: const ValueKey<String>('area'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => taps++,
+                    child: const SizedBox(width: 400, height: 300),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        overlay: true,
+        icons: true,
+      ),
+    );
+    final Rect area = tester.getRect(find.byKey(const ValueKey<String>('area')));
+    button.requestFocus();
+    await tester.pump();
+    controller.open(position: const Offset(10, 10));
+    await tester.pump();
+    await tester.pump(_m.durMenu);
+    expect(find.text('New change'), findsOneWidget);
+    expect(button.hasPrimaryFocus, isFalse, reason: 'focus moved into the menu');
+    await tester.tapAt(area.bottomRight - const Offset(10, 10));
+    await tester.pump();
+    await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+    await tester.pump();
+    expect(find.text('New change'), findsNothing);
+    expect(taps, 0, reason: 'the closing click does not reach the area');
+    expect(button.hasPrimaryFocus, isTrue, reason: 'the opener gets focus back, so a list keeps its keys');
+    await tester.tapAt(area.bottomRight - const Offset(10, 10));
+    await tester.pump();
+    expect(taps, 1, reason: 'with the menu closed the area takes clicks again');
+  });
+
+  testWidgets('a click in an open submenu keeps the menu open', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        button: button,
+        entries: _entries(
+          submenu: const <ZsMenuEntry>[
+            ZsMenuNote('A note'),
+            ZsMenuItem(label: 'Change id'),
+          ],
+        ),
+      ),
+    );
+    final TestGesture mouse = await _openSubmenuByPointer(tester);
+    final Offset note = tester.getCenter(find.text('A note'));
+    // Into the submenu along the row, the way a pointer reaches it.
+    await mouse.moveTo(Offset(note.dx, tester.getCenter(find.text('More')).dy));
+    await mouse.moveTo(note);
+    await tester.pump();
+    await mouse.down(note);
+    await mouse.up();
+    await tester.pump();
+    await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+    await tester.pump();
+    expect(find.text('New change'), findsOneWidget);
+    expect(find.text('Change id'), findsOneWidget);
+  });
+
   testWidgets('I3: ↩ blinks the row, refocuses the opener, then runs the command; the dialog it shows returns to the '
       'opener after Cancel', (tester) async {
     handle = tester.ensureSemantics();

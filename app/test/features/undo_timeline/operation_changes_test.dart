@@ -407,6 +407,34 @@ void main() {
     });
   });
 
+  testWidgets('Story 10.40: a repo-set context is checked with the note that it wins; a pick still writes the user '
+      'config', (tester) async {
+    final changes =
+        FakeOperationChangesSource(
+            testOpShow(testOperation(1, now: _now), <OpChangedCommit>[
+              OpChangedCommit(commitId: _x, abandoned: false, addedCommitIds: <String>[_x], removedCommitIds: const []),
+            ]),
+            diff: (call) => testDiff(const <String>['new.txt']),
+          )
+          ..context = 7
+          ..contextFromRepo = true;
+    await withView(tester, changes, () async {
+      final Finder menu = find.byWidgetPredicate((w) => w is ZsMenuButton && w.identifier == 'inspector-diff-options');
+      List<ZsMenuEntry> entries() => tester.widget<ZsMenuButton>(menu).entries;
+      expect(
+        entries().whereType<ZsMenuItem>().singleWhere((i) => i.identifier == 'diff-options-context-7').checked,
+        isTrue,
+      );
+      expect(
+        entries().whereType<ZsMenuNote>().map((note) => note.label),
+        contains("Set in this repository's config, which wins"),
+      );
+      entries().whereType<ZsMenuItem>().singleWhere((i) => i.identifier == 'diff-options-context-5').onSelected!();
+      await tester.pump();
+      expect(changes.contextWrites, <int>[5]);
+    });
+  });
+
   testWidgets('a body-only describe: the description block above the no-file-changes note', (tester) async {
     final changes = FakeOperationChangesSource(
       testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten()]),

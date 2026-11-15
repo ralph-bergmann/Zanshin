@@ -17,6 +17,7 @@ import 'package:zanshin_settings/zanshin_settings.dart'
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../projects/projects_environment.dart' show DiffContext;
 import '../window/app_window_actions.dart';
 import 'graph_card.dart';
 import 'graph_drag.dart';
@@ -110,7 +111,7 @@ class InspectorViewModel extends ChangeNotifier {
   final _collapsed = <String>{};
   bool _wordMarks;
   DiffWhitespaceSetting _whitespace;
-  int? _contextLines = 3;
+  DiffContext _context = (lines: 3, fromRepo: false);
   var _contextSerial = 0;
   ({double narrow, double wide}) _shares;
 
@@ -218,8 +219,11 @@ class InspectorViewModel extends ChangeNotifier {
     );
   }
 
-  /// `diff.color-words.context` as Settings reads it; null when jj cannot read it.
-  int? get contextLines => _contextLines;
+  /// `diff.color-words.context` as `jj diff` in the workspace reads it; null when jj cannot read it.
+  int? get contextLines => _context.lines;
+
+  /// Whether the repo or the workspace config sets [contextLines], which then wins over a user-level pick.
+  bool get contextFromRepo => _context.fromRepo;
 
   /// Writes `diff.color-words.context` at user scope; the config write reloads the diff and reads the value again. A
   /// refused write is logged and the value kept.
@@ -233,15 +237,15 @@ class InspectorViewModel extends ChangeNotifier {
 
   Future<void> _readContext() async {
     final int serial = ++_contextSerial;
-    int? lines;
+    DiffContext context;
     try {
-      lines = await details.diffContext();
+      context = await details.diffContext();
     } on ZanshinFfiException catch (error) {
       _log.warning('reading diff.color-words.context refused: ${error.code}');
-      lines = null;
+      context = (lines: null, fromRepo: false);
     }
-    if (serial == _contextSerial && lines != _contextLines) {
-      _contextLines = lines;
+    if (serial == _contextSerial && context != _context) {
+      _context = context;
       _notify();
     }
   }
@@ -3171,6 +3175,7 @@ class _ChangesState extends State<_Changes> {
                 whitespace: model.whitespace,
                 onWhitespaceChanged: model.setWhitespace,
                 contextLines: model.contextLines,
+                contextFromRepo: model.contextFromRepo,
                 onContextLinesChanged: (lines) => unawaited(model.setContextLines(lines)),
                 wordMarks: model.wordMarks,
                 error: model.focusError,
@@ -3545,7 +3550,8 @@ class InspectorFolderRow extends StatelessWidget {
 /// The context menu of [path] (Story 10.39): a file's row — Open in Editor, Reveal in Finder, Copy path (⌘C), Copy
 /// relative path; a [folder]'s — Reveal in Finder, Copy path, Copy relative path; a diff [line]'s — Open in Editor at
 /// the line, Copy path:line, Copy path. Without an editor the Open row reads "Choose editor…" and opens Settings ›
-/// General (disabled outside a window). A path not [onDisk] disables Open and Reveal with the reason. Outside the
+/// General (disabled outside a window). A path not [onDisk] disables Open and Reveal with the reason. A [line] past the
+/// end of the file on disk (Story 10.40) opens the file at its start, a note under the Open row says so. Outside the
 /// [workingCopy] a file's and a line's menu end with the note that the file on disk is @'s.
 List<ZsMenuEntry> inspectorPathMenu(
   BuildContext context,
@@ -3561,6 +3567,7 @@ List<ZsMenuEntry> inspectorPathMenu(
   final String? missing = onDisk ? null : strings.filesNotOnDisk(path);
   final String? editor = files.editor;
   final ZsMenuItem open;
+  ZsMenuNote? pastEnd;
   if (editor == null) {
     final AppWindowActions? windows = AppWindowActionsScope.maybeOf(context);
     open = ZsMenuItem(
@@ -3577,15 +3584,24 @@ List<ZsMenuEntry> inspectorPathMenu(
       'zed' => 'Zed', // l10n-ignore: a product name
       _ => strings.filesEditorCustom,
     };
-    final String? hint = editorHint(editor, line: line);
+    // A line the file on disk lacks (it is @'s, a later change moved its lines) opens the file at its start.
+    final int? lines = line != null && onDisk ? files.lineCount(path) : null;
+    // A removed last line stands right after the file's end (`diffNewLineAt`): it opens at the last line.
+    final bool atEnd = line != null && lines != null && lines > 0 && line == lines + 1;
+    final bool beyond = !atEnd && line != null && lines != null && line > lines;
+    final int? at = beyond ? null : (atEnd ? lines : line);
+    final String? hint = editorHint(editor, line: at);
     open = ZsMenuItem(
-      label: line == null ? strings.filesOpenIn(name) : strings.filesOpenInAtLine(name, line),
+      label: at == null ? strings.filesOpenIn(name) : strings.filesOpenInAtLine(name, at),
       cmd: hint,
       identifier: 'files-open',
       enabled: missing == null && hint != null,
       tooltip: missing,
-      onSelected: () => unawaited(files.openInEditor(path, line: line)),
+      onSelected: () => unawaited(files.openInEditor(path, line: at)),
     );
+    if (beyond) {
+      pastEnd = ZsMenuNote(strings.filesLinePastEnd(line));
+    }
   }
   final reveal = ZsMenuItem(
     label: strings.filesReveal,
@@ -3607,6 +3623,7 @@ List<ZsMenuEntry> inspectorPathMenu(
   if (line != null) {
     return <ZsMenuEntry>[
       open,
+      ?pastEnd,
       const ZsMenuSeparator(),
       copy(strings.filesCopyPathLine, '$absolute:$line', 'files-copy-line'),
       copy(strings.filesCopyPath, absolute, 'files-copy-path'),
@@ -3709,8 +3726,8 @@ class _SheenPainter extends CustomPainter {
 /// The composer (Story 10.25; DS inspector.jsx:40-79, kit.css:129-144): the island's bottom section, padding 14 16,
 /// gap 10, a top `--fl-border` over `--fl-sheen`. Summary and Details (md; ↩ in Summary or ⌘↩ run), the result preview
 /// (the rest — on @ the new working copy — above the selected part), the command [InspectorViewModel.composerAction]
-/// runs (cut inside its message when it does not fit), Cancel (split only) and the gold Commit / Split; Split is
-/// disabled with a hint when it would take everything, and a refusal shows in the warn colour.
+/// runs (cut inside its message when it does not fit), Cancel (split only) and the gold Commit / Split. When Split
+/// would take everything only its hint and Cancel show (Story 10.40), the draft kept; a refusal shows in the warn colour.
 class _Composer extends StatefulWidget {
   const _Composer({required this.model, required this.data, required this.shortId, required this.blocked});
 
@@ -3935,12 +3952,16 @@ class _ComposerState extends State<_Composer> {
 
     final bool ready = _ready;
     final String run = isAt ? strings.inspectorCommit : strings.inspectorSplit;
-    final String? reason = blocked ?? (model.splitsEverything ? strings.inspectorSplitAllReason : null);
+    final cancel = ZsButton(
+      label: strings.inspectorCancel,
+      onPressed: model.clearPicks,
+      identifier: 'inspector-composer-cancel',
+    );
     final runButton = ZsButton(
       label: run,
       variant: ZsButtonVariant.primary,
       onPressed: ready ? _run : null,
-      disabledReason: reason,
+      disabledReason: blocked,
       identifier: 'inspector-composer-run',
     );
     final TextStyle commandStyle = DefaultTextStyle.of(
@@ -3966,67 +3987,74 @@ class _ComposerState extends State<_Composer> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               spacing: 10,
               children: <Widget>[
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  spacing: 6,
-                  children: <Widget>[
-                    ZsTextField(
-                      controller: _summary,
-                      size: ZsTextFieldSize.md,
-                      placeholder: isAt ? strings.inspectorComposerSummaryAt : strings.inspectorComposerSummarySplit,
-                      label: strings.inspectorSummary,
-                      identifier: 'inspector-composer-summary',
-                      onChanged: _changed,
-                      onSubmitted: (_) => _run(),
-                    ),
-                    ZsTextField(
-                      controller: _details,
-                      size: ZsTextFieldSize.md,
-                      multiline: true,
-                      placeholder: strings.inspectorDetails,
-                      label: strings.inspectorDetails,
-                      identifier: 'inspector-composer-details',
-                      onChanged: _changed,
-                    ),
-                  ],
-                ),
-                result,
-                Row(
-                  spacing: 6,
-                  children: <Widget>[
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) => Text(
-                          _fitted(command, constraints.maxWidth, commandStyle),
-                          key: const ValueKey<String>('inspector-composer-command'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: commandStyle,
+                // Split cannot take every change (it would leave an empty one): only the hint and Cancel show. The
+                // draft stays in the controllers and shows again once a pick goes.
+                if (model.splitsEverything)
+                  Row(
+                    spacing: 6,
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          strings.inspectorSplitAllHint,
+                          key: const ValueKey<String>('inspector-composer-hint'),
+                          style: note,
                         ),
                       ),
-                    ),
-                    if (!isAt)
-                      ZsButton(
-                        label: strings.inspectorCancel,
-                        onPressed: model.clearPicks,
-                        identifier: 'inspector-composer-cancel',
+                      cancel,
+                    ],
+                  )
+                else ...<Widget>[
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: 6,
+                    children: <Widget>[
+                      ZsTextField(
+                        controller: _summary,
+                        size: ZsTextFieldSize.md,
+                        placeholder: isAt ? strings.inspectorComposerSummaryAt : strings.inspectorComposerSummarySplit,
+                        label: strings.inspectorSummary,
+                        identifier: 'inspector-composer-summary',
+                        onChanged: _changed,
+                        onSubmitted: (_) => _run(),
                       ),
-                    if (reason ?? (command.isEmpty ? null : command) case final String tip)
-                      ZsTooltip(
-                        message: tip,
-                        cmd: reason == null || command.isEmpty ? null : command,
-                        child: runButton,
-                      )
-                    else
-                      runButton,
-                  ],
-                ),
-                if (model.splitsEverything)
-                  Text(
-                    strings.inspectorSplitAllHint,
-                    key: const ValueKey<String>('inspector-composer-hint'),
-                    style: note,
+                      ZsTextField(
+                        controller: _details,
+                        size: ZsTextFieldSize.md,
+                        multiline: true,
+                        placeholder: strings.inspectorDetails,
+                        label: strings.inspectorDetails,
+                        identifier: 'inspector-composer-details',
+                        onChanged: _changed,
+                      ),
+                    ],
                   ),
+                  result,
+                  Row(
+                    spacing: 6,
+                    children: <Widget>[
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) => Text(
+                            _fitted(command, constraints.maxWidth, commandStyle),
+                            key: const ValueKey<String>('inspector-composer-command'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: commandStyle,
+                          ),
+                        ),
+                      ),
+                      if (!isAt) cancel,
+                      if (blocked ?? (command.isEmpty ? null : command) case final String tip)
+                        ZsTooltip(
+                          message: tip,
+                          cmd: blocked == null || command.isEmpty ? null : command,
+                          child: runButton,
+                        )
+                      else
+                        runButton,
+                    ],
+                  ),
+                ],
                 if (error != null)
                   Text(
                     error.context ?? error.code,

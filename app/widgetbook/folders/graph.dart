@@ -36,6 +36,7 @@ import 'package:zanshin/src/features/graph/layout_invariants.dart';
 import 'package:zanshin/src/features/graph/project_files.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
 import 'package:zanshin/src/features/graph/stale_notice.dart';
+import 'package:zanshin/src/features/projects/projects_environment.dart' show DiffContext;
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
 import 'package:zanshin/src/features/shell/shell_toast.dart';
@@ -1138,7 +1139,7 @@ class _DemoDetails implements GraphDetails {
   VoidCallback? afterWrite;
 
   @override
-  Future<int?> diffContext() async => _context;
+  Future<DiffContext> diffContext() async => (lines: _context, fromRepo: false);
 
   @override
   Future<void> setDiffContext(int lines) async {

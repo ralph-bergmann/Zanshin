@@ -23,6 +23,7 @@ import 'package:zanshin/src/features/graph/inspector_diff.dart'
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/project_files.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/projects/projects_environment.dart' show DiffContext;
 import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -235,12 +236,13 @@ class _Details implements GraphDetails {
   /// What `diffContext` answers; [refuseContextWrite] refuses `setDiffContext`, which records in [contextWrites] and
   /// then runs [afterContextWrite] (the environment's config write).
   int? context = 3;
+  var contextFromRepo = false;
   ZanshinFfiException? refuseContextWrite;
   final contextWrites = <int>[];
   void Function()? afterContextWrite;
 
   @override
-  Future<int?> diffContext() async => context;
+  Future<DiffContext> diffContext() async => (lines: context, fromRepo: contextFromRepo);
 
   @override
   Future<void> setDiffContext(int lines) async {
@@ -1997,6 +1999,37 @@ void main() {
       await unmount(tester);
     });
 
+    testWidgets(
+      'Story 10.40: a repo-set context is checked with the note that it wins; a pick writes the user config',
+      (
+        tester,
+      ) async {
+        details
+          ..context = 7
+          ..contextFromRepo = true;
+        await pump(tester);
+        await settle(tester);
+        expect(inspector.contextFromRepo, isTrue);
+        expect(optionsRow(tester, 'diff-options-context-7').checked, isTrue);
+        const note = "Set in this repository's config, which wins";
+        expect(
+          tester.widget<ZsMenuButton>(optionsMenu()).entries.whereType<ZsMenuNote>().map((n) => n.label),
+          contains(note),
+        );
+        optionsRow(tester, 'diff-options-context-5').onSelected!();
+        await settle(tester);
+        expect(details.contextWrites, <int>[5]);
+        details.contextFromRepo = false;
+        inspector.configChanged();
+        await settle(tester);
+        expect(
+          tester.widget<ZsMenuButton>(optionsMenu()).entries.whereType<ZsMenuNote>().map((n) => n.label),
+          isNot(contains(note)),
+        );
+        await unmount(tester);
+      },
+    );
+
     testWidgets('a refused summary: no ±, no totals, no diff block, no focused read', (tester) async {
       details.refuseSummary = const ZanshinFfiException('jj.internal', 'no');
       await pump(tester);
@@ -2337,9 +2370,12 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('Story 10.35: split with everything picked is disabled with the reason and the hint, and runs nothing; '
-        'one file less enables it', (tester) async {
+    testWidgets('Story 10.40: split with everything picked shows only the hint and Cancel, keeps the draft, and runs '
+        'nothing; one file less brings the fields back as typed', (tester) async {
       await pump(tester);
+      await tap(tester, box('src/a.dart'));
+      await type(tester, 'inspector-composer-summary', 'Part');
+      await type(tester, 'inspector-composer-details', 'More');
       await tap(tester, box('Select all'));
       expect(inspector.splitsEverything, isTrue);
       expect(
@@ -2349,9 +2385,11 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('will become empty'), findsNothing, reason: "the hint replaces jj's note");
-      final ZsButton run = tester.widget<ZsButton>(_button('inspector-composer-run'));
-      expect(run.onPressed, isNull);
-      expect(run.disabledReason, 'Every change is picked. To describe this change, click its title.');
+      expect(find.descendant(of: composer, matching: find.byType(ZsTextField)), findsNothing);
+      expect(_button('inspector-composer-run'), findsNothing);
+      expect(find.byKey(const ValueKey<String>('inspector-composer-command')), findsNothing);
+      expect(find.byKey(const ValueKey<String>('inspector-composer-result')), findsNothing);
+      expect(_button('inspector-composer-cancel'), findsOneWidget);
       expect(await inspector.runComposer(), isNull);
       expect(actions.ran, isEmpty);
       expect(
@@ -2364,6 +2402,8 @@ void main() {
       expect(inspector.splitsEverything, isFalse);
       expect(tester.widget<ZsButton>(_button('inspector-composer-run')).onPressed, isNotNull);
       expect(find.byKey(const ValueKey<String>('inspector-composer-hint')), findsNothing);
+      expect(tester.widget<ZsTextField>(_id('inspector-composer-summary')).controller!.text, 'Part');
+      expect(tester.widget<ZsTextField>(_id('inspector-composer-details')).controller!.text, 'More');
       await unmount(tester);
     });
 
@@ -2689,6 +2729,10 @@ void main() {
                 ?.border
             as Border?;
 
+    // A unified header's band on the opaque pin base (Story 10.40).
+    Color pinned(ZsColors colors, Color band) =>
+        Color.alphaBlend(band, Color.alphaBlend(colors.codeBg, colors.flBgSolid));
+
     String filesOf(HunkChoice? hunks) => <String>[
       for (final FileSelection f in hunks!.files)
         '${f.path}:${f.whole ? 'whole' : '${f.mode ? 'mode+' : ''}${f.hunks.map((k) => k.oldStart).join(',')}'}',
@@ -2707,7 +2751,7 @@ void main() {
         expect(tester.widget<ZsCheckbox>(hunkBox(i)).tristate, isTrue);
       }
       final ZsColors colors = ZsColors.of(tester.element(composer));
-      expect(headerColor(tester, 0), colors.accentSoftHi);
+      expect(headerColor(tester, 0), pinned(colors, colors.accentSoftHi));
       expect(edgeOf(tester, 0)!.left, BorderSide(color: colors.accentLine, width: 2));
       await unmount(tester);
     });
@@ -2722,9 +2766,9 @@ void main() {
       expect(state(tester, fileBox('a.txt')), isNull, reason: 'mixed');
       expect(selectAll(tester), isNull, reason: 'mixed');
       final ZsColors colors = ZsColors.of(tester.element(composer));
-      expect(headerColor(tester, 1), colors.hunkBg, reason: 'an unselected header stays the hunk band');
+      expect(headerColor(tester, 1), pinned(colors, colors.hunkBg), reason: 'an unselected header stays the hunk band');
       expect(edgeOf(tester, 1), isNull);
-      expect(headerColor(tester, 0), colors.accentSoftHi);
+      expect(headerColor(tester, 0), pinned(colors, colors.accentSoftHi));
       expect(shown(tester), "jj commit -i -m ''");
       // Selected: every file has a pick (a.txt k1+k3: +1 −2, b.sh ±1, d.txt +2); Rest: a.txt's k2 (+2).
       expect(find.descendant(of: composer, matching: find.text('4 files')), findsOneWidget);
@@ -4009,9 +4053,12 @@ void main() {
           ],
         ),
       ];
+      // The file on disk holds line 12 (Story 10.40: a line past its end opens at the start).
+      File('$root/src/a.dart').writeAsStringSync(List<String>.generate(50, (i) => 'line ${i + 1}\n').join());
       await pump(tester, files: files());
       await settle(tester);
       await rightClick(tester, find.textContaining('twelve', findRichText: true));
+      expect(find.textContaining('is not in the file on disk'), findsNothing);
       await choose(tester, 'Open in IntelliJ IDEA at line 12');
       expect(started.last, <String>['$bin/idea', '--line', '12', '$root/src/a.dart']);
       await rightClick(tester, find.textContaining('gone', findRichText: true));
@@ -4019,6 +4066,107 @@ void main() {
       await choose(tester, 'Copy path:line');
       expect(copied.last, '$root/src/a.dart:13');
       expect(diffNewLineAt(details.fileDiffs[_mutable]!.single.hunks.single, 2), 13);
+      await unmount(tester);
+    });
+
+    /// One hunk of `src/a.dart` at [line], its line reading `forty`.
+    List<FileDiff> lineAt(int line) => <FileDiff>[
+      fileDiff(
+        'src/a.dart',
+        added: 1,
+        fingerprint: 'fa',
+        hunks: <Hunk>[
+          hunk(
+            before: (start: line - 1, end: line - 1),
+            after: (start: line - 1, end: line),
+            lines: <HunkLine>[HunkLine(kind: HunkLineKind.added, text: 'forty\n', right: line)],
+          ),
+        ],
+      ),
+    ];
+
+    testWidgets('Story 10.40: a line the file on disk lacks opens the file at its start, a note says so', (
+      tester,
+    ) async {
+      unawaited(settings.update((s) => s.copyWith.general(editor: 'idea')));
+      File('$root/src/a.dart').writeAsStringSync(List<String>.generate(10, (i) => 'line ${i + 1}\n').join());
+      details.fileDiffs[_mutable] = lineAt(40);
+      await pump(tester, files: files());
+      await settle(tester);
+      await rightClick(tester, find.textContaining('forty', findRichText: true));
+      expect(item(tester, 'files-open').label, 'Open in IntelliJ IDEA');
+      expect(item(tester, 'files-open').cmd, 'idea');
+      expect(find.text('Line 40 is not in the file on disk — opens at its start'), findsOneWidget);
+      await choose(tester, 'Open in IntelliJ IDEA');
+      expect(started.last, <String>['$bin/idea', '$root/src/a.dart']);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.40: the line right after the end (a removed last line) opens at the last line, no note', (
+      tester,
+    ) async {
+      unawaited(settings.update((s) => s.copyWith.general(editor: 'idea')));
+      File('$root/src/a.dart').writeAsStringSync(List<String>.generate(10, (i) => 'line ${i + 1}\n').join());
+      details.fileDiffs[_mutable] = lineAt(11);
+      await pump(tester, files: files());
+      await settle(tester);
+      await rightClick(tester, find.textContaining('forty', findRichText: true));
+      expect(find.textContaining('is not in the file on disk'), findsNothing);
+      await choose(tester, 'Open in IntelliJ IDEA at line 10');
+      expect(started.last, <String>['$bin/idea', '--line', '10', '$root/src/a.dart']);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.40: a click beside an open menu closes it: on another file row (the current row stays), on '
+        'another diff line', (tester) async {
+      unawaited(settings.update((s) => s.copyWith.general(editor: 'idea')));
+      await pump(tester, files: files());
+      await settle(tester);
+      // The menu opens down from the lower row, so the row above stays clear of it.
+      await rightClick(tester, _fileRow('src/new.dart'));
+      expect(find.text('Copy relative path'), findsOneWidget);
+      await tester.tap(_fileRow('src/a.dart'));
+      await settle(tester);
+      expect(find.text('Copy relative path'), findsNothing, reason: 'the menu closed');
+      expect(inspector.focusedPath, 'src/new.dart', reason: 'the closing click picks no row');
+      await unmount(tester);
+
+      details.fileDiffs[_mutable] = <FileDiff>[
+        fileDiff(
+          'src/a.dart',
+          added: 2,
+          fingerprint: 'fa',
+          hunks: <Hunk>[
+            hunk(
+              before: (start: 0, end: 0),
+              after: (start: 0, end: 2),
+              lines: const <HunkLine>[
+                HunkLine(kind: HunkLineKind.added, text: 'first\n', right: 1),
+                HunkLine(kind: HunkLineKind.added, text: 'second\n', right: 2),
+              ],
+            ),
+          ],
+        ),
+      ];
+      await pump(tester, files: files());
+      await settle(tester);
+      await rightClick(tester, find.textContaining('second', findRichText: true));
+      expect(find.text('Copy path:line'), findsOneWidget);
+      await tester.tap(find.textContaining('first', findRichText: true));
+      await settle(tester);
+      expect(find.text('Copy path:line'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.40: a right-click no line answers (the hunk header) throws nothing and opens nothing', (
+      tester,
+    ) async {
+      details.fileDiffs[_mutable] = lineAt(3);
+      await pump(tester, files: files());
+      await settle(tester);
+      await rightClick(tester, find.byKey(const ValueKey<String>('inspector-hunk-header')));
+      expect(tester.takeException(), isNull);
+      expect(find.text('Copy path:line'), findsNothing);
       await unmount(tester);
     });
 

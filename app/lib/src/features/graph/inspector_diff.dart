@@ -562,13 +562,15 @@ List<DiffRow>? whitespaceRows(Hunk hunk, IgnoredLines? ignored, {Set<HunkKey> re
 
 /// The diff options menu's rows (Story 10.33, design `inspector-study.jsx`): Whitespace — show all (`jj diff`),
 /// ignore changes in amount (`-b`), ignore all (`-w`); Context lines — 0, 1, 2, 3 ("jj's default"), 5, 10, 20 plus
-/// [contextLines] in order when it is off that list, none checked when null (jj cannot read it); then the note.
+/// [contextLines] in order when it is off that list, none checked when null (jj cannot read it), and with
+/// [contextFromRepo] the note that the repository's config wins (Story 10.40); then the note.
 List<ZsMenuEntry> diffOptionsEntries(
   AppLocalizations strings, {
   required DiffWhitespaceSetting whitespace,
   required ValueChanged<DiffWhitespaceSetting> onWhitespaceChanged,
   required int? contextLines,
   required ValueChanged<int>? onContextLinesChanged,
+  bool contextFromRepo = false,
 }) {
   final List<int> choices = <int>{...diffContextChoices, ?contextLines}.toList()..sort();
   return <ZsMenuEntry>[
@@ -597,6 +599,7 @@ List<ZsMenuEntry> diffOptionsEntries(
         identifier: 'diff-options-context-$n',
         onSelected: onContextLinesChanged == null ? null : () => onContextLinesChanged(n),
       ),
+    if (contextFromRepo) ZsMenuNote(strings.diffContextFromRepo),
     const ZsMenuSeparator(),
     ZsMenuNote(strings.diffOptionsNote),
   ];
@@ -693,6 +696,7 @@ class InspectorDiffView extends StatelessWidget {
     this.onWhitespaceChanged,
     this.ignored,
     this.contextLines,
+    this.contextFromRepo = false,
     this.onContextLinesChanged,
     this.copyPath,
     this.lineMenu,
@@ -718,6 +722,9 @@ class InspectorDiffView extends StatelessWidget {
 
   /// `diff.color-words.context`, which the menu checks; null when jj cannot read it.
   final int? contextLines;
+
+  /// Whether the repo or the workspace config sets [contextLines]: the menu says that config wins (Story 10.40).
+  final bool contextFromRepo;
 
   /// Writes `diff.color-words.context` at user scope.
   final ValueChanged<int>? onContextLinesChanged;
@@ -932,6 +939,7 @@ class InspectorDiffView extends StatelessWidget {
         whitespace: whitespace,
         onWhitespaceChanged: onWhitespaceChanged,
         contextLines: lines,
+        contextFromRepo: contextFromRepo,
         onContextLinesChanged: onContextLinesChanged,
       ),
     );
@@ -1276,7 +1284,8 @@ class _DiffBodyState extends State<_DiffBody> {
           identifier: 'inspector-line-menu',
           maxWidth: inspectorMenuMaxWidth,
           cmdMaxWidth: inspectorMenuHintMaxWidth,
-          builder: (context, _) => SelectionArea(contextMenuBuilder: null, child: content),
+          // A right-click no line answers (a hunk header, a fold row) gets an empty menu: a null builder throws.
+          builder: (context, _) => SelectionArea(contextMenuBuilder: (_, _) => const SizedBox.shrink(), child: content),
         );
       },
     );
@@ -1384,6 +1393,10 @@ class InspectorDiffHunk extends StatelessWidget {
   /// The part gutter's width (design inspector-study.css:170).
   static const double _gutter = 22;
 
+  /// The opaque base of every pinned backing: the well colour on the solid window fill, so no text scrolled beneath
+  /// shows through in either theme.
+  static Color _pinBase(ZsColors colors) => Color.alphaBlend(colors.codeBg, colors.flBgSolid);
+
   /// Whether the hunk shows its parts.
   bool get _parts => selectable && partPicked != null && hunk.sections.length > 1;
 
@@ -1396,15 +1409,17 @@ class InspectorDiffHunk extends StatelessWidget {
     final bool chosen = picked ?? true;
     final bool parts = _parts;
     final unified = layout == DiffLayoutSetting.unified;
+    final Color band = switch (picked) {
+      true => colors.accentSoftHi,
+      null => Color.alphaBlend(colors.accent.withValues(alpha: .12), colors.codeBg),
+      false => colors.hunkBg,
+    };
     Widget header = Container(
       key: const ValueKey<String>('inspector-hunk-header'),
       constraints: const BoxConstraints(minHeight: 30),
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      color: switch (picked) {
-        true => colors.accentSoftHi,
-        null => Color.alphaBlend(colors.accent.withValues(alpha: .12), colors.codeBg),
-        false => colors.hunkBg,
-      },
+      // Pinned (unified), the band paints over the lines scrolled beneath it.
+      color: unified ? Color.alphaBlend(band, _pinBase(colors)) : band,
       child: Row(
         spacing: 8,
         children: <Widget>[
@@ -1653,7 +1668,7 @@ class InspectorDiffHunk extends StatelessWidget {
             child: Container(
               key: const ValueKey<String>('inspector-line-pin'),
               padding: const EdgeInsets.only(left: 10),
-              color: Color.alphaBlend(fill, colors.codeBg),
+              color: Color.alphaBlend(fill, _pinBase(colors)),
               // Always a decoration, so a toggle keeps the subtree (and a focused part checkbox) in place.
               foregroundDecoration: BoxDecoration(
                 border: edge ? Border(left: BorderSide(color: colors.accentLine, width: 2)) : null,

@@ -80,6 +80,15 @@ function ZKComposer({ c, isWC, files, sel, onRun, onClear }) {
   const nf = (n) => n + (n === 1 ? " file" : " files");
   const stat = (x) => <span className="zk-comp-stat">{x.a > 0 && <span className="a">+{x.a}</span>}{x.r > 0 && <span className="r">−{x.r}</span>}</span>;
   const go = () => { if (valid) { onRun([...sel], msg); setSubj(""); setBody(""); } };
+  // Every change picked (Story 10.40): only the hint and Cancel; the draft stays and shows again once a pick goes.
+  if (splitsAll) return (
+    <div className="zk-comp" role="group" aria-label="Split">
+      <div className="zk-comp-ft">
+        <div className="zk-comp-hint" style={{ flex: 1 }}>Every change is picked — Split needs something left behind. To describe this change, click its title.</div>
+        <Button onClick={onClear}>Cancel</Button>
+      </div>
+    </div>
+  );
   return (
     <div className="zk-comp" role="group" aria-label={isWC ? "Commit" : "Split"}>
       <ZKDescFields size="md" s={subj} setS={setSubj} b={body} setB={setBody} onSubmit={go} placeholder={isWC ? "Summary of what you did" : "Summary of the selected changes"}/>
@@ -101,9 +110,8 @@ function ZKComposer({ c, isWC, files, sel, onRun, onClear }) {
         {/* The command is cut inside its message, never in the change id or the paths. */}
         <code className="zk-comp-cmd" title={cmd}><span className="v">{verb}{m && ' -m "'}</span>{m && <span className="m">{m}</span>}<span className="v">{m && '"'}</span><span className="p">{paths}</span></code>
         {!isWC && <Button onClick={onClear}>Cancel</Button>}
-        <Button variant="primary" disabled={!valid} onClick={go} title={splitsAll ? "Every change is picked. To describe this change, click its title." : "⌘↩"}>{isWC ? "Commit" : "Split"}</Button>
+        <Button variant="primary" disabled={!valid} onClick={go} title="⌘↩">{isWC ? "Commit" : "Split"}</Button>
       </div>
-      {splitsAll && <div className="zk-comp-hint">Every change is picked — Split needs something left behind. To describe this change, click its title.</div>}
     </div>
   );
 }

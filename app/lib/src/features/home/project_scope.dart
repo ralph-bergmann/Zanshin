@@ -133,7 +133,7 @@ class ProjectModule {
     ProjectFiles files,
   ) => InspectorViewModel(
     graph: model,
-    details: RepoGraphDetails(repo, environment),
+    details: RepoGraphDetails(repo, environment, root: files.root),
     viewed: viewed,
     settings: settings,
     files: files,

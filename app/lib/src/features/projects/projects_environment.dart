@@ -84,13 +84,30 @@ ConfigEntry? effectiveConfigEntry(List<ConfigEntry> entries) {
 /// `diff.color-words.context` (Story 10.33): the diff options menu and Settings › General › Diffs write it.
 const diffContextKey = 'diff.color-words.context'; // l10n-ignore: jj's config key
 
-/// `diff.color-words.context` as Settings reads it (Story 10.33): the user-level effective value through
-/// [environment]; no entry is jj's default 3, a value that is no integer or negative is null (jj cannot read it).
-Future<int?> readDiffContext(ProjectsEnvironment environment) async {
-  final String? raw = effectiveConfigEntry(await environment.configList(name: diffContextKey))?.value;
+/// [raw] as context lines: no entry is jj's default 3, a value that is no integer or negative is null.
+int? _diffContextLines(String? raw) {
   // 3 mirrors jj-cli's built-in default at v0.47.0 and applies only when no layer lists the key.
   final int? parsed = raw == null ? 3 : int.tryParse(raw.trim());
   return parsed != null && parsed >= 0 ? parsed : null;
+}
+
+/// `diff.color-words.context` as `jj diff` in a workspace uses it (Story 10.40): the `lines` of its whole config
+/// stack (null: jj cannot read it), and whether the repo or the workspace config sets them (`fromRepo`).
+typedef DiffContext = ({int? lines, bool fromRepo});
+
+/// [DiffContext] of the workspace at [workspaceRoot] through [environment]: no entry is jj's default 3, a value that is
+/// no integer or negative is null (jj cannot read it).
+Future<DiffContext> readWorkspaceDiffContext(ProjectsEnvironment environment, String workspaceRoot) async {
+  final ConfigEntry? entry = effectiveConfigEntry(
+    await environment.configList(name: diffContextKey, workspaceRoot: workspaceRoot),
+  );
+  return (
+    lines: _diffContextLines(entry?.value),
+    fromRepo: switch (entry?.source) {
+      ConfigValueSource.repo || ConfigValueSource.workspace => true,
+      _ => false,
+    },
+  );
 }
 
 /// `jj config set --user diff.color-words.context [lines]` through [environment], which fires its config writes.

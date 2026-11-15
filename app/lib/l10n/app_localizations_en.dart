@@ -1080,9 +1080,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorSplit => 'Split';
 
   @override
-  String get inspectorSplitAllReason => 'Every change is picked. To describe this change, click its title.';
-
-  @override
   String get inspectorSplitAllHint =>
       'Every change is picked — Split needs something left behind. To describe this change, click its title.';
 
@@ -1237,6 +1234,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String filesLinePastEnd(int line) {
+    return 'Line $line is not in the file on disk — opens at its start';
+  }
+
+  @override
   String get filesEditorCustom => 'Editor';
 
   @override
@@ -1376,8 +1378,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get diffContextDefault => 'jj\'s default';
 
   @override
+  String get diffContextFromRepo => 'Set in this repository\'s config, which wins';
+
+  @override
   String get diffOptionsNote =>
-      'Every diff follows these. Context lines is jj\'s diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn\'t see.';
+      'Every diff follows these. A Context lines pick writes jj\'s diff.color-words.context to your user config, as Settings › General › Diffs does. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn\'t see.';
 
   @override
   String get inspectorWhitespaceOnly => 'whitespace only';

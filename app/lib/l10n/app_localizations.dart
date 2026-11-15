@@ -1646,12 +1646,6 @@ abstract class AppLocalizations {
   /// **'Split'**
   String get inspectorSplit;
 
-  /// Composer on another change: why Split is disabled while every file is picked (the split would leave an empty change).
-  ///
-  /// In en, this message translates to:
-  /// **'Every change is picked. To describe this change, click its title.'**
-  String get inspectorSplitAllReason;
-
   /// Composer on another change: the note under the buttons while every file is picked.
   ///
   /// In en, this message translates to:
@@ -1910,6 +1904,12 @@ abstract class AppLocalizations {
   /// **'Open in {editor} at line {line}'**
   String filesOpenInAtLine(String editor, int line);
 
+  /// Story 10.40: note under the Open row of a diff line's menu when the file on disk has fewer lines than that line, so the editor opens the file at its start.
+  ///
+  /// In en, this message translates to:
+  /// **'Line {line} is not in the file on disk — opens at its start'**
+  String filesLinePastEnd(int line);
+
   /// Story 10.39: the name in 'Open in Editor' when the editor is a custom command.
   ///
   /// In en, this message translates to:
@@ -2108,10 +2108,16 @@ abstract class AppLocalizations {
   /// **'jj\'s default'**
   String get diffContextDefault;
 
+  /// Story 10.40: note under the context-line choices of the diff options menu when the repo or workspace config sets diff.color-words.context, so a pick (written to the user config) may not change the diff.
+  ///
+  /// In en, this message translates to:
+  /// **'Set in this repository\'s config, which wins'**
+  String get diffContextFromRepo;
+
   /// The note at the end of the diff options menu.
   ///
   /// In en, this message translates to:
-  /// **'Every diff follows these. Context lines is jj\'s diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn\'t see.'**
+  /// **'Every diff follows these. A Context lines pick writes jj\'s diff.color-words.context to your user config, as Settings › General › Diffs does. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn\'t see.'**
   String get diffOptionsNote;
 
   /// Pill on a line that changed only in whitespace, shown dimmed because its part is picked while the diff ignores whitespace.

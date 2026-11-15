@@ -7,7 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart' show UndoTimelineActions;
-import 'package:zanshin/src/features/projects/projects_environment.dart' show ConfigWrites;
+import 'package:zanshin/src/features/projects/projects_environment.dart' show ConfigWrites, DiffContext;
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail_preview.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
@@ -164,7 +164,7 @@ class _DemoChanges implements OperationChangesSource {
   var _context = 3;
 
   @override
-  Future<int?> diffContext() async => _context;
+  Future<DiffContext> diffContext() async => (lines: _context, fromRepo: false);
 
   @override
   Future<void> setDiffContext(int lines) async {

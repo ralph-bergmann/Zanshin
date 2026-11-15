@@ -20,6 +20,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/projects/projects_environment.dart' show DiffContext;
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
@@ -215,7 +216,7 @@ class _Details implements GraphDetails {
   }) => Completer<Diff>().future;
 
   @override
-  Future<int?> diffContext() async => 3;
+  Future<DiffContext> diffContext() async => (lines: 3, fromRepo: false);
 
   @override
   Future<void> setDiffContext(int lines) async {}

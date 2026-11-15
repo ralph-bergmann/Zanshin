@@ -18,6 +18,7 @@ import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/graph/inspector_viewed_store.dart';
 import 'package:zanshin/src/features/graph/recorded_graph_layout.dart';
+import 'package:zanshin/src/features/projects/projects_environment.dart' show DiffContext;
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
 import 'package:zanshin/src/features/sync/sync_island.dart';
@@ -297,7 +298,7 @@ class _Details implements GraphDetails {
   }) async => Diff(files: const [], operationId: 'op', commitIds: <String>[commitId]);
 
   @override
-  Future<int?> diffContext() async => 3;
+  Future<DiffContext> diffContext() async => (lines: 3, fromRepo: false);
 
   @override
   Future<void> setDiffContext(int lines) async {}

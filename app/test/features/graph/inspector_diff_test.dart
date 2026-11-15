@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +19,7 @@ import 'package:zanshin_ui/zanshin_ui.dart'
         ZsMenuHeader,
         ZsMenuItem,
         ZsMenuNote,
+        ZsMenuSeparator,
         ZsScrollArea,
         ZsTheme;
 
@@ -460,7 +461,9 @@ void main() {
     );
     expect(find.bySemanticsIdentifier('inspector-hunk-check'), findsOneWidget);
     final Container header = tester.widget(find.byKey(const ValueKey<String>('inspector-hunk-header')));
-    expect(header.color, ZsColors.night.accentSoftHi);
+    const ZsColors colors = ZsColors.night;
+    // Unified, the pinned header sits on the opaque base (Story 10.40).
+    expect(header.color, Color.alphaBlend(colors.accentSoftHi, Color.alphaBlend(colors.codeBg, colors.flBgSolid)));
   });
 
   testWidgets('a new fill or new marks repaint the line; equal ones do not', (tester) async {
@@ -723,7 +726,14 @@ void main() {
       expect(partBoxes(), findsNWidgets(3));
       const ZsColors colors = ZsColors.night;
       final Container header = tester.widget(find.byKey(const ValueKey<String>('inspector-hunk-header')));
-      expect(header.color, Color.alphaBlend(colors.accent.withValues(alpha: .12), colors.codeBg), reason: 'some');
+      expect(
+        header.color,
+        Color.alphaBlend(
+          Color.alphaBlend(colors.accent.withValues(alpha: .12), colors.codeBg),
+          Color.alphaBlend(colors.codeBg, colors.flBgSolid),
+        ),
+        reason: 'some; pinned, on the opaque base',
+      );
       bool edged(String text) =>
           (tester
                       .widget<Container>(
@@ -1109,7 +1119,10 @@ void main() {
       ValueChanged<DiffWhitespaceSetting>? onWhitespace,
       ValueChanged<int>? onContext,
       bool picks = true,
+      ZsAppearance appearance = const ZsAppearance(),
+      List<ZsMenuEntry> Function(BuildContext context, int line)? lineMenu,
     }) => shellHost(
+      appearance: appearance,
       SizedBox(
         width: 520,
         child: InspectorDiffView(
@@ -1138,6 +1151,7 @@ void main() {
           ignored: ignored,
           contextLines: context,
           onContextLinesChanged: onContext ?? (_) {},
+          lineMenu: lineMenu,
         ),
       ),
     );
@@ -1174,6 +1188,76 @@ void main() {
       );
       expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
       expect(find.bySemanticsIdentifier('inspector-fold-check'), findsNothing);
+    });
+
+    testWidgets('Story 10.40: unified, every pinned backing is opaque in both themes — a context and an added line, '
+        'the no-newline row, the fold row, the hunk header', (tester) async {
+      final Hunk lines = _hunk(<HunkLine>[_line('    1    1|x'), _line('+        2|{+end+}', newline: false)]);
+      Iterable<double> alphas() => <double>[
+        for (final Element pin in find.byKey(const ValueKey<String>('inspector-line-pin')).evaluate())
+          (pin.widget as Container).color!.a,
+        tester.widget<Container>(find.byKey(const ValueKey<String>('inspector-hunk-header'))).color!.a,
+      ];
+      for (final ZsTheme theme in ZsTheme.values) {
+        final appearance = ZsAppearance(theme: theme);
+        await tester.pumpWidget(
+          wsView(hunk: lines, whitespace: DiffWhitespaceSetting.showAll, picks: false, appearance: appearance),
+        );
+        expect(find.text(noNewlineMarker), findsOneWidget);
+        expect(find.byKey(const ValueKey<String>('inspector-line-pin')), findsNWidgets(3));
+        expect(alphas(), everyElement(1.0), reason: '${theme.name}: the lines');
+        await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, appearance: appearance));
+        expect(find.text('⋯ 1 line changed whitespace only · Show'), findsOneWidget);
+        expect(alphas(), everyElement(1.0), reason: '${theme.name}: the fold row');
+      }
+    });
+
+    testWidgets('Story 10.40: with a line menu, a right-click on a fold row, a no-newline row or the hunk header '
+        'throws nothing and opens nothing', (tester) async {
+      final lines = <int>[];
+      List<ZsMenuEntry> menu(BuildContext context, int line) {
+        lines.add(line);
+        return const <ZsMenuEntry>[ZsMenuItem(label: 'Line row')];
+      }
+
+      Future<void> rightClick(Finder finder) async {
+        await tester.tap(finder, buttons: kSecondaryButton);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(tester.takeException(), isNull);
+        expect(find.text('Line row'), findsNothing);
+      }
+
+      await tester.pumpWidget(wsView(hunk: amount, ignored: unchanged, picks: false, lineMenu: menu));
+      await rightClick(find.text('⋯ 1 line changed whitespace only · Show'));
+      await rightClick(find.byKey(const ValueKey<String>('inspector-hunk-header')));
+      final Hunk end = _hunk(<HunkLine>[_line('+        1|{+end+}', newline: false)]);
+      await tester.pumpWidget(
+        wsView(hunk: end, whitespace: DiffWhitespaceSetting.showAll, picks: false, lineMenu: menu),
+      );
+      await rightClick(find.text(noNewlineMarker));
+      expect(lines, isEmpty);
+    });
+
+    test('Story 10.40: the options menu notes the repo config under the context rows when it sets them', () {
+      final AppLocalizations strings = platformStrings();
+      List<ZsMenuEntry> entries({required bool fromRepo}) => diffOptionsEntries(
+        strings,
+        whitespace: DiffWhitespaceSetting.showAll,
+        onWhitespaceChanged: (_) {},
+        contextLines: 7,
+        onContextLinesChanged: (_) {},
+        contextFromRepo: fromRepo,
+      );
+      const note = "Set in this repository's config, which wins";
+      final List<ZsMenuEntry> repo = entries(fromRepo: true);
+      final int at = repo.indexWhere((entry) => entry is ZsMenuNote && entry.label == note);
+      expect(repo[at - 1], isA<ZsMenuItem>().having((item) => item.label, 'label', '20'), reason: 'under the rows');
+      expect(repo[at + 1], isA<ZsMenuSeparator>());
+      expect(
+        entries(fromRepo: false).whereType<ZsMenuNote>().where((n) => n.label == note),
+        isEmpty,
+      );
     });
 
     testWidgets('a picked part shows its whitespace-only line dimmed with the pill "whitespace only"', (tester) async {

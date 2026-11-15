@@ -20,6 +20,7 @@ import 'package:zanshin/src/features/graph/view_state_cleanup.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
 import 'package:zanshin/src/features/projects/projects_environment.dart' show diffContextKey;
 import 'package:zanshin/src/features/projects/worker_project_repos.dart';
+import 'package:zanshin/src/features/undo_timeline/operation_changes.dart' show RepoOperationChangesSource;
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show SettingsStore;
@@ -167,24 +168,28 @@ void main() {
   });
 
   test(
-    'Story 10.33: diffContext reads the user-level value as Settings does; setDiffContext writes it at user scope',
+    'Story 10.40: diffContext reads the workspace stack as jj diff does and says when the repo sets it; '
+    'setDiffContext writes it at user scope',
     () async {
       final ProjectRepo repo = await openRepo('context');
       final env = FakeProjectsEnvironment();
-      final details = RepoGraphDetails(repo, env);
-      expect(await details.diffContext(), 3, reason: "no entry: jj's default");
+      final details = RepoGraphDetails(repo, env, root: pathOf('context'));
+      expect(await details.diffContext(), (lines: 3, fromRepo: false), reason: "no entry: jj's default");
       ConfigEntry entry(String value, ConfigValueSource source) =>
           ConfigEntry(name: diffContextKey, value: value, source: source, path: null, overridden: false);
       for (final (String value, int? lines) in <(String, int?)>[('5', 5), ('"many"', null), ('-1', null)]) {
         env.configEntries[diffContextKey] = <ConfigEntry>[entry(value, ConfigValueSource.user)];
-        expect(await details.diffContext(), lines, reason: value);
+        expect(await details.diffContext(), (lines: lines, fromRepo: false), reason: value);
       }
-      // A repo layer is the project's: the read without a workspace root does not see it, as the Settings row.
+      // The repo layer wins, as in `jj diff` inside the workspace.
       env.configEntries[diffContextKey] = <ConfigEntry>[
-        entry('5', ConfigValueSource.user),
+        entry('3', ConfigValueSource.user),
         entry('7', ConfigValueSource.repo),
       ];
-      expect(await details.diffContext(), 5);
+      expect(await details.diffContext(), (lines: 7, fromRepo: true));
+      env.configEntries[diffContextKey] = <ConfigEntry>[entry('4', ConfigValueSource.workspace)];
+      expect(await details.diffContext(), (lines: 4, fromRepo: true));
+      env.configEntries[diffContextKey] = <ConfigEntry>[entry('3', ConfigValueSource.user)];
       var writes = 0;
       void count() => writes++;
       env.configWrites.addListener(count);
@@ -192,15 +197,33 @@ void main() {
       env.configWrites.removeListener(count);
       expect(env.configCalls, <String>['set user diff.color-words.context 10']);
       expect(writes, 1, reason: 'the open diff reloads on it');
-      expect(await details.diffContext(), 10);
+      expect(await details.diffContext(), (lines: 10, fromRepo: false));
     },
   );
+
+  test('Story 10.40: the operation view reads the workspace stack too; the repo or workspace layer says so', () async {
+    final ProjectRepo repo = await openRepo('op-context');
+    final env = FakeProjectsEnvironment();
+    final source = RepoOperationChangesSource(repo, environment: env, root: pathOf('op-context'));
+    ConfigEntry entry(String value, ConfigValueSource source) =>
+        ConfigEntry(name: diffContextKey, value: value, source: source, path: null, overridden: false);
+    expect(await source.diffContext(), (lines: 3, fromRepo: false), reason: "no entry: jj's default");
+    env.configEntries[diffContextKey] = <ConfigEntry>[
+      entry('3', ConfigValueSource.user),
+      entry('7', ConfigValueSource.repo),
+    ];
+    expect(await source.diffContext(), (lines: 7, fromRepo: true));
+    env.configEntries[diffContextKey] = <ConfigEntry>[entry('4', ConfigValueSource.workspace)];
+    expect(await source.diffContext(), (lines: 4, fromRepo: true));
+    env.configEntries[diffContextKey] = <ConfigEntry>[entry('5', ConfigValueSource.user)];
+    expect(await source.diffContext(), (lines: 5, fromRepo: false));
+  });
 
   test("Story 10.24: RepoGraphDetails.diff reads the summary and a focused file's hunks", () async {
     final ProjectRepo repo = await openRepo('diff');
     File('${pathOf('diff')}/a.txt').writeAsStringSync('one\ntwo\n');
     File('${pathOf('diff')}/b.txt').writeAsStringSync('x\n');
-    final details = RepoGraphDetails(repo, FakeProjectsEnvironment());
+    final details = RepoGraphDetails(repo, FakeProjectsEnvironment(), root: pathOf('diff'));
     // A commit id, as the inspector passes it (`show` snapshots the new files first).
     final String commitId = (await details.show('@')).change.commitId;
     final Diff summary = await details.diff(commitId, summary: true);
@@ -527,7 +550,7 @@ void main() {
       DiffWhitespace mode, {
       Set<HunkKey> revealed = const <HunkKey>{},
     }) async {
-      final details = RepoGraphDetails(repo, FakeProjectsEnvironment());
+      final details = RepoGraphDetails(repo, FakeProjectsEnvironment(), root: temp.path);
       final FileDiff exact = (await details.diff(commitId, paths: const <String>['x.txt'])).files.single;
       final Diff ignoring = await details.diff(commitId, paths: const <String>['x.txt'], whitespace: mode);
       final ignored = IgnoredLines.of(ignoring.files.where((file) => file.path == 'x.txt').firstOrNull);
@@ -792,7 +815,7 @@ void main() {
       final (ProjectRepo repo, _, String first, String second) = await setUpRepo('squash-plan');
       File('${pathOf('squash-plan')}/b.txt').writeAsStringSync('b\n');
       await repo.handle.describe(changeId: first, description: 'parent text\n');
-      final details = RepoGraphDetails(repo, FakeProjectsEnvironment());
+      final details = RepoGraphDetails(repo, FakeProjectsEnvironment(), root: pathOf('squash-plan'));
       expect((await details.squashPlan(second)).combinedDescription, isNull);
       await repo.handle.describe(changeId: second, description: 'child text\n');
       final String? combined = (await details.squashPlan(second)).combinedDescription;

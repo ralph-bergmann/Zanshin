@@ -146,6 +146,19 @@ void main() {
       expect(project.exists('src/gone.dart'), isFalse);
     });
 
+    test('Story 10.40: lineCount counts the newlines, one more for a last line without; null for no readable file', () {
+      final ProjectFiles project = files();
+      final String ten = List<String>.generate(10, (i) => 'line $i\n').join();
+      File('$root/ten.txt').writeAsStringSync(ten);
+      File('$root/open.txt').writeAsStringSync(ten.substring(0, ten.length - 1));
+      File('$root/empty.txt').writeAsStringSync('');
+      expect(project.lineCount('ten.txt'), 10);
+      expect(project.lineCount('open.txt'), 10, reason: 'no final newline');
+      expect(project.lineCount('empty.txt'), 0);
+      expect(project.lineCount('gone.txt'), isNull);
+      expect(project.lineCount('src'), isNull, reason: 'a folder');
+    });
+
     test('Open in IntelliJ at line 12 starts the idea on PATH with the login environment', () async {
       final String idea = fakeProgram('idea');
       await settings.update((s) => s.copyWith.general(editor: 'idea'));

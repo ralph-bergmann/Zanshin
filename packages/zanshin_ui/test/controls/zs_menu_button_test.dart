@@ -81,6 +81,19 @@ void main() {
     expect(find.byType(ZsMenuPanel), findsNothing);
   });
 
+  testWidgets('a click on its open button closes the menu and does not open it again', (tester) async {
+    await tester.pumpWidget(_host(focus: focus));
+    await tester.tap(find.text('Squash'));
+    await tester.pump();
+    await tester.pump(_m.durMenu);
+    expect(find.byType(ZsMenuPanel), findsOneWidget);
+    await tester.tap(find.text('Squash'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(find.byType(ZsMenuPanel), findsNothing);
+  });
+
   testWidgets('Space and Return open it from the keyboard', (tester) async {
     for (final key in <LogicalKeyboardKey>[LogicalKeyboardKey.space, LogicalKeyboardKey.enter]) {
       await tester.pumpWidget(_host(focus: focus));

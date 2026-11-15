@@ -637,8 +637,6 @@
   "@inspectorCommit": {"description": "Composer on the working copy: runs jj commit with the checked files."},
   "inspectorSplit": "Split",
   "@inspectorSplit": {"description": "Composer on another change: runs jj split with the checked files."},
-  "inspectorSplitAllReason": "Every change is picked. To describe this change, click its title.",
-  "@inspectorSplitAllReason": {"description": "Composer on another change: why Split is disabled while every file is picked (the split would leave an empty change)."},
   "inspectorSplitAllHint": "Every change is picked — Split needs something left behind. To describe this change, click its title.",
   "@inspectorSplitAllHint": {"description": "Composer on another change: the note under the buttons while every file is picked."},
   "inspectorComposerSummaryAt": "Summary of what you did",
@@ -752,6 +750,11 @@
     "description": "Story 10.39: the Open row of a diff line's context menu.",
     "placeholders": {"editor": {"type": "String", "example": "IntelliJ IDEA"}, "line": {"type": "int", "example": "12"}}
   },
+  "filesLinePastEnd": "Line {line} is not in the file on disk — opens at its start",
+  "@filesLinePastEnd": {
+    "description": "Story 10.40: note under the Open row of a diff line's menu when the file on disk has fewer lines than that line, so the editor opens the file at its start.",
+    "placeholders": {"line": {"type": "int", "example": "40"}}
+  },
   "filesEditorCustom": "Editor",
   "@filesEditorCustom": {"description": "Story 10.39: the name in 'Open in Editor' when the editor is a custom command."},
   "filesReveal": "Reveal in Finder",
@@ -853,7 +856,9 @@
   "@diffContextHead": {"description": "Heading of the context-line choices in the diff options menu (jj's diff.color-words.context)."},
   "diffContextDefault": "jj's default",
   "@diffContextDefault": {"description": "Hint beside the context-line choice 3 in the diff options menu."},
-  "diffOptionsNote": "Every diff follows these. Context lines is jj's diff.color-words.context in your user config, as in Settings › General › Diffs. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn't see.",
+  "diffContextFromRepo": "Set in this repository's config, which wins",
+  "@diffContextFromRepo": {"description": "Story 10.40: note under the context-line choices of the diff options menu when the repo or workspace config sets diff.color-words.context, so a pick (written to the user config) may not change the diff."},
+  "diffOptionsNote": "Every diff follows these. A Context lines pick writes jj's diff.color-words.context to your user config, as Settings › General › Diffs does. A picked part shows its hidden whitespace lines, so a commit holds nothing you didn't see.",
   "@diffOptionsNote": {"description": "The note at the end of the diff options menu."},
   "inspectorWhitespaceOnly": "whitespace only",
   "@inspectorWhitespaceOnly": {"description": "Pill on a line that changed only in whitespace, shown dimmed because its part is picked while the diff ignores whitespace."},

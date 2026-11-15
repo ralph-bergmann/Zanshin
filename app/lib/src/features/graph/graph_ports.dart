@@ -1053,23 +1053,26 @@ abstract interface class GraphDetails {
   /// What `jj squash -r <changeId>` would ask its editor for (Story 9.15): the combined description, or null.
   Future<SquashPlan> squashPlan(String changeId);
 
-  /// `diff.color-words.context` as Settings reads it ([readDiffContext]); null when jj cannot read it.
-  Future<int?> diffContext();
+  /// `diff.color-words.context` as `jj diff` in the workspace reads it ([readWorkspaceDiffContext]).
+  Future<DiffContext> diffContext();
 
   /// `jj config set --user diff.color-words.context [lines]` ([writeDiffContext]); the config write reloads the diff.
   Future<void> setDiffContext(int lines);
 }
 
-/// [GraphDetails] over an open [ProjectRepo]'s handle, the config through [_environment].
+/// [GraphDetails] over an open [ProjectRepo]'s handle, the config through [_environment] for the workspace at [root].
 class RepoGraphDetails implements GraphDetails {
-  /// The details of [_repo].
-  RepoGraphDetails(this._repo, this._environment);
+  /// The details of [_repo], open at [root].
+  RepoGraphDetails(this._repo, this._environment, {required this.root});
 
   final ProjectRepo _repo;
   final ProjectsEnvironment _environment;
 
+  /// The workspace's root folder.
+  final String root;
+
   @override
-  Future<int?> diffContext() => readDiffContext(_environment);
+  Future<DiffContext> diffContext() => readWorkspaceDiffContext(_environment, root);
 
   @override
   Future<void> setDiffContext(int lines) => writeDiffContext(_environment, lines);

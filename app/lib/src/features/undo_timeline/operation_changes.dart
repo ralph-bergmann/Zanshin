@@ -51,8 +51,8 @@ abstract interface class OperationChangesSource {
   /// Fires after every jj config write, which may change how [diff] reads (`diff.color-words.*`).
   Listenable get configWrites;
 
-  /// `diff.color-words.context` as Settings reads it ([readDiffContext]); null when jj cannot read it.
-  Future<int?> diffContext();
+  /// `diff.color-words.context` as `jj diff` in the workspace reads it ([readWorkspaceDiffContext]).
+  Future<DiffContext> diffContext();
 
   /// `jj config set --user diff.color-words.context [lines]` ([writeDiffContext]); fires [configWrites].
   Future<void> setDiffContext(int lines);
@@ -76,7 +76,7 @@ class RepoOperationChangesSource implements OperationChangesSource {
   Listenable get configWrites => _environment.configWrites;
 
   @override
-  Future<int?> diffContext() => readDiffContext(_environment);
+  Future<DiffContext> diffContext() => readWorkspaceDiffContext(_environment, root);
 
   @override
   Future<void> setDiffContext(int lines) => writeDiffContext(_environment, lines);
@@ -150,7 +150,7 @@ class OperationChangesModel extends ChangeNotifier {
   DiffLayoutSetting _layout;
   bool _wordMarks;
   DiffWhitespaceSetting _whitespace;
-  int? _contextLines = 3;
+  DiffContext _context = (lines: 3, fromRepo: false);
   var _contextSerial = 0;
   IgnoredLines? _focusedIgnored;
   OpShow? _show;
@@ -205,8 +205,11 @@ class OperationChangesModel extends ChangeNotifier {
   /// What the read at [whitespace] says about [focusedDiff]'s file; null while whitespace shows.
   IgnoredLines? get focusedIgnored => _focusedIgnored;
 
-  /// `diff.color-words.context` as Settings reads it; null when jj cannot read it.
-  int? get contextLines => _contextLines;
+  /// `diff.color-words.context` as `jj diff` in the workspace reads it; null when jj cannot read it.
+  int? get contextLines => _context.lines;
+
+  /// Whether the repo or the workspace config sets [contextLines], which then wins over a user-level pick.
+  bool get contextFromRepo => _context.fromRepo;
 
   /// Writes the whitespace mode (a failed write is swallowed; the store keeps the value); the diff reloads once the
   /// store has it.
@@ -233,15 +236,15 @@ class OperationChangesModel extends ChangeNotifier {
 
   Future<void> _readContext() async {
     final int serial = ++_contextSerial;
-    int? lines;
+    DiffContext context;
     try {
-      lines = await _source.diffContext();
+      context = await _source.diffContext();
     } on ZanshinFfiException catch (error) {
       _log.warning('reading diff.color-words.context refused: ${error.code}');
-      lines = null;
+      context = (lines: null, fromRepo: false);
     }
-    if (serial == _contextSerial && lines != _contextLines) {
-      _contextLines = lines;
+    if (serial == _contextSerial && context != _context) {
+      _context = context;
       _notify();
     }
   }
@@ -868,6 +871,7 @@ class _Files extends StatelessWidget {
                       whitespace: model.whitespace,
                       onWhitespaceChanged: model.setWhitespace,
                       contextLines: model.contextLines,
+                      contextFromRepo: model.contextFromRepo,
                       onContextLinesChanged: (lines) => unawaited(model.setContextLines(lines)),
                       wordMarks: model.wordMarks,
                       error: model.focusError,

@@ -5,7 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart' show UndoTimelineActions;
-import 'package:zanshin/src/features/projects/projects_environment.dart' show ConfigWrites;
+import 'package:zanshin/src/features/projects/projects_environment.dart' show ConfigWrites, DiffContext;
 import 'package:zanshin/src/features/undo_timeline/operation_changes.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
@@ -157,11 +157,14 @@ class FakeOperationChangesSource implements OperationChangesSource {
   /// What `diffContext` answers; `setDiffContext` records in [contextWrites], sets it and fires [configWrites].
   int? context = 3;
 
+  /// Whether `diffContext` says the repo config sets [context].
+  var contextFromRepo = false;
+
   /// Every `setDiffContext` value.
   final contextWrites = <int>[];
 
   @override
-  Future<int?> diffContext() async => context;
+  Future<DiffContext> diffContext() async => (lines: context, fromRepo: contextFromRepo);
 
   @override
   Future<void> setDiffContext(int lines) async {

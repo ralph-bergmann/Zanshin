@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { MenuItem } from "../menus/Menu";
 
-/** A Button that opens a Menu under itself (the inspector's Squash). States: the Button's — rest · hover · pressed · focus-visible · disabled (.4) · disabled with a reason (the reason on its wrapper) — plus open (the menu shows under it; the button keeps its rest look). */
+/** A Button that opens a Menu under itself (the inspector's Squash), above itself when there is no room below (Story 10.40). States: the Button's — rest · hover · pressed · focus-visible · disabled (.4) · disabled with a reason (the reason on its wrapper) — plus open (the menu shows under it, or above it without room below; the button keeps its rest look; a click on it closes the menu). */
 export interface MenuButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onSelect"> {
   /** the menu's rows; each row's `cmd` is its jj command, a disabled row's `title` its reason */
   items: Array<MenuItem | "sep">;

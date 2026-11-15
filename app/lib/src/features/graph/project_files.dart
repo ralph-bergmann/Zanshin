@@ -205,6 +205,20 @@ class ProjectFiles {
   /// Whether [path] (a file or a folder) is in the working copy on disk.
   bool exists(String path) => FileSystemEntity.typeSync(absolute(path)) != FileSystemEntityType.notFound;
 
+  /// The number of lines of the file [path] on disk: its `\n`s, plus 1 when a non-empty file does not end in one;
+  /// null when it is no readable file.
+  int? lineCount(String path) {
+    // shortcut: reads the whole file on the UI isolate, move to an isolate if large files make the menu lag
+    final Uint8List bytes;
+    try {
+      bytes = File(absolute(path)).readAsBytesSync();
+    } on FileSystemException {
+      return null;
+    }
+    final int newlines = bytes.where((byte) => byte == 0x0A).length;
+    return bytes.isNotEmpty && bytes.last != 0x0A ? newlines + 1 : newlines;
+  }
+
   /// The chosen editor: null for none, a launcher of [editorLaunchers], else a custom command.
   String? get editor => settings.value.general.editor;
 
