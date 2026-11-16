@@ -3150,3 +3150,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **"New change here" on a bookmark or tag runs `jj new <target change id>`, not the CLI's `jj new <name>`, because the backend's `new_change` takes change ids only.** Medium.
   - `Repo::new_change(parents: &[ChangeId], …)` (`crates/zanshin-jj/src/repo.rs:1596`) and `RepoHandle.newChange` resolve change ids; `BookmarkListModel.newHere` (`app/lib/src/features/bookmarks/bookmark_list_model.dart`) runs `GraphNew(parents: [target])` and shows that command. A divergent target refuses where the CLI resolves the ref; a conflicted ref uses its first side where the CLI refuses; the op log records the id, not the name.
   - **Follow-up:** let `new_change` (Rust → FFI → `zanshin_core`) take revset parents like the CLI (`jj new <revsets>`), then run and show `jj new <name>` / `jj new <name>@<remote>` from the row (Stories 10.44, 10.47 use it).
+
+## Surfaced in the follow-up review of Story 10.44 (bmad-build-auto, 2026-11-16)
+
+- **No test checks that the Tags rail count updates when the tag list loads after the bookmark list.** Low.
+  - `HomePage` rebuilds on `Listenable.merge([scope?.bookmarks, scope?.tags])` (`app/lib/src/features/home/home_page.dart`); dropping `scope?.tags` fails no test, since `app/test/features/home/home_page_test.dart:502-507` checks only the rail ids. The Bookmarks count has the same gap, and the home rig cannot order the two reads.
+  - **Follow-up:** give the home test rig a gated tag read, load tags after bookmarks, and assert both rail counts.

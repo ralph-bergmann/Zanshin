@@ -370,7 +370,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
             else
               // Story 10.44: the shared delete flow decides by the read's tracked remotes, so a failed read disables it.
               ZsMenuItem(
-                label: strings.bookmarkMenuDelete,
+                label: strings.refsDelete,
                 cmd: GraphBookmarkDelete(<String>[name]).command,
                 danger: true,
                 enabled: (blocked ?? (readFailed ? strings.bookmarkMenuReadFailed : null)) == null,

@@ -263,7 +263,7 @@ class _DemoHostState extends State<_DemoHost> {
           children: <Widget>[
             for (final String display in <String>['main', 'main@origin', 'release/1.5.x@origin'])
               if (rows.indexWhere((r) => r.display == display) case final int i when i >= 0)
-                BookmarkRowTile(row: rows[i], index: i, model: _model, label: display, showActions: true),
+                BookmarkRowTile(row: rows[i], index: i, model: _model, label: rows[i].bookmark.name, showActions: true),
           ],
         ),
       ),

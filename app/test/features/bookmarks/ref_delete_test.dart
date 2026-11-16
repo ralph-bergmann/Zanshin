@@ -33,6 +33,14 @@ void main() {
       expect(request.asks, isTrue);
       expect(RefDeleteRequest.of(RefKind.bookmark, 'wip', <Bookmark>[localRow('wip', 'k1')]).asks, isFalse);
     });
+
+    test('a tracked remote that is "not created yet" does not hold it: no question', () {
+      final request = RefDeleteRequest.of(RefKind.bookmark, 'new', <Bookmark>[
+        localRow('new', 'k1'),
+        remoteRow('new', 'origin', null),
+      ]);
+      expect(request.asks, isFalse);
+    });
   });
 
   group('the steps', () {
@@ -173,5 +181,53 @@ void main() {
     await tester.tap(find.widgetWithText(ZsButton, 'Delete'));
     await tester.pump();
     expect(chosen.last, RefDeleteChoice.onlyHere);
+  });
+
+  testWidgets('VoiceOver hears each choice\'s label, its default mark, its commands and its note', (tester) async {
+    useShellWindow(tester);
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      shellHost(
+        RefDeleteSheet(
+          request: const RefDeleteRequest(kind: RefKind.bookmark, name: 'feat', remotes: <String>['origin']),
+          onConfirm: (_) {},
+          onCancel: () {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.bySemanticsLabel(
+        'Here, and on origin when you push the deletion, default. jj bookmark delete feat. '
+        'Undo works until you push. A plain push skips deletions; the Push sheet offers to push them.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(RegExp(r'^Here and on origin now\. jj bookmark delete feat\. jj git push --remote origin')),
+      findsOneWidget,
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('a project switch closes the old project\'s open sheet', (tester) async {
+    useShellWindow(tester);
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    final a = BookmarkRig(FakeBookmarkListSource(const <Bookmark>[]));
+    final b = BookmarkRig(FakeBookmarkListSource(const <Bookmark>[]));
+    addTearDown(a.dispose);
+    addTearDown(b.dispose);
+    Widget host(RefDeleteFlow flow) => shellHost(RefDeleteHost(flow: flow, child: const SizedBox.expand()));
+    await tester.pumpWidget(host(a.deletes));
+    a.deletes.delete(const RefDeleteRequest(kind: RefKind.bookmark, name: 'feat', remotes: <String>['origin']));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.bySemanticsIdentifier('ref-delete-sheet'), findsOneWidget);
+
+    await tester.pumpWidget(host(b.deletes));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.bySemanticsIdentifier('ref-delete-sheet'), findsNothing);
+    semantics.dispose();
   });
 }

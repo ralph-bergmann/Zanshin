@@ -5,7 +5,7 @@ created: '2026-11-16'
 status: 'done'
 baseline_revision: '2718e379cb0c0dc4b906924e902a3471843259a0'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/.claude/skills/design-artifacts/SKILL.md'
@@ -22,6 +22,15 @@ deferred:
     location: >-
       app/lib/src/features/bookmarks/bookmark_list_model.dart (BookmarkListModel.newHere)
     severity: medium
+  - summary: >-
+      No test checks that the Tags rail count updates when the tag list loads after the bookmark list.
+    evidence: |-
+      `HomePage` rebuilds on `Listenable.merge([scope?.bookmarks, scope?.tags])`; dropping `scope?.tags` fails no
+      test, because `home_page_test.dart` checks only the rail ids. The Bookmarks count has the same gap, and the
+      home test rig cannot order the two reads.
+    location: >-
+      app/lib/src/features/home/home_page.dart (rail ListenableBuilder); app/test/features/home/home_page_test.dart
+    severity: low
 ---
 
 <intent-contract>
@@ -165,6 +174,49 @@ deferred:
   - `[false]` `[reject]` (blind) The mono refusal format applies to every refusal — intended (spec Boundaries); a single-line text stays proportional, and `toastRevisionNotFound` holds no newline.
   - `[low]` `[patch]` (blind) Test gaps (Copy name clipboard text, plural "Deleted tag v1 and v2") — clipboard assert added; the plural part is rejected: every Delete in the app names one tag, so "Deleted tag <name>" never meets several names.
 
+### 2026-11-16 — Review pass (follow-up)
+- verdicts: 39 findings — high 0, medium 8, low 28, false 3, maybe-false 0
+- findings:
+  - `[false]` `[reject]` (blind) Hover hides the row state; the tree tooltip is only the display name — carried: the design puts the buttons in place of the state, and the spec sets tooltip = full display name.
+  - `[medium]` `[patch]` (blind) New runs `jj new <change id>`, not `jj new <name>`; conflicted and divergent targets differ from the CLI — carried: command text made honest and the name-based `jj new` deferred (backend gap).
+  - `[low]` `[reject]` (blind) `revsetSymbol` is dead and repeats `jjRevsetSymbol` — the intent's Boundaries require a public `revsetSymbol`; it is the hook for the deferred name-based `jj new`.
+  - `[low]` `[patch]` (blind) The widgetbook "Row buttons" demo shows `main@origin@origin` — it passed the display name as the label; it now passes the name (`app/widgetbook/folders/bookmarks.dart`).
+  - `[medium]` `[patch]` (blind) "Now" deletes before it knows it can push; a stale skip shows no toast — carried: `pushNow` toasts why it skipped (the stale branch shows `staleTitle`, `sync_model.dart:311-314`).
+  - `[low]` `[reject]` (blind) A tag's "Only here" can stop halfway — carried: needs a refusal between two untracks; a fix adds a rollback mechanism.
+  - `[low]` `[reject]` (blind) The sheet's Delete stays enabled when the runner turns busy or stale while it is open — `GraphViewModel.run` then returns `GraphActionDisabled` and nothing runs, while the graph shows its stale banner; a stale arriving during the open sheet is rare, and a fix adds a guarded state to the sheet.
+  - `[low]` `[patch]` (blind) The popover's Delete reads as an immediate action — with the delete flow it now reads "Delete…" like the panel (`graph_card_menu.dart`); its command stays the default choice's.
+  - `[low]` `[reject]` (blind) Rename… and Copy name only by right-click — carried: no context-menu key in the story; row buttons are keyboard-reachable.
+  - `[low]` `[reject]` (blind) No tree arrow-key navigation or tree roles — not in the story; arrow-key traversal is a new mechanism.
+  - `[low]` `[patch]` (blind) VoiceOver hears neither the commands nor the default mark of a delete choice — the choice's semantics label now reads label (+ ", default"), each command, then the note; widget test added.
+  - `[low]` `[reject]` (blind) The DS `ConfirmDialog` gained choices but `ZsConfirmDialog` did not — the spec places the sheet in `ref_delete.dart`; moving it into `zanshin_ui` is a refactor no user meets.
+  - `[low]` `[reject]` (blind) Folder sort and highlight differ from the kit — carried: rare names, cosmetic.
+  - `[low]` `[reject]` (blind) The "now" note says "Can't be undone" while the push toast offers Undo — the push toast's Undo is the shared push-toast behavior (it undoes jj's push operation locally); hiding it for this push adds a parameter.
+  - `[low]` `[reject]` (blind) The kit comment promises Untrack the kit cannot show — the kit's static data has no tracked remote row; any kit edit forces a `_ds_bundle.js` block and hash re-sync.
+  - `[low]` `[patch]` (edge) A tracked remote "not created yet" makes the sheet claim the ref is on the remote — `RefDeleteRequest.of` now skips tracked remote rows without a target; unit test added.
+  - `[low]` `[reject]` (edge) Sheet confirm while the runner is busy or stale does nothing — same as the sheet-Delete row above.
+  - `[low]` `[reject]` (edge) Rename sheet confirmed while busy or stale does nothing — the card popover's `GraphNameSheet` behaves the same; rare, and a fix adds a guard.
+  - `[false]` `[reject]` (edge) A name whose lower case changes length (U+0130) misaligns the highlight or throws — Dart's `toLowerCase` keeps the length (`'İstanbul'` → 8 code units, checked with `dart run`).
+  - `[low]` `[reject]` (edge) A match across `/` or in `@remote` keeps a row without a highlight — carried: rare, cosmetic.
+  - `[low]` `[reject]` (edge) A folder click while filtering folds it invisibly — the click records the user's fold, which shows once the filter clears; a guard adds a branch.
+  - `[medium]` `[patch]` (edge) New on a divergent target fails where `jj new <name>` works — carried: deferred backend gap.
+  - `[low]` `[reject]` (edge) Out-of-sync tags show the diverged mark — carried: the spec defines `↕` for a tag as "differs from its tracked remote".
+  - `[low]` `[patch]` (edge) A read failing after Delete was chosen gives no visible feedback — carried: it marks the read failed, which disables Delete with the reason.
+  - `[low]` `[reject]` (edge) `deleteBookmark` without a bookmark reader deletes without asking — carried: production always passes both.
+  - `[low]` `[reject]` (edge) The kit's leaf React key can collide (`aborigin` vs `ab@origin`) — the kit's static data has no such pair; the edit needs a bundle re-sync.
+  - `[medium]` `[patch]` (edge) The preview lost its local/remote short marks — carried: the earlier pass hid them for both kinds.
+  - `[medium]` `[patch]` (edge) New shows and runs the change id, not the name — carried (deferred).
+  - `[low]` `[reject]` (edge) `revsetSymbol` has no production caller — same as the blind row: the intent requires it.
+  - `[low]` `[patch]` (verification) A tracked remote tag's Untrack label is untested — the tag panel test now hovers `v1.5.0@origin` (Untrack, `jj tag untrack`) and `nightly@origin` (Track, `jj tag track`).
+  - `[low]` `[patch]` (verification) The popover's delete-flow Delete is never tested while blocked — the unit test now asserts it disabled with the `blocked` reason.
+  - `[medium]` `[patch]` (verification) A project switch with the sheet open is untested — widget test added in `ref_delete_test.dart`; removing the post-frame `_changed()` makes it fail (mutation-checked).
+  - `[low]` `[patch]` (verification) `pushNow`'s recorded-failure branch is untested — test added: returns false, the pushed toast keeps Undo.
+  - `[low]` `[defer]` (verification) The Tags rail count rebuild is untested — the home rig cannot order the tag read after the bookmark read, and the Bookmarks count has the same gap; deferred.
+  - `[medium]` `[patch]` (intent) New's command is the change id, not the name — carried (deferred).
+  - `[medium]` `[patch]` (intent) "No mark" applied to local and untracked bookmark rows too — carried.
+  - `[low]` `[reject]` (intent) The filter matches `name@remote` but highlights only the label — carried.
+  - `[false]` `[reject]` (intent) Identifier mix (`<kind>-row-delete-<i>` vs `<kind>-track-<i>`) — the intent's "-delete-<i>, -track-<i>" admits both, and `-track-` keeps today's `bookmark-track-<i>`; ids are stable and tested.
+  - `[low]` `[patch]` (intent) The "now" push and the two-remote tag run only on fakes — carried: real-repo forget and tag track/untrack were added; the rest stays on recorder fakes.
+
 ## Design Notes
 
 - **Tree order (open design question):** folders first, as the inspector tree, so `main` sits below the folders — the story's named default. Leaves keep jj's order (name, then local before its remotes).
@@ -190,6 +242,14 @@ deferred:
 - `dart analyze` and `dart format --set-exit-if-changed .` in `app/` and `packages/zanshin_ui` — clean.
 - `node --check _ds_bundle.js` — passes.
 - Not run (gate rule): `cargo make test` / `test-full` / `coverage`. No Rust, FFI or jj verb changed, so no cargo checks, codegen or parity oracle.
+
+**Verification notes (2026-11-16, follow-up review pass, targeted checks per the gate rule):**
+- `flutter test test/features/bookmarks test/features/graph test/features/sync test/features/home test/app/menu test/architecture test/l10n` in `app/` — 1309 pass, 1 fails: the same env-pinned `remote_sync_test.dart` "pushConfig reads git.sign-on-push" (needs `cargo make test-app`); untouched here.
+- `flutter test test/features/bookmarks/ref_delete_test.dart` (11 pass) and `test/features/sync/sync_model_test.dart` (26 pass) run alone — pass.
+- Mutation check: without the post-frame `_changed()` in `RefDeleteHost.didUpdateWidget`, the new project-switch test fails; restored.
+- `dart analyze` in `app/` — no issues; `dart format --set-exit-if-changed .` in `app/` — clean (after formatting `ref_delete.dart`).
+- `dart run` probe: Dart's `toLowerCase` keeps the string length (`İstanbul` 8 → 8), refuting the highlight-crash finding.
+- `packages/zanshin_ui` and the DS untouched in this pass; no Rust, FFI or jj verb change, so no cargo checks, codegen or parity oracle. Not run (gate rule): `cargo make test` / `test-full` / `coverage`.
 
 ## Auto Run Result
 
@@ -220,3 +280,17 @@ Status: done
 **Follow-up review:** recommended — two or more medium entries were patched (10 medium rows). Unverified risk: the patched `pushNow` skip/busy toasts and `RefDeleteHost`'s post-frame close on a flow swap are covered only by widget tests over fakes; nothing drove them in the running app.
 
 **Residual risks.** Visual match with the Refs Study and the DS kit JSX are unchecked (Marionette and DS publish belong to the console session). The tag "Only here" is two or more operations; Undo restores the tag untracked (the note says so). The full gate (incl. coverage and the env-pinned app tests) runs at the end of the story loop.
+
+### Follow-up review pass (2026-11-16)
+
+**Summary.** A fresh four-layer review of the finished change (39 findings). Eight entries patched, one deferred, the rest carried or rejected. No high finding.
+
+**Files changed.**
+- `app/lib/src/features/bookmarks/ref_delete.dart` — a tracked remote without a target ("not created yet") no longer makes the sheet ask; each choice's semantics label carries the default mark and the commands.
+- `app/lib/src/features/graph/graph_card_menu.dart` — the popover's delete-flow item reads "Delete…".
+- `app/widgetbook/folders/bookmarks.dart` — the "Row buttons" demo passes the name as the label (no `@origin@origin`).
+- Tests: `ref_delete_test.dart` (not-created remote, VoiceOver label, project switch with the sheet open), `bookmark_list_view_test.dart` (tag Track/Untrack labels and commands), `graph_card_menu_test.dart` (blocked delete-flow item, "Delete…"), `sync_model_test.dart` (`pushNow` recorded failure).
+
+**Review.** Patched: 1 medium (project-switch sheet test), 7 low (widgetbook label, popover "Delete…", VoiceOver choice label, not-created remote, tag track label test, blocked popover Delete test, `pushNow` recorded-failure test). Deferred: 1 low (Tags rail count rebuild untested — mirrored in deferred-work.md). Carried from the first pass: 15 rows keep their verdicts (New by change id, `pushNow` skip toasts, preview marks, tag half-applied "Only here", keyboard menu path, sort/highlight, tag ↕ wording, read failure, null reader, test surfaces). Rejected new rows: `revsetSymbol` dead (low, the intent requires it), sheet/rename confirm while busy (low, rare, adds a guard), tree arrow keys (low, not in the story), `ZsConfirmDialog` choices (low, refactor), "now" note vs push-toast Undo (low, shared toast, adds a parameter), kit comment and React key (low, static kit data, needs a bundle re-sync), folder click while filtering (low, records the user's fold), U+0130 highlight (false, Dart keeps the length), identifier mix (false, both readings allowed).
+
+**Follow-up review:** not recommended — this follow-up pass patched no high finding (patched: 0 high, 1 medium, 7 low).

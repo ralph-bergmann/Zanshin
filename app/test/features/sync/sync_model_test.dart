@@ -475,6 +475,21 @@ void main() {
         expect(await _toastText(tester, rig.toasts), 'The push failed: Could not resolve host');
       });
 
+      _rigTest('a failure jj still recorded: false, and the pushed toast keeps its Undo', (tester) async {
+        final rig = _Rig();
+        await tester.pump();
+        rig.sync.pushAnswer = (_) => pushResult(
+          <String, List<PushRef>>{
+            'origin': <PushRef>[pushRef('feat', status: PushRefStatus.pushed)],
+          },
+          failure: const PushFailure(kind: PushFailureKind.pushError, message: 'Could not resolve host'),
+          recorded: true,
+        );
+        expect(await rig.model.pushNow(request), isFalse);
+        await _toastText(tester, rig.toasts);
+        expect(find.bySemanticsIdentifier('sync-toast-undo'), findsOneWidget);
+      });
+
       _rigTest('nothing pushes while the working copy is stale; the error toast says why', (tester) async {
         final rig = _Rig();
         final source = ScriptedGraphSource()..respond = (_) => throw staleError('stale');

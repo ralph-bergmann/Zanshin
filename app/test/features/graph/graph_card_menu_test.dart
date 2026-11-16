@@ -439,16 +439,16 @@ void main() {
       expect(ran.last, isA<GraphBookmarkDelete>().having((a) => a.names, 'names', <String>['b-mark']));
     });
 
-    test('Story 10.44: with the delete flow, Delete hands the name over; a failed read disables it', () {
+    test('Story 10.44: with the delete flow, Delete… hands the name over; a failed read or a block disables it', () {
       final deleted = <String>[];
       final ran = <GraphAction>[];
-      ZsMenuItem delete({required bool readFailed}) => _row(
+      ZsMenuItem delete({required bool readFailed, String? blocked}) => _row(
         _row(
           graphBookmarkMenuEntries(
             _en,
             _l,
             _node(_b),
-            blocked: null,
+            blocked: blocked,
             run: ran.add,
             bookmarks: readFailed ? null : _rows(tracked: true),
             readFailed: readFailed,
@@ -457,7 +457,7 @@ void main() {
           ),
           'b-mark',
         ).submenu!,
-        'Delete',
+        'Delete…',
       );
       final ZsMenuItem item = delete(readFailed: false);
       expect((item.enabled, item.cmd, item.danger), (true, 'jj bookmark delete b-mark', true));
@@ -466,6 +466,8 @@ void main() {
       expect(ran, isEmpty, reason: 'the flow runs it');
       final ZsMenuItem failed = delete(readFailed: true);
       expect((failed.enabled, failed.tooltip), (false, "Couldn't read the bookmarks"));
+      final ZsMenuItem stale = delete(readFailed: false, blocked: 'stale');
+      expect((stale.enabled, stale.tooltip), (false, 'stale'));
     });
 
     test('Create… asks for a name; the action names the change', () {
@@ -781,7 +783,7 @@ void main() {
       await settle(tester);
       await tester.tap(find.text('b-mark'));
       await settle(tester);
-      await tester.tap(find.text('Delete'));
+      await tester.tap(find.text('Delete…'));
       await tester.pump(m.durBlink);
       await tester.pump(m.durBlink);
       await settle(tester);
@@ -806,7 +808,7 @@ void main() {
         await settle(tester);
         await tester.tap(find.text('b-mark'));
         await settle(tester);
-        await tester.tap(find.text('Delete'));
+        await tester.tap(find.text('Delete…'));
         await tester.pump(m.durBlink);
         await tester.pump(m.durBlink);
         await settle(tester);

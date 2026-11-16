@@ -22,14 +22,15 @@ class RefDeleteRequest {
   /// Delete… of [name], tracked on [remotes].
   const RefDeleteRequest({required this.kind, required this.name, this.remotes = const <String>[]});
 
-  /// Delete… of [name] with the tracked remotes [rows] (a `--all-remotes` list) name; `git` is not a remote.
+  /// Delete… of [name] with the tracked remotes [rows] (a `--all-remotes` list) name; `git` is not a remote, and a
+  /// tracked remote without a target (jj's "not created yet") does not hold it.
   factory RefDeleteRequest.of(RefKind kind, String name, Iterable<Bookmark> rows) => RefDeleteRequest(
     kind: kind,
     name: name,
     remotes: <String>[
       for (final Bookmark row in rows)
         if (row.kind case RemoteBookmark(:final String remoteName, tracked: true)
-            when row.name == name && remoteName != _gitRemote)
+            when row.name == name && remoteName != _gitRemote && row.target != null)
           remoteName,
     ],
   );
@@ -392,7 +393,14 @@ class _ChoiceRowState extends State<_ChoiceRow> {
     return Semantics(
       container: true,
       identifier: 'ref-delete-choice-${widget.choice.name}',
-      label: '${widget.label}. ${widget.note}',
+      label: <String>[
+        if (widget.choice == RefDeleteChoice.onPush)
+          '${widget.label}, ${context.l10n.refDeleteDefault}'
+        else
+          widget.label,
+        ...widget.commands,
+        widget.note,
+      ].join('. '), // l10n-ignore: separator
       child: MouseRegion(
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),

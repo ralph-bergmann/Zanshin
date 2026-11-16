@@ -677,6 +677,13 @@ void main() {
         await mouse.removePointer();
         await tester.pump();
 
+        await hover(tester, _text('v1.5.0@origin'));
+        expect(tester.widget<ZsButton>(_button('tag-track-1')).label, 'Untrack');
+        expect(_tooltipOf(tester, _button('tag-track-1')).cmd, 'jj tag untrack v1.5.0@origin');
+        await hover(tester, _text('nightly@origin'));
+        expect(tester.widget<ZsButton>(_button('tag-track-4')).label, 'Track');
+        expect(_tooltipOf(tester, _button('tag-track-4')).cmd, 'jj tag track nightly@origin');
+
         await hover(tester, _text('v1.5.0'));
         expect(_tooltipOf(tester, _iconButton('tag-row-delete-0')).cmd, 'jj tag delete v1.5.0');
         await tester.tap(_iconButton('tag-row-delete-0'));
