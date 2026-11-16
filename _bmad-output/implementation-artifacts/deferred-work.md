@@ -2434,7 +2434,7 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 ## Surfaced in Story 11.17 (bmad-build-auto, 2026-11-02)
 
-- **While the project window is in full screen, Minimize and Zoom stay enabled and the item keeps the title "Enter Full Screen".** Low.
+- ~~**While the project window is in full screen, Minimize and Zoom stay enabled and the item keeps the title "Enter Full Screen".**~~ — RESOLVED 2026-11-16 (spec-11-28-full-screen-menu-title, commit 08723bd4): in full screen the item reads "Exit Full Screen" and Minimize and Zoom are grey, sent over `zanshin/menu_state` with ARB labels. Low.
   - The engine's submenus have `autoenablesItems = NO` (`FlutterMenuPlugin.mm:372`), so `NSWindow`'s menu validation never greys or retitles them; `AppMenuModel.windowItemsEnabled` (`app/lib/src/features/shell/app_menu.dart`) sees only the key window. Pre-existing since 11.13.
   - **Follow-up:** send the key window's full-screen state too and grey Minimize/Zoom and retitle the item ("Exit Full Screen", an ARB string) over `zanshin/menu_state`; none until Ralph wants it. Covered by Story 11.28 (Ralph wants it, 2026-11-16).
 - ~~**The runner's XCTests (`MenuStateChannel`) run in no gate step.**~~ — RESOLVED 2026-11-16 (console session, commit a82ae42b): gate step `test-runner` runs them for changes under `app/macos/` (Ralph's decision), with a throwaway home for the test host. Low.

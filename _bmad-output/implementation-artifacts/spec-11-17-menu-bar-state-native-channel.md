@@ -18,6 +18,9 @@ deferred:
     location: >-
       app/lib/src/features/shell/app_menu.dart (AppMenuModel.windowItemsEnabled)
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-11-28-full-screen-menu-title, commit 08723bd4): in full screen the item
+      reads "Exit Full Screen" and Minimize and Zoom are grey, sent over `zanshin/menu_state`.
   - summary: >-
       The runner's XCTests (MenuStateChannel) run in no gate step.
     evidence: |-
@@ -25,6 +28,9 @@ deferred:
     location: >-
       app/macos/RunnerTests/RunnerTests.swift
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (console session, commit a82ae42b): gate step `test-runner` runs them for
+      changes under `app/macos/`.
 ---
 
 <intent-contract>
