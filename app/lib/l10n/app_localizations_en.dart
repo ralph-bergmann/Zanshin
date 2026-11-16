@@ -1644,6 +1644,26 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String toastBookmarkForgot(String name) {
+    return 'Forgot $name';
+  }
+
+  @override
+  String toastTagDeleted(String names) {
+    return 'Deleted tag $names';
+  }
+
+  @override
+  String toastTagTracked(String name) {
+    return 'Started tracking tag $name';
+  }
+
+  @override
+  String toastTagUntracked(String name) {
+    return 'Stopped tracking tag $name';
+  }
+
+  @override
   String toastUndid(String command) {
     return 'Undid $command';
   }
@@ -1898,6 +1918,26 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String menuBookmarkForget(String name) {
+    return 'Forget Bookmark $name';
+  }
+
+  @override
+  String menuTagDelete(String names) {
+    return 'Delete Tag $names';
+  }
+
+  @override
+  String menuTagTrack(String name) {
+    return 'Track Tag $name';
+  }
+
+  @override
+  String menuTagUntrack(String name) {
+    return 'Untrack Tag $name';
+  }
+
+  @override
   String get menuFetch => 'Fetch';
 
   @override
@@ -2008,12 +2048,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get bookmarksStateLocalShort => 'local';
-
-  @override
-  String get bookmarksStateRemoteShort => 'remote';
-
-  @override
   String get bookmarksStateDeletedShort => 'deleted';
 
   @override
@@ -2073,6 +2107,121 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bookmarksBusy => 'Another action is running';
+
+  @override
+  String get bookmarksFilter => 'Filter bookmarks';
+
+  @override
+  String bookmarksNoMatch(String query) {
+    return 'No bookmark matches “$query”.';
+  }
+
+  @override
+  String get tagsTitle => 'Tags';
+
+  @override
+  String tagsEmpty(String command) {
+    return 'No tags yet. Create one with `$command`.';
+  }
+
+  @override
+  String tagsLoadFailed(String detail) {
+    return 'The tags could not be read: $detail';
+  }
+
+  @override
+  String get tagsFilter => 'Filter tags';
+
+  @override
+  String tagsNoMatch(String query) {
+    return 'No tag matches “$query”.';
+  }
+
+  @override
+  String get refsNewHere => 'New change here';
+
+  @override
+  String get refsDelete => 'Delete…';
+
+  @override
+  String get refsRename => 'Rename…';
+
+  @override
+  String get refsCopyName => 'Copy name';
+
+  @override
+  String get refsActions => 'Actions';
+
+  @override
+  String refDeleteTitle(String name) {
+    return 'Delete $name?';
+  }
+
+  @override
+  String refDeleteBodyBookmark(String remotes) {
+    return 'The bookmark is also on $remotes. Where should it go?';
+  }
+
+  @override
+  String refDeleteBodyTag(String remotes) {
+    return 'The tag is also on $remotes. Where should it go?';
+  }
+
+  @override
+  String get refDeleteChoices => 'Where to delete';
+
+  @override
+  String refDeleteOnlyHere(String remotes) {
+    return 'Only here — keep it on $remotes';
+  }
+
+  @override
+  String refDeleteOnlyHereNote(String remotes) {
+    return 'Undo works. $remotes keeps it; it stays here as an untracked remote bookmark.';
+  }
+
+  @override
+  String refDeleteOnlyHereNoteTag(String remotes) {
+    return '$remotes keeps it; it stays here as an untracked remote tag. Undo brings the tag back, still untracked.';
+  }
+
+  @override
+  String refDeleteOnPush(String remotes) {
+    return 'Here, and on $remotes when you push the deletion';
+  }
+
+  @override
+  String get refDeleteOnPushNote =>
+      'Undo works until you push. A plain push skips deletions; the Push sheet offers to push them.';
+
+  @override
+  String refDeleteNow(String remotes) {
+    return 'Here and on $remotes now';
+  }
+
+  @override
+  String refDeleteNowNoteBookmark(String remotes) {
+    return 'Can\'t be undone: $remotes loses the bookmark.';
+  }
+
+  @override
+  String refDeleteNowNoteTag(String remotes) {
+    return 'Can\'t be undone: $remotes loses the tag.';
+  }
+
+  @override
+  String get refDeleteDefault => 'default';
+
+  @override
+  String get refDeleteConfirm => 'Delete';
+
+  @override
+  String get toastPushBusy => 'another fetch or push is running';
+
+  @override
+  String toastPushFailed(String detail) {
+    return 'The push failed: $detail';
+  }
 
   @override
   String get cardMenuNewOnTop => 'New change on top';

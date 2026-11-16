@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7a0975b1eb2b","components/brand/Icon.jsx":"3f1c816c4911","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"12489ebc99a0","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"12da377a4a0d","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"bb068d275c9d","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"933f6f50485f","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7a0975b1eb2b","components/brand/Icon.jsx":"95d6aaea20e5","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"12489ebc99a0","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"12da377a4a0d","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"bb068d275c9d","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"bb339a76dc0f","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"5d1fa8cbc065","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"ac0ef89fe9cf","ui_kits/desktop/chrome.jsx":"d89725a9bce4","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"38fa1e098e09","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"933f6f50485f","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -71,6 +71,7 @@ const ZS_ICON_SET = {
   "squash-into": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 9v3.5A1.5 1.5 0 0 0 4 14h8a1.5 1.5 0 0 0 1.5-1.5V9\"></path><path d=\"M8 1.75v8.5M5 7.25l3 3 3-3\"></path></g>",
   "stack-collapse": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"8\" width=\"7\" height=\"6\" rx=\"1.5\"></rect><path d=\"M4.5 5.5h5.5A1.5 1.5 0 0 1 11.5 7v4.5M7 3h5.5A1.5 1.5 0 0 1 14 4.5V9\"></path></g>",
   "sun": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"2.25\"></circle><path d=\"M8 2v1.25M8 12.75V14M14 8h-1.25M3.25 8H2M12.45 3.55l-1.09 1.09M4.64 11.36l-1.09 1.09M12.45 12.45l-1.09-1.09M4.64 4.64L3.55 3.55\"></path></g>",
+  "tag": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 3.2v4.3c0 .3.1.6.35.8l5.6 5.6c.45.45 1.15.45 1.6 0l3.75-3.75c.45-.45.45-1.15 0-1.6l-5.6-5.6A1.1 1.1 0 0 0 7.4 2.5H3.2a.7.7 0 0 0-.7.7z\"></path><circle cx=\"5.4\" cy=\"5.4\" r=\"1.05\"></circle></g>",
   "undo": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 3.5L3 6.5l3 3\"></path><path d=\"M3 6.5h7a3.5 3.5 0 0 1 0 7H6\"></path></g>",
   "updown": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 6.25L8 3.5l3 2.75M5 9.75L8 12.5l3-2.75\"></path></g>",
   "user": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"5.25\" r=\"2.25\"></circle><path d=\"M3 14c0-2.25 2.2-4 5-4s5 1.75 5 4\"></path></g>",
@@ -5576,10 +5577,17 @@ try { (() => {
 // tone destructive: the filled red button is the dialog's one primary; focus starts on Cancel, ↩ = the focused button, ⌘↩ confirms.
 // tone warn / default: the gold primary, focused, ↩ confirms. Esc and Cancel cancel — a click on the scrim does nothing; Tab stays inside; focus returns.
 // The 18px modal sheet (--dur-dialog in, glide; --dur-exit-lg out).
+// choices: one decision with commands that differ (Story 10.44's delete sheet) — a radio group of rows, each its label (+ "default"),
+// its commands (mono, one per line) and a note; a danger row in --rem. The choice's commands replace the one-command well.
 function ConfirmDialog({
   title,
   children,
   cmd,
+  choices,
+  value,
+  defaultValue,
+  onChoose,
+  choicesLabel = "Choices",
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   tone = "destructive",
@@ -5593,6 +5601,12 @@ function ConfirmDialog({
   const box = React.useRef(null);
   const id = React.useId();
   const destructive = tone === "destructive";
+  const [own, setOwn] = React.useState(defaultValue);
+  const chosen = value !== undefined ? value : own;
+  const choose = v => {
+    setOwn(v);
+    onChoose && onChoose(v);
+  };
   __ds_scope.useSheetFocus(box, destructive ? '[data-k="cancel"]' : '[data-k="ok"]');
   const onKey = e => {
     if (e.key === "Escape") {
@@ -5627,7 +5641,33 @@ function ConfirmDialog({
   }, title)), /*#__PURE__*/React.createElement("div", {
     id: id + "d",
     className: "zs-alert-body"
-  }, children), cmd && /*#__PURE__*/React.createElement("code", {
+  }, children), choices && /*#__PURE__*/React.createElement("div", {
+    className: "zs-alert-choices",
+    role: "radiogroup",
+    "aria-label": choicesLabel
+  }, choices.map(c => /*#__PURE__*/React.createElement("button", {
+    key: c.id,
+    type: "button",
+    role: "radio",
+    "aria-checked": chosen === c.id,
+    className: "zs-alert-choice" + (chosen === c.id ? " is-on" : "") + (c.danger ? " is-danger" : ""),
+    onClick: () => choose(c.id)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-radio" + (chosen === c.id ? " is-on" : ""),
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-radio-dot"
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "zs-alert-choice-t"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-alert-choice-l"
+  }, c.label, c.id === defaultValue && /*#__PURE__*/React.createElement("span", {
+    className: "zs-alert-default"
+  }, "default")), /*#__PURE__*/React.createElement("code", {
+    className: "zs-alert-choice-cmd"
+  }, c.cmd.join("\n")), c.note && /*#__PURE__*/React.createElement("span", {
+    className: "zs-alert-choice-n"
+  }, c.note))))), cmd && !choices && /*#__PURE__*/React.createElement("code", {
     className: "zs-alert-cmd"
   }, cmd), /*#__PURE__*/React.createElement("div", {
     className: "zs-alert-ft"
@@ -9001,6 +9041,10 @@ try { (() => {
     label: "Bookmarks",
     icon: "branch"
   }, {
+    id: "tags",
+    label: "Tags",
+    icon: "tag"
+  }, {
     id: "reviews",
     label: "Reviews",
     icon: "reviews"
@@ -9314,39 +9358,211 @@ try { (() => {
       onClick: onNew
     }, "New change"))));
   }
+  // the refs of a view (Story 10.44): bookmarks with their state (a "remote" one is the untracked origin copy), or tags (no state mark)
+  const zkRefs = (changes, kind) => kind === "tags" ? changes.flatMap(c => (c.tags || []).map(name => ({
+    name,
+    b: {
+      name,
+      state: "tag"
+    },
+    c
+  }))) : changes.flatMap(c => c.bookmarks.map(b => ({
+    name: b.name,
+    remote: b.state === "remote" ? "origin" : null,
+    b,
+    c
+  })));
+  const zkRefShort = b => b.state === "tag" ? "" : zkBmShort(b);
+
+  // the hover preview: the first rows, flat, with the bookmark (or tag) glyph
   function ZKBookmarkList({
-    changes,
+    items,
     visible,
     onPick,
-    limit
+    limit,
+    glyph = "bookmark-filled"
   }) {
-    const rows = changes.flatMap(c => c.bookmarks.map(b => ({
-      b,
-      c
-    }))).slice(0, limit || undefined);
+    const rows = items.slice(0, limit || undefined);
     return /*#__PURE__*/React.createElement("div", {
       className: "zk-bl"
     }, rows.map(({
+      name,
       b,
       c
     }) => /*#__PURE__*/React.createElement("button", {
-      key: b.name,
+      key: name,
       type: "button",
       className: "zk-bl-row" + (visible.has(c.id) ? "" : " is-hidden"),
       onClick: () => onPick(c.id),
-      title: b.name + " — " + ZK_BM_STATE[b.state]
+      title: name + (ZK_BM_STATE[b.state] ? " — " + ZK_BM_STATE[b.state] : "")
     }, /*#__PURE__*/React.createElement(Icon, {
-      name: "bookmark-filled",
+      name: glyph,
       size: "sm"
     }), /*#__PURE__*/React.createElement("span", {
       className: "zk-bl-text"
     }, /*#__PURE__*/React.createElement("span", {
       className: "zk-bl-name"
-    }, b.name), /*#__PURE__*/React.createElement("span", {
+    }, name), /*#__PURE__*/React.createElement("span", {
       className: "zk-bl-sub"
     }, /*#__PURE__*/React.createElement("b", null, c.id.slice(0, 2)), c.id.slice(2, 8), " \xB7 ", c.subject || "(no description set)")), /*#__PURE__*/React.createElement("span", {
       className: "zs-bm-state s-" + b.state
-    }, zkBmShort(b)))));
+    }, zkRefShort(b)))));
+  }
+
+  // the pinned view (Story 10.44): a filter on top, then the names split at "/" — folders first (open by default, no chevron), then the
+  // leaves in list order, no leading glyph; a remote leaf shows a dim @remote. On hover or focus the row's buttons replace its state, the
+  // height never changes: local New + Delete…, tracked Untrack + New, untracked Track + New; each tooltip carries the command.
+  function zkTreeRows(items, q, closed) {
+    const root = {
+      dirs: new Map(),
+      leaves: []
+    };
+    const hit = it => !q || (it.name + (it.remote ? "@" + it.remote : "")).toLowerCase().includes(q.toLowerCase());
+    for (const it of items.filter(hit)) {
+      const seg = it.name.split("/");
+      let d = root,
+        path = "";
+      for (const s of seg.slice(0, -1)) {
+        path += s + "/";
+        if (!d.dirs.has(s)) d.dirs.set(s, {
+          name: s + "/",
+          path,
+          dirs: new Map(),
+          leaves: []
+        });
+        d = d.dirs.get(s);
+      }
+      d.leaves.push({
+        ...it,
+        leaf: seg[seg.length - 1] || it.name
+      });
+    }
+    const out = [];
+    const walk = (d, depth) => {
+      for (const c of [...d.dirs.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+        const open = !!q || !closed.has(c.path);
+        out.push({
+          dir: true,
+          path: c.path,
+          name: c.name,
+          depth,
+          open
+        });
+        if (open) walk(c, depth + 1);
+      }
+      for (const l of d.leaves) out.push({
+        ...l,
+        depth
+      });
+    };
+    walk(root, 0);
+    return out;
+  }
+  const zkHl = (t, q) => {
+    const i = q ? t.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    return i < 0 ? t : /*#__PURE__*/React.createElement(React.Fragment, null, t.slice(0, i), /*#__PURE__*/React.createElement("b", {
+      className: "zk-rt-hit"
+    }, t.slice(i, i + q.length)), t.slice(i + q.length));
+  };
+  function ZKRefTree({
+    kind,
+    items,
+    visible,
+    onPick
+  }) {
+    const [q, setQ] = React.useState("");
+    const [closed, setClosed] = React.useState(() => new Set());
+    const rows = zkTreeRows(items, q, closed);
+    const toggle = p => setClosed(c => {
+      const n = new Set(c);
+      n.has(p) ? n.delete(p) : n.add(p);
+      return n;
+    });
+    const ref = kind === "tags" ? "tag" : "bookmark";
+    const stop = e => e.stopPropagation();
+    const buttons = r => {
+      const full = r.name + (r.remote ? "@" + r.remote : "");
+      const nw = /*#__PURE__*/React.createElement(IconButton, {
+        key: "new",
+        size: "sm",
+        icon: "plus",
+        iconSize: "md",
+        label: "New change here",
+        title: "New change here — jj new " + full,
+        onClick: stop
+      });
+      if (r.remote) return [/*#__PURE__*/React.createElement(Button, {
+        key: "tr",
+        size: "sm",
+        variant: "ghost",
+        title: "jj " + ref + " track " + full,
+        onClick: stop
+      }, "Track"), nw];
+      return [nw, /*#__PURE__*/React.createElement(IconButton, {
+        key: "del",
+        size: "sm",
+        icon: "abandon",
+        iconSize: "md",
+        label: "Delete…",
+        title: "Delete… — jj " + ref + " delete " + r.name,
+        onClick: stop
+      })];
+    };
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.ZanshinDesignSystem_a33847.SearchField, {
+      className: "zk-rt-filter",
+      value: q,
+      onChange: setQ,
+      onClear: () => setQ(""),
+      placeholder: "Filter " + kind,
+      label: "Filter " + kind
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "zk-bl",
+      role: "tree",
+      "aria-label": kind
+    }, rows.map(r => r.dir ? /*#__PURE__*/React.createElement("div", {
+      key: r.path,
+      role: "treeitem",
+      "aria-expanded": r.open,
+      tabIndex: 0,
+      className: "zk-rt-dir",
+      style: {
+        paddingLeft: 8 + r.depth * 14
+      },
+      onClick: () => toggle(r.path),
+      onKeyDown: e => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle(r.path);
+        }
+      }
+    }, /*#__PURE__*/React.createElement(Icon, {
+      name: r.open ? "folder-open" : "folder",
+      size: "md"
+    }), /*#__PURE__*/React.createElement("span", null, zkHl(r.name, q))) : /*#__PURE__*/React.createElement("div", {
+      key: r.name + (r.remote || ""),
+      role: "treeitem",
+      tabIndex: 0,
+      title: r.name + (r.remote ? "@" + r.remote : ""),
+      className: "zk-bl-row zk-rt-leaf" + (visible.has(r.c.id) ? "" : " is-hidden") + (r.remote ? " is-untracked" : ""),
+      style: {
+        paddingLeft: 8 + r.depth * 14 + 20
+      },
+      onClick: () => onPick(r.c.id)
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "zk-bl-text"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "zk-bl-name"
+    }, zkHl(r.leaf, q), r.remote && /*#__PURE__*/React.createElement("span", {
+      className: "zk-rt-remote"
+    }, "@", r.remote)), /*#__PURE__*/React.createElement("span", {
+      className: "zk-bl-sub"
+    }, /*#__PURE__*/React.createElement("b", null, r.c.id.slice(0, 2)), r.c.id.slice(2, 8), " \xB7 ", r.c.subject || "(no description set)")), /*#__PURE__*/React.createElement("span", {
+      className: "zs-bm-state s-" + r.b.state
+    }, zkRefShort(r.b)), /*#__PURE__*/React.createElement("span", {
+      className: "zk-rt-acts"
+    }, buttons(r)))), !rows.length && /*#__PURE__*/React.createElement("div", {
+      className: "zk-co-more"
+    }, "No ", ref, " matches “", q, "”.")));
   }
   function ZKRailContent({
     id,
@@ -9356,14 +9572,22 @@ try { (() => {
     onPick,
     preview
   }) {
-    if (id === "bookmarks") {
-      const n = changes.reduce((s, c) => s + c.bookmarks.length, 0);
+    if (id === "bookmarks" || id === "tags") {
+      const items = zkRefs(changes, id),
+        n = items.length;
+      if (!preview) return /*#__PURE__*/React.createElement(ZKRefTree, {
+        kind: id,
+        items: items,
+        visible: visible,
+        onPick: onPick
+      });
       return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(ZKBookmarkList, {
-        changes: changes,
+        items: items,
         visible: visible,
         onPick: onPick,
-        limit: preview ? 5 : 0
-      }), preview && n > 5 && /*#__PURE__*/React.createElement("div", {
+        limit: 5,
+        glyph: id === "tags" ? "tag" : "bookmark-filled"
+      }), n > 5 && /*#__PURE__*/React.createElement("div", {
         className: "zk-co-more"
       }, "+", n - 5, " more"));
     }
@@ -9408,7 +9632,7 @@ try { (() => {
       clear();
       closeT.current = setTimeout(() => setCo(null), zkMs("--delay-callout-out", 200));
     };
-    const count = id => id === "bookmarks" ? changes.reduce((s, c) => s + c.bookmarks.length, 0) : id === "undo" ? opCount + " ops" : null;
+    const count = id => id === "bookmarks" || id === "tags" ? zkRefs(changes, id).length : id === "undo" ? opCount + " ops" : null;
     const pin = ZK_RAIL.find(r => r.id === pinned);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Island, {
       shape: "rail",

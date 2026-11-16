@@ -8,6 +8,7 @@ import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
 import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin/src/features/sync/push_sheet_model.dart';
+import 'package:zanshin/src/features/sync/remote_sync.dart';
 import 'package:zanshin/src/features/sync/sync_model.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show RemotePollSetting;
@@ -434,6 +435,93 @@ void main() {
         ),
       );
       expect(rig.toasts.current, isNull);
+    });
+
+    group('Story 10.44: pushNow', () {
+      const request = PushRequest(remotes: <String>['origin'], mode: PushMode.custom, bookmarks: <String>['feat']);
+
+      _rigTest('runs the request inside the syncing dot; the pushed toast with Undo when recorded', (tester) async {
+        final rig = _Rig();
+        await tester.pump();
+        rig.sync
+          ..pushGate = Completer<void>()
+          ..pushAnswer = (_) => pushResult(<String, List<PushRef>>{
+            'origin': <PushRef>[pushRef('feat', status: PushRefStatus.pushed)],
+          }, recorded: true);
+        final Future<bool> pushed = rig.model.pushNow(request);
+        await tester.pump();
+        expect(rig.syncs, 1);
+        expect(rig.model.canFetch, isFalse, reason: 'busy while it pushes');
+        expect(rig.model.canPush, isFalse, reason: 'busy while it pushes');
+        expect(await rig.model.pushNow(request), isFalse, reason: 'one push at a time');
+        expect(await _toastText(tester, rig.toasts), 'The push failed: another fetch or push is running');
+        rig.sync.pushGate!.complete();
+        expect(await pushed, isTrue);
+        expect(rig.sync.pushes, <String>['jj git push --remote origin --bookmark feat']);
+        expect(rig.syncs, 0);
+        expect(await _toastText(tester, rig.toasts), 'Pushed feat to origin');
+        expect(find.bySemanticsIdentifier('sync-toast-undo'), findsOneWidget);
+      });
+
+      _rigTest('a failure that recorded nothing shows jj\'s text in the error toast', (tester) async {
+        final rig = _Rig();
+        await tester.pump();
+        rig.sync.pushAnswer = (_) => pushResult(
+          const <String, List<PushRef>>{},
+          failure: const PushFailure(kind: PushFailureKind.pushError, message: 'Could not resolve host'),
+        );
+        expect(await rig.model.pushNow(request), isFalse);
+        expect(rig.toasts.current?.tone, ZsToastTone.error);
+        expect(await _toastText(tester, rig.toasts), 'The push failed: Could not resolve host');
+      });
+
+      _rigTest('nothing pushes while the working copy is stale; the error toast says why', (tester) async {
+        final rig = _Rig();
+        final source = ScriptedGraphSource()..respond = (_) => throw staleError('stale');
+        rig.graph.init(source);
+        await tester.pump();
+        await tester.pump();
+        expect(await rig.model.pushNow(request), isFalse);
+        expect(rig.sync.pushes, isEmpty);
+        expect(rig.toasts.current?.tone, ZsToastTone.error);
+      });
+
+      _rigTest('a skip while a fetch runs shows the error toast', (tester) async {
+        final rig = _Rig();
+        await tester.pump();
+        rig.sync.fetchGate = Completer<void>();
+        final Future<void> fetch = rig.model.fetch();
+        await tester.pump();
+        expect(await rig.model.pushNow(request), isFalse);
+        expect(rig.sync.pushes, isEmpty);
+        expect(await _toastText(tester, rig.toasts), 'The push failed: another fetch or push is running');
+        rig.sync.fetchGate!.complete();
+        await fetch;
+      });
+
+      _rigTest('a thrown refusal: false and jj\'s text; a stale refusal shows no toast', (tester) async {
+        final rig = _Rig();
+        await tester.pump();
+        rig.sync.pushAnswer = (_) => throw const ZanshinFfiException('jj.network_error', 'x');
+        expect(await rig.model.pushNow(request), isFalse);
+        expect(rig.toasts.current?.tone, ZsToastTone.error);
+        expect(await _toastText(tester, rig.toasts), 'The push failed: x');
+
+        final quiet = _Rig();
+        await tester.pump();
+        quiet.sync.pushAnswer = (_) => throw const ZanshinFfiException('jj.stale_working_copy', 'stale');
+        expect(await quiet.model.pushNow(request), isFalse);
+        expect(quiet.toasts.current, isNull);
+      });
+
+      _rigTest('any other error: false and the error toast', (tester) async {
+        final rig = _Rig();
+        await tester.pump();
+        rig.sync.pushAnswer = (_) => throw StateError('RepoHandle is already closed');
+        expect(await rig.model.pushNow(request), isFalse);
+        expect(rig.toasts.current?.tone, ZsToastTone.error);
+        expect(rig.model.canPush, isTrue, reason: 'no longer busy');
+      });
     });
 
     _rigTest('Undo after a foreign operation shows "nothing undone"', (tester) async {

@@ -90,15 +90,16 @@ class HomePage extends StatelessWidget {
               builder: (context, graph) {
                 final ProjectScope? scope = graph.scope;
                 // One ListenableBuilder either way, so nothing below remounts when a project opens or closes. The
-                // bookmark list's rail item shows its count, so it rebuilds with the list.
+                // bookmark and tag lists' rail items show their counts, so it rebuilds with the lists.
                 return ListenableBuilder(
-                  listenable: scope?.bookmarks ?? Listenable.merge(const <Listenable>[]),
+                  listenable: Listenable.merge(<Listenable?>[scope?.bookmarks, scope?.tags]),
                   builder: (context, _) {
                     final shell = FloatingShell(
                       controller: vm.shell,
                       railItems: <ShellRailItem>[
                         if (scope != null) ...<ShellRailItem>[
                           bookmarksRailItem(context.l10n, scope.bookmarks),
+                          tagsRailItem(context.l10n, scope.tags),
                           undoTimelineRailItem(
                             context.l10n,
                             scope.undoTimeline,

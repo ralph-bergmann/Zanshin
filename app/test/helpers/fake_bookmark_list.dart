@@ -3,11 +3,13 @@
 import 'dart:async';
 
 import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart';
+import 'package:zanshin/src/features/bookmarks/ref_delete.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_search_controller.dart';
 import 'package:zanshin/src/features/graph/graph_search_store.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin/src/features/sync/remote_sync.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
 import '../features/graph/graph_harness.dart';
@@ -119,13 +121,24 @@ GraphLayout bookmarkLayout(GraphRequest request, {List<String> extra = const <St
   );
 }
 
-/// The graph, its search and the list over [source], wired as the project window wires them.
+/// The graph, its search, the delete flow and the list over [source] (a [TagListModel] for [RefKind.tag]), wired as
+/// the project window wires them; the flow's pushes land in [pushes].
 class BookmarkRig {
-  BookmarkRig(this.source, {GraphLayout Function(GraphRequest request)? respond}) {
+  BookmarkRig(this.source, {GraphLayout Function(GraphRequest request)? respond, RefKind kind = RefKind.bookmark}) {
     graphSource.respond = respond ?? bookmarkLayout;
     search = GraphSearchController(model: graph, source: FakeGraphSearchSource(), store: store);
     graph.init(graphSource, actions: actions, clock: () => DateTime.utc(2026, 11), revset: search.revset);
-    model = BookmarkListModel(source, search: search);
+    deletes = RefDeleteFlow(
+      graph: graph,
+      push: (request) async {
+        pushes.add(request);
+        return true;
+      },
+    );
+    model = switch (kind) {
+      RefKind.bookmark => BookmarkListModel(source, search: search, deletes: deletes),
+      RefKind.tag => TagListModel(source, search: search, deletes: deletes),
+    };
   }
 
   final FakeBookmarkListSource source;
@@ -133,19 +146,25 @@ class BookmarkRig {
   final graph = GraphViewModel();
   final store = MemoryGraphSearchStore();
   final actions = RecordingGraphActions();
+  final pushes = <PushRequest>[];
   late final GraphSearchController search;
+  late final RefDeleteFlow deletes;
   late final BookmarkListModel model;
 
   void dispose() {
     model.dispose();
+    deletes.dispose();
     search.dispose();
     graph.dispose();
   }
 }
 
-/// [GraphActions] recording every action; each runs and writes `op2`.
+/// [GraphActions] recording every action; each runs and writes `op2`, except those [refuse] names, which jj refuses.
 class RecordingGraphActions implements GraphActions {
   final ran = <GraphAction>[];
+
+  /// The commands jj refuses.
+  final refuse = <String>{};
 
   @override
   Future<String> headOpId() async => 'op1';
@@ -153,6 +172,14 @@ class RecordingGraphActions implements GraphActions {
   @override
   Future<MutationResult> run(GraphAction action) async {
     ran.add(action);
+    if (refuse.contains(action.command)) {
+      throw ZanshinFfiException.withReport(
+        'jj.invalid_input',
+        'refused: ${action.command}',
+        precondition: null,
+        warnings: const <ZanshinWarning>[],
+      );
+    }
     return const MutationResult(
       newOpId: 'op2',
       committed: true,

@@ -33,6 +33,9 @@ const double _cmdMaxWidth = 200;
 /// the short id (Story 10.15).
 const double _menuMaxWidth = 360;
 
+/// Delete of the bookmark `name` through the project's delete flow (Story 10.44), given jj's `--all-remotes` [rows].
+typedef GraphDeleteBookmark = void Function(String name, List<Bookmark> rows);
+
 /// What the name sheet asks for (Story 10.15): its [title], the field's [label], the [confirm] verb, and the [action]
 /// the typed text makes on a change id (the short id for the shown command, the node key to run).
 @immutable
@@ -263,7 +266,8 @@ List<ZsMenuEntry> graphCardMenuEntries(
 /// Delete; per remote bookmark (not `git`) a submenu with Track or Untrack as [bookmarks] (jj's live `bookmark list
 /// --all-remotes`) says, disabled "Reading bookmarks…" while it is null (or with the failure when [readFailed]);
 /// then Create bookmark here… and Move existing here…, which [ask] for a name. While [blocked] names a reason every
-/// row is disabled with it.
+/// row is disabled with it. With [delete] (Story 10.44) Delete hands the name to the shared delete flow, disabled
+/// when the read failed; without it Delete runs `jj bookmark delete` itself.
 List<ZsMenuEntry> graphBookmarkMenuEntries(
   AppLocalizations strings,
   GraphLayout layout,
@@ -274,6 +278,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
   required ValueChanged<GraphNameRequest> ask,
   bool readFailed = false,
   GraphDrag? drag,
+  ValueChanged<String>? delete,
 }) {
   final List<GraphRef> refs = layout.refsOf(node);
 
@@ -355,12 +360,24 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
                 ),
               ),
             ),
-            item(
-              strings.bookmarkMenuDelete,
-              identifier: 'bookmark-menu-delete',
-              action: GraphBookmarkDelete(<String>[name]),
-              danger: true,
-            ),
+            if (delete == null)
+              item(
+                strings.bookmarkMenuDelete,
+                identifier: 'bookmark-menu-delete',
+                action: GraphBookmarkDelete(<String>[name]),
+                danger: true,
+              )
+            else
+              // Story 10.44: the shared delete flow decides by the read's tracked remotes, so a failed read disables it.
+              ZsMenuItem(
+                label: strings.bookmarkMenuDelete,
+                cmd: GraphBookmarkDelete(<String>[name]).command,
+                danger: true,
+                enabled: (blocked ?? (readFailed ? strings.bookmarkMenuReadFailed : null)) == null,
+                tooltip: blocked ?? (readFailed ? strings.bookmarkMenuReadFailed : null),
+                identifier: 'bookmark-menu-delete',
+                onSelected: () => delete(name),
+              ),
           ],
         ),
       );
@@ -685,10 +702,17 @@ class GraphCardMenuHost extends StatelessWidget {
 
 /// The thin bookmark popover (Story 10.15): `GraphCardController.bookmarksOpen` as a menu in the same material, with
 /// [graphBookmarkMenuEntries]; each opening reads [bookmarks] for Track / Untrack, and Create / Rename / Move ask for a
-/// name in a [GraphNameSheet] in the root overlay.
+/// name in a [GraphNameSheet] in the root overlay. Delete goes to [deleteBookmark] with the read's rows (read first
+/// when the read has not landed yet).
 class GraphBookmarkMenuHost extends StatefulWidget {
   /// The popover of [cards]' open card in [model].
-  const GraphBookmarkMenuHost({required this.cards, required this.model, this.bookmarks, super.key});
+  const GraphBookmarkMenuHost({
+    required this.cards,
+    required this.model,
+    this.bookmarks,
+    this.deleteBookmark,
+    super.key,
+  });
 
   /// The graph's card controller.
   final GraphCardController cards;
@@ -698,6 +722,10 @@ class GraphBookmarkMenuHost extends StatefulWidget {
 
   /// `jj bookmark list --all-remotes`; without it remote rows stay "Reading bookmarks…".
   final Future<List<Bookmark>> Function()? bookmarks;
+
+  /// The project's delete flow (Story 10.44) for a bookmark name and the `--all-remotes` rows; without it Delete runs
+  /// `jj bookmark delete` at once.
+  final GraphDeleteBookmark? deleteBookmark;
 
   @override
   State<GraphBookmarkMenuHost> createState() => _GraphBookmarkMenuHostState();
@@ -735,6 +763,31 @@ class _GraphBookmarkMenuHostState extends State<GraphBookmarkMenuHost> {
         setState(() => _readFailed = true);
       }
     }
+  }
+
+  Future<void> _delete(String name) async {
+    final GraphDeleteBookmark? delete = widget.deleteBookmark;
+    if (delete == null) {
+      return;
+    }
+    List<Bookmark>? rows = _read;
+    if (rows == null) {
+      try {
+        rows = await widget.bookmarks?.call();
+      } on Object catch (error, stack) {
+        final String reason = error is ZanshinFfiException ? error.code : error.runtimeType.toString();
+        _log.warning('bookmarks read for delete failed: $reason', error, stack);
+        // Delete then shows disabled with the failure instead of doing nothing.
+        if (mounted) {
+          setState(() => _readFailed = true);
+        }
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+    }
+    delete(name, rows ?? const <Bookmark>[]);
   }
 
   void _askFor(String key, String short, GraphNameRequest request) {
@@ -795,6 +848,7 @@ class _GraphBookmarkMenuHostState extends State<GraphBookmarkMenuHost> {
           readFailed: _readFailed,
           drag: model.drag,
           ask: (request) => _askFor(layout.keyOf(node), graphShortId(layout, node), request),
+          delete: widget.deleteBookmark == null ? null : (name) => unawaited(_delete(name)),
         ),
       ),
     );

@@ -11,6 +11,7 @@ import '../graph/graph_ports.dart';
 import '../graph/graph_search_controller.dart';
 import '../graph/graph_view_model.dart';
 import '../projects/project_repos.dart';
+import 'ref_delete.dart';
 
 final _log = Logger('zanshin.bookmarks');
 
@@ -42,7 +43,7 @@ abstract interface class BookmarkListSource {
 /// [BookmarkListSource] over an open [ProjectRepo]'s handle.
 class RepoBookmarkListSource implements BookmarkListSource {
   /// The bookmark reads of [_repo].
-  RepoBookmarkListSource(this._repo);
+  RepoBookmarkListSource(ProjectRepo repo) : _repo = repo;
 
   final ProjectRepo _repo;
 
@@ -64,6 +65,37 @@ class RepoBookmarkListSource implements BookmarkListSource {
           c.commitId: graphCommitContentOf(c),
       };
 }
+
+/// Which refs a list shows (Story 10.44): the verbs, labels and drag follow it.
+enum RefKind {
+  /// jj's bookmarks.
+  bookmark,
+
+  /// jj's tags.
+  tag,
+}
+
+/// [BookmarkListSource] over an open [ProjectRepo]'s tags (Story 10.44): `jj tag list --all-remotes` (9.59), each
+/// [Tag] as a [Bookmark] row with no distances, so the list's rows, states and picks serve tags too.
+class RepoTagListSource extends RepoBookmarkListSource {
+  /// The tag reads of [repo].
+  RepoTagListSource(super.repo);
+
+  @override
+  Future<List<Bookmark>> bookmarks() async => <Bookmark>[for (final Tag tag in await _repo.handle.tags()) tagRow(tag)];
+}
+
+/// [tag] as a list row: a remote tag is a remote row without distances.
+Bookmark tagRow(Tag tag) => Bookmark(
+  name: tag.name,
+  target: tag.target,
+  conflicted: tag.conflicted,
+  synced: tag.synced,
+  kind: switch (tag.kind) {
+    LocalTag() => const LocalBookmark(),
+    RemoteTag(:final String remoteName, :final bool tracked) => RemoteBookmark(remoteName, tracked: tracked),
+  },
+);
 
 /// A bookmark row's state column (DS ui_kits/desktop/chrome.jsx:13-14), from 9.29's flags and distances only.
 enum BookmarkRowState {
@@ -109,6 +141,7 @@ class BookmarkRow {
     required this.bookmark,
     required this.state,
     required this.prefix,
+    this.kind = RefKind.bookmark,
     this.key,
     this.commitId,
     this.subject,
@@ -116,8 +149,11 @@ class BookmarkRow {
     this.other,
   });
 
-  /// jj's row.
+  /// jj's row (a tag's too, as [tagRow] maps it).
   final Bookmark bookmark;
+
+  /// A bookmark's or a tag's row.
+  final RefKind kind;
 
   /// The layout key of the target's first node, or null when the layout lacks it (the row is dimmed).
   final String? key;
@@ -158,12 +194,133 @@ class BookmarkRow {
   /// Whether a pick can go anywhere: the row has a target.
   bool get pickable => bookmark.target != null;
 
-  /// Track for an untracked remote row, Untrack for a tracked one; null on a local row.
-  GraphAction? get trackAction => switch (bookmark.kind) {
-    RemoteBookmark(:final String remoteName, tracked: true) => GraphBookmarkUntrack(bookmark.name, remoteName),
-    RemoteBookmark(:final String remoteName) => GraphBookmarkTrack(bookmark.name, remoteName),
-    LocalBookmark() => null,
+  /// Track for an untracked remote row, Untrack for a tracked one (`jj bookmark|tag track|untrack`); null on a local
+  /// row.
+  GraphAction? get trackAction => switch ((bookmark.kind, kind)) {
+    (RemoteBookmark(:final String remoteName, tracked: true), RefKind.bookmark) => GraphBookmarkUntrack(
+      bookmark.name,
+      remoteName,
+    ),
+    (RemoteBookmark(:final String remoteName), RefKind.bookmark) => GraphBookmarkTrack(bookmark.name, remoteName),
+    (RemoteBookmark(:final String remoteName, tracked: true), RefKind.tag) => GraphTagUntrack(
+      bookmark.name,
+      remoteName,
+    ),
+    (RemoteBookmark(:final String remoteName), RefKind.tag) => GraphTagTrack(bookmark.name, remoteName),
+    (LocalBookmark(), _) => null,
   };
+
+  /// Whether Delete… applies: a local row with a target.
+  bool get deletable => remote == null && bookmark.target != null;
+
+  /// Whether Rename… applies: a local bookmark with a target.
+  bool get renamable => deletable && kind == RefKind.bookmark;
+
+  /// The row's buttons and menu verbs, in order (Story 10.44): New and Delete… on a local row with a target; Track or
+  /// Untrack, then New, on a remote row (New only with a target).
+  List<RefRowAction> get actions => <RefRowAction>[
+    if (trackAction != null) RefRowAction.track,
+    if (bookmark.target != null) RefRowAction.newHere,
+    if (deletable) RefRowAction.delete,
+  ];
+}
+
+/// A row's verb (Story 10.44).
+enum RefRowAction {
+  /// `jj new <name>`.
+  newHere,
+
+  /// Delete…: at once, or through the delete sheet when a remote tracks it.
+  delete,
+
+  /// `jj bookmark|tag track|untrack <name>@<remote>`.
+  track,
+}
+
+/// One row of the views' tree (Story 10.44): a folder or a leaf, [depth] folders deep.
+@immutable
+sealed class RefTreeRow {
+  const RefTreeRow(this.depth);
+
+  /// How many folders contain it.
+  final int depth;
+}
+
+/// A folder: the names' common `path` up to one `/`.
+final class RefFolderRow extends RefTreeRow {
+  /// The folder [path] (with its trailing `/`), shown as [name].
+  const RefFolderRow({required this.path, required this.name, required this.open, required int depth}) : super(depth);
+
+  /// The full path, `a/b/`: the folder's identity.
+  final String path;
+
+  /// Its last segment with a trailing `/`.
+  final String name;
+
+  /// Whether its rows show.
+  final bool open;
+}
+
+/// A leaf: one row of the list.
+final class RefLeafRow extends RefTreeRow {
+  /// The [index]th row of the list, labelled [label].
+  const RefLeafRow({required this.row, required this.index, required this.label, required int depth}) : super(depth);
+
+  /// The list's row.
+  final BookmarkRow row;
+
+  /// Its index in the flat list ([BookmarkListModel.rows]): the identifiers' number.
+  final int index;
+
+  /// The name's last segment (the whole name when that segment is empty).
+  final String label;
+}
+
+/// [rows] as a tree (Story 10.44): names split at `/`, every segment but the last a folder; folders first (by name),
+/// then the leaves in the list's order. A non-empty [filter] keeps the leaves whose display name contains it (case
+/// insensitive) and every folder on their path, all open; otherwise a folder in [collapsed] hides its rows.
+List<RefTreeRow> refTree(List<BookmarkRow> rows, {String filter = '', Set<String> collapsed = const <String>{}}) {
+  final String query = filter.toLowerCase();
+  final root = _Folder('');
+  for (var i = 0; i < rows.length; i++) {
+    final BookmarkRow row = rows[i];
+    if (query.isNotEmpty && !row.display.toLowerCase().contains(query)) {
+      continue;
+    }
+    final List<String> segments = row.bookmark.name.split('/');
+    var folder = root;
+    for (final String segment in segments.sublist(0, segments.length - 1)) {
+      folder = folder.folders.putIfAbsent(segment, () => _Folder('${folder.path}$segment/'));
+    }
+    final String last = segments.last;
+    folder.leaves.add((index: i, label: last.isEmpty ? row.bookmark.name : last));
+  }
+  final out = <RefTreeRow>[];
+  void walk(_Folder folder, int depth) {
+    for (final String name in folder.folders.keys.toList()..sort()) {
+      final _Folder child = folder.folders[name]!;
+      final bool open = query.isNotEmpty || !collapsed.contains(child.path);
+      out.add(RefFolderRow(path: child.path, name: '$name/', open: open, depth: depth));
+      if (open) {
+        walk(child, depth + 1);
+      }
+    }
+    for (final (:int index, :String label) in folder.leaves) {
+      out.add(RefLeafRow(row: rows[index], index: index, label: label, depth: depth));
+    }
+  }
+
+  walk(root, 0);
+  return out;
+}
+
+/// A folder while [refTree] builds; it exists only when a kept leaf lies below it.
+class _Folder {
+  _Folder(this.path);
+
+  final String path;
+  final folders = <String, _Folder>{};
+  final leaves = <({int index, String label})>[];
 }
 
 /// The bookmark list's state (Story 10.14): `bookmarks()` re-read whenever the graph's landed layout moves to another
@@ -171,17 +328,59 @@ class BookmarkRow {
 /// subjects are looked up at that operation (one `findChanges`, one `content`). [rows] resolve against the shown
 /// layout, so they follow it without a read. A failed read keeps the rows; jj's refusal of a stale working copy sets
 /// [stale].
+///
+/// Story 10.44: the [kind] of its refs ([TagListModel] lists tags), the views' [filter] and folded folders
+/// ([collapsed]) — both session-only — and the rows' verbs: [newHere], [track] and [delete] (through [deletes]).
 class BookmarkListModel extends ChangeNotifier {
-  /// The list of [_source], picking through [search].
-  BookmarkListModel(this._source, {required this.search}) {
+  /// The list of [_source], picking through [search]; Delete… goes through [deletes].
+  BookmarkListModel(BookmarkListSource source, {required this.search, this.kind = RefKind.bookmark, this.deletes})
+    : _source = source {
     graph.addListener(_graphChanged);
     _graphChanged();
   }
 
   final BookmarkListSource _source;
 
+  /// Bookmarks or tags.
+  final RefKind kind;
+
+  /// The shared delete flow; without it Delete… is not offered.
+  final RefDeleteFlow? deletes;
+
   /// The graph search a pick goes through.
   final GraphSearchController search;
+
+  var _filter = '';
+  var _collapsed = const <String>{};
+  List<RefTreeRow>? _tree;
+
+  /// The view's filter text.
+  String get filter => _filter;
+
+  set filter(String value) {
+    if (value != _filter) {
+      _filter = value;
+      _tree = null;
+      notifyListeners();
+    }
+  }
+
+  /// The folders the view folded, by path.
+  Set<String> get collapsed => _collapsed;
+
+  /// Folds the folder [path], or unfolds it.
+  void toggleFolder(String path) {
+    final next = <String>{..._collapsed};
+    if (!next.remove(path)) {
+      next.add(path);
+    }
+    _collapsed = next;
+    _tree = null;
+    notifyListeners();
+  }
+
+  /// [rows] as the view's tree, filtered by [filter] ([refTree]).
+  List<RefTreeRow> get tree => _tree ??= refTree(rows, filter: _filter, collapsed: _collapsed);
 
   /// The graph's view model: the shown layout, the stale state and the runner of Track and Untrack.
   GraphViewModel get graph => search.model;
@@ -236,6 +435,23 @@ class BookmarkListModel extends ChangeNotifier {
     null => null,
   };
 
+  /// The command [newHere] runs on [row], as its button and menu row show it: `jj new <target change id>`.
+  static String newCommand(BookmarkRow row) => GraphNew(parents: <String>[row.bookmark.target!]).command;
+
+  /// A new change on [row]'s target through the graph's runner (the handle takes change ids only, so the target's id
+  /// rather than the ref's name); null without a target.
+  Future<GraphActionResult>? newHere(BookmarkRow row) => switch (row.bookmark.target) {
+    final String target => graph.run(GraphNew(parents: <String>[target])),
+    null => null,
+  };
+
+  /// Delete… of [row] through [deletes]: at once without a tracked remote, else the delete sheet.
+  void delete(BookmarkRow row) {
+    if (row.deletable) {
+      deletes?.delete(RefDeleteRequest.of(kind, row.bookmark.name, _bookmarks));
+    }
+  }
+
   void _graphChanged() {
     final GraphLayout? layout = graph.layout;
     final String? op = layout?.operationId;
@@ -250,6 +466,7 @@ class BookmarkListModel extends ChangeNotifier {
     if (!identical(layout, _layout)) {
       _layout = layout;
       _rows = null;
+      _tree = null;
       notifyListeners();
     }
   }
@@ -282,7 +499,7 @@ class BookmarkListModel extends ChangeNotifier {
         _error = null;
       } else {
         _error = error;
-        _log.warning('reading the bookmarks failed: ${error.code}');
+        _log.warning('reading the ${kind.name}s failed: ${error.code}');
       }
     } catch (error) {
       // Not jj's refusal (a closed handle): the read is unawaited, so it is logged here and the rows stay.
@@ -295,6 +512,7 @@ class BookmarkListModel extends ChangeNotifier {
       return;
     }
     _rows = null;
+    _tree = null;
     if (_queued) {
       _queued = false;
       _load();
@@ -364,6 +582,7 @@ class BookmarkListModel extends ChangeNotifier {
     );
     return BookmarkRow(
       bookmark: bookmark,
+      kind: kind,
       key: node == null ? null : layout!.keyOf(node),
       commitId: first?.commitId,
       prefix: node != null ? layout!.changeIdPrefixLengthOf(node) : first?.changePrefixLen ?? 2,
@@ -380,6 +599,13 @@ class BookmarkListModel extends ChangeNotifier {
     graph.removeListener(_graphChanged);
     super.dispose();
   }
+}
+
+/// The rail's tag list (Story 10.44): [BookmarkListModel] over [RepoTagListSource]'s rows, a type of its own so the
+/// project graph provides both lists.
+class TagListModel extends BookmarkListModel {
+  /// The tags of [source], picking through [search]; Delete… goes through [deletes].
+  TagListModel(super.source, {required super.search, super.deletes}) : super(kind: RefKind.tag);
 }
 
 /// [bookmark]'s state among [rows] (the list it came in), from 9.29's flags and distances only — never by comparing

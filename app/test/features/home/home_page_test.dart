@@ -497,11 +497,14 @@ void main() {
     await tester.runAsync(() => session.open('/r/zanshin'));
     await tester.pump();
     expect(find.bySemanticsIdentifier('rail-undo'), findsOneWidget);
-    // Story 10.14: Bookmarks first, then the Undo Timeline (DS chrome.jsx:7-11).
+    // Story 10.14: Bookmarks first, then the Undo Timeline (DS chrome.jsx:7-11); Story 10.44: Tags right after
+    // Bookmarks.
     expect(tester.widget<FloatingShell>(find.byType(FloatingShell)).railItems.map((item) => item.id), <String>[
       'bookmarks',
+      'tags',
       'undo',
     ]);
+    expect(find.bySemanticsIdentifier('rail-tags'), findsOneWidget);
     // The op log and the graph's logDefaults.
     final int first = repos.repoAt('/r/zanshin').handleReads;
     expect(first, greaterThan(0), reason: 'its op log was read');

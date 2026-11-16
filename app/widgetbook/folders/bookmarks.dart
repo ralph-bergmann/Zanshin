@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart';
 import 'package:zanshin/src/features/bookmarks/bookmark_list_view.dart';
+import 'package:zanshin/src/features/bookmarks/ref_delete.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_search_controller.dart';
@@ -17,12 +18,15 @@ import 'package:zanshin/src/features/shell/rail_preview.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_graph_search_source.dart';
 import '../graph/fake_graph_source.dart';
 
 /// The "Bookmarks" folder (Story 10.14): the rail item's hover preview and pinned panel over a fake bookmark list and
-/// a five-change graph — every state of the state column, a row beyond the view (dimmed), a deleted one.
+/// a five-change graph — every state of the state column, a row beyond the view (dimmed), a deleted one. Story 10.44:
+/// the panel's tree with a filter, rows with their hover-only buttons shown, the Tags preview and panel, and the delete
+/// sheet for a bookmark and for a tag on two remotes.
 final bookmarksFolder = WidgetbookFolder(
   name: 'Bookmarks',
   children: <WidgetbookNode>[
@@ -42,12 +46,20 @@ final bookmarksFolder = WidgetbookFolder(
 enum _Demo {
   preview('Preview'),
   panel('Panel'),
+  filtered('Panel, filtered'),
+  rowButtons('Row buttons'),
   empty('Empty'),
-  stale('Stale');
+  stale('Stale'),
+  tagsPreview('Tags preview'),
+  tagsPanel('Tags panel'),
+  deleteBookmark('Delete sheet, bookmark'),
+  deleteTag('Delete sheet, tag on two remotes');
 
   const _Demo(this.label);
 
   final String label;
+
+  bool get tags => this == tagsPreview || this == tagsPanel;
 }
 
 const _changes = <String>['wkmxrlpq', 'ovknlmro', 'vruxwmqvz', 'kxqpsytn', 'qzpwolnt'];
@@ -109,6 +121,29 @@ List<Bookmark> _bookmarks() {
   ];
 }
 
+/// The tags, as `RepoTagListSource` maps them: no distances.
+List<Bookmark> _tags() {
+  Bookmark tag(String name, String target, {String? remote, bool tracked = true, bool synced = true}) => tagRow(
+    Tag(
+      name: name,
+      target: target,
+      kind: remote == null ? const LocalTag() : RemoteTag(remote, tracked: tracked),
+      conflicted: false,
+      synced: synced,
+    ),
+  );
+  return <Bookmark>[
+    tag('v1.4.2', 'kxqpsytn'),
+    tag('v1.5.0', 'ovknlmro'),
+    tag('v1.5.0', 'ovknlmro', remote: 'origin'),
+    tag('v1.5.0-rc1', 'vruxwmqvz'),
+    tag('v1.5.0-rc1', 'vruxwmqvz', remote: 'origin'),
+    tag('v1.5.0-rc1', 'vruxwmqvz', remote: 'upstream'),
+    tag('nightly/2026-11-15', 'wkmxrlpq', remote: 'origin', tracked: false, synced: false),
+    tag('nightly/2026-11-16', 'wkmxrlpq'),
+  ];
+}
+
 class _DemoHost extends StatefulWidget {
   const _DemoHost({required this.demo, super.key});
 
@@ -135,14 +170,27 @@ class _DemoHostState extends State<_DemoHost> {
       store: MemoryGraphSearchStore(),
     );
     _graph.init(_source, actions: _DemoActions(), revset: _search.revset);
-    _model = BookmarkListModel(
-      _DemoSource(widget.demo == _Demo.empty ? const <Bookmark>[] : _bookmarks(), stale: widget.demo == _Demo.stale),
-      search: _search,
+    _deletes = RefDeleteFlow(graph: _graph);
+    final source = _DemoSource(
+      switch (widget.demo) {
+        _Demo.empty => const <Bookmark>[],
+        _ when widget.demo.tags => _tags(),
+        _ => _bookmarks(),
+      },
+      stale: widget.demo == _Demo.stale,
     );
+    _model = widget.demo.tags
+        ? TagListModel(source, search: _search, deletes: _deletes)
+        : BookmarkListModel(source, search: _search, deletes: _deletes);
+    if (widget.demo == _Demo.filtered) {
+      _model.filter = 'fe';
+    }
     if (widget.demo == _Demo.stale) {
       _model.addListener(_goStale);
     }
   }
+
+  late final RefDeleteFlow _deletes;
 
   /// The stale demo: after the first read, an operation the list's read is refused at, then the graph's refusal too.
   void _goStale() {
@@ -161,27 +209,68 @@ class _DemoHostState extends State<_DemoHost> {
     _model
       ..removeListener(_goStale)
       ..dispose();
+    _deletes.dispose();
     _search.dispose();
     _graph.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: _model,
-    builder: (context, _) {
-      final ShellRailItem item = bookmarksRailItem(context.l10n, _model);
-      return Center(
-        child: widget.demo == _Demo.preview
-            ? SizedBox(width: 290, child: RailPreview(item: item, closing: false))
-            : SizedBox(
-                width: 300,
-                height: 640,
+  Widget build(BuildContext context) {
+    if (widget.demo == _Demo.deleteBookmark) {
+      return _sheet(
+        const RefDeleteRequest(kind: RefKind.bookmark, name: 'feature/auth-flow', remotes: <String>['origin']),
+      );
+    }
+    if (widget.demo == _Demo.deleteTag) {
+      return _sheet(
+        const RefDeleteRequest(kind: RefKind.tag, name: 'v1.5.0-rc1', remotes: <String>['origin', 'upstream']),
+      );
+    }
+    return ListenableBuilder(
+      listenable: Listenable.merge(<Listenable>[_model, _graph]),
+      builder: (context, _) {
+        final ShellRailItem item = _model is TagListModel
+            ? tagsRailItem(context.l10n, _model)
+            : bookmarksRailItem(context.l10n, _model);
+        return Center(
+          child: switch (widget.demo) {
+            _Demo.preview || _Demo.tagsPreview => SizedBox(width: 290, child: RailPreview(item: item, closing: false)),
+            _Demo.rowButtons => SizedBox(width: 300, child: _rowButtons()),
+            _ => SizedBox(
+              width: 300,
+              height: 640,
+              child: RefDeleteHost(
+                flow: _deletes,
                 child: PinnedPanel(item: item, onClose: () {}),
               ),
-      );
-    },
-  );
+            ),
+          },
+        );
+      },
+    );
+  }
+
+  /// A local, a tracked and an untracked remote row with their hover-only buttons shown.
+  Widget _rowButtons() {
+    final List<BookmarkRow> rows = _model.rows;
+    return ZsIsland(
+      shape: ZsIslandShape.panel,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (final String display in <String>['main', 'main@origin', 'release/1.5.x@origin'])
+              if (rows.indexWhere((r) => r.display == display) case final int i when i >= 0)
+                BookmarkRowTile(row: rows[i], index: i, model: _model, label: display, showActions: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sheet(RefDeleteRequest request) => RefDeleteSheet(request: request, onConfirm: (_) {}, onCancel: () {});
 }
 
 /// The demo list: [list], or jj's stale refusal after one good read.

@@ -6,6 +6,7 @@ const { Island, IslandSeparator, IconButton, Button, GraphSearch, Popover, Popov
 
 const ZK_RAIL = [
   { id: "bookmarks", label: "Bookmarks", icon: "branch" },
+  { id: "tags", label: "Tags", icon: "tag" },
   { id: "reviews", label: "Reviews", icon: "reviews" },
   { id: "undo", label: "Undo Timeline", icon: "undo" },
 ];
@@ -109,25 +110,102 @@ function ZKTopBar({ D, project, recent, activeId, onPickProject, onAllProjects, 
   );
 }
 
-function ZKBookmarkList({ changes, visible, onPick, limit }) {
-  const rows = changes.flatMap((c) => c.bookmarks.map((b) => ({ b, c }))).slice(0, limit || undefined);
+// the refs of a view (Story 10.44): bookmarks with their state (a "remote" one is the untracked origin copy), or tags (no state mark)
+const zkRefs = (changes, kind) => kind === "tags"
+  ? changes.flatMap((c) => (c.tags || []).map((name) => ({ name, b: { name, state: "tag" }, c })))
+  : changes.flatMap((c) => c.bookmarks.map((b) => ({ name: b.name, remote: b.state === "remote" ? "origin" : null, b, c })));
+const zkRefShort = (b) => b.state === "tag" ? "" : zkBmShort(b);
+
+// the hover preview: the first rows, flat, with the bookmark (or tag) glyph
+function ZKBookmarkList({ items, visible, onPick, limit, glyph = "bookmark-filled" }) {
+  const rows = items.slice(0, limit || undefined);
   return (
     <div className="zk-bl">
-      {rows.map(({ b, c }) => (
-        <button key={b.name} type="button" className={"zk-bl-row" + (visible.has(c.id) ? "" : " is-hidden")} onClick={() => onPick(c.id)} title={b.name + " — " + ZK_BM_STATE[b.state]}>
-          <Icon name="bookmark-filled" size="sm"/>
-          <span className="zk-bl-text"><span className="zk-bl-name">{b.name}</span><span className="zk-bl-sub"><b>{c.id.slice(0, 2)}</b>{c.id.slice(2, 8)} · {c.subject || "(no description set)"}</span></span>
-          <span className={"zs-bm-state s-" + b.state}>{zkBmShort(b)}</span>
+      {rows.map(({ name, b, c }) => (
+        <button key={name} type="button" className={"zk-bl-row" + (visible.has(c.id) ? "" : " is-hidden")} onClick={() => onPick(c.id)} title={name + (ZK_BM_STATE[b.state] ? " — " + ZK_BM_STATE[b.state] : "")}>
+          <Icon name={glyph} size="sm"/>
+          <span className="zk-bl-text"><span className="zk-bl-name">{name}</span><span className="zk-bl-sub"><b>{c.id.slice(0, 2)}</b>{c.id.slice(2, 8)} · {c.subject || "(no description set)"}</span></span>
+          <span className={"zs-bm-state s-" + b.state}>{zkRefShort(b)}</span>
         </button>
       ))}
     </div>
   );
 }
 
+// the pinned view (Story 10.44): a filter on top, then the names split at "/" — folders first (open by default, no chevron), then the
+// leaves in list order, no leading glyph; a remote leaf shows a dim @remote. On hover or focus the row's buttons replace its state, the
+// height never changes: local New + Delete…, tracked Untrack + New, untracked Track + New; each tooltip carries the command.
+function zkTreeRows(items, q, closed) {
+  const root = { dirs: new Map(), leaves: [] };
+  const hit = (it) => !q || (it.name + (it.remote ? "@" + it.remote : "")).toLowerCase().includes(q.toLowerCase());
+  for (const it of items.filter(hit)) {
+    const seg = it.name.split("/");
+    let d = root, path = "";
+    for (const s of seg.slice(0, -1)) { path += s + "/"; if (!d.dirs.has(s)) d.dirs.set(s, { name: s + "/", path, dirs: new Map(), leaves: [] }); d = d.dirs.get(s); }
+    d.leaves.push({ ...it, leaf: seg[seg.length - 1] || it.name });
+  }
+  const out = [];
+  const walk = (d, depth) => {
+    for (const c of [...d.dirs.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+      const open = !!q || !closed.has(c.path);
+      out.push({ dir: true, path: c.path, name: c.name, depth, open });
+      if (open) walk(c, depth + 1);
+    }
+    for (const l of d.leaves) out.push({ ...l, depth });
+  };
+  walk(root, 0);
+  return out;
+}
+const zkHl = (t, q) => {
+  const i = q ? t.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  return i < 0 ? t : <>{t.slice(0, i)}<b className="zk-rt-hit">{t.slice(i, i + q.length)}</b>{t.slice(i + q.length)}</>;
+};
+
+function ZKRefTree({ kind, items, visible, onPick }) {
+  const [q, setQ] = React.useState("");
+  const [closed, setClosed] = React.useState(() => new Set());
+  const rows = zkTreeRows(items, q, closed);
+  const toggle = (p) => setClosed((c) => { const n = new Set(c); n.has(p) ? n.delete(p) : n.add(p); return n; });
+  const ref = kind === "tags" ? "tag" : "bookmark";
+  const stop = (e) => e.stopPropagation();
+  const buttons = (r) => {
+    const full = r.name + (r.remote ? "@" + r.remote : "");
+    const nw = <IconButton key="new" size="sm" icon="plus" iconSize="md" label="New change here" title={"New change here — jj new " + full} onClick={stop}/>;
+    if (r.remote) return [<Button key="tr" size="sm" variant="ghost" title={"jj " + ref + " track " + full} onClick={stop}>Track</Button>, nw];
+    return [nw, <IconButton key="del" size="sm" icon="abandon" iconSize="md" label="Delete…" title={"Delete… — jj " + ref + " delete " + r.name} onClick={stop}/>];
+  };
+  return (
+    <>
+      <window.ZanshinDesignSystem_a33847.SearchField className="zk-rt-filter" value={q} onChange={setQ} onClear={() => setQ("")} placeholder={"Filter " + kind} label={"Filter " + kind}/>
+      <div className="zk-bl" role="tree" aria-label={kind}>
+        {rows.map((r) => r.dir ? (
+          <div key={r.path} role="treeitem" aria-expanded={r.open} tabIndex={0} className="zk-rt-dir" style={{ paddingLeft: 8 + r.depth * 14 }}
+            onClick={() => toggle(r.path)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(r.path); } }}>
+            <Icon name={r.open ? "folder-open" : "folder"} size="md"/><span>{zkHl(r.name, q)}</span>
+          </div>
+        ) : (
+          <div key={r.name + (r.remote || "")} role="treeitem" tabIndex={0} title={r.name + (r.remote ? "@" + r.remote : "")}
+            className={"zk-bl-row zk-rt-leaf" + (visible.has(r.c.id) ? "" : " is-hidden") + (r.remote ? " is-untracked" : "")}
+            style={{ paddingLeft: 8 + r.depth * 14 + 20 }} onClick={() => onPick(r.c.id)}>
+            <span className="zk-bl-text">
+              <span className="zk-bl-name">{zkHl(r.leaf, q)}{r.remote && <span className="zk-rt-remote">@{r.remote}</span>}</span>
+              <span className="zk-bl-sub"><b>{r.c.id.slice(0, 2)}</b>{r.c.id.slice(2, 8)} · {r.c.subject || "(no description set)"}</span>
+            </span>
+            <span className={"zs-bm-state s-" + r.b.state}>{zkRefShort(r.b)}</span>
+            <span className="zk-rt-acts">{buttons(r)}</span>
+          </div>
+        ))}
+        {!rows.length && <div className="zk-co-more">No {ref} matches “{q}”.</div>}
+      </div>
+    </>
+  );
+}
+
 function ZKRailContent({ id, changes, visible, ops, onPick, preview }) {
-  if (id === "bookmarks") {
-    const n = changes.reduce((s, c) => s + c.bookmarks.length, 0);
-    return <>{<ZKBookmarkList changes={changes} visible={visible} onPick={onPick} limit={preview ? 5 : 0}/>}{preview && n > 5 && <div className="zk-co-more">+{n - 5} more</div>}</>;
+  if (id === "bookmarks" || id === "tags") {
+    const items = zkRefs(changes, id), n = items.length;
+    if (!preview) return <ZKRefTree kind={id} items={items} visible={visible} onPick={onPick}/>;
+    return <>{<ZKBookmarkList items={items} visible={visible} onPick={onPick} limit={5} glyph={id === "tags" ? "tag" : "bookmark-filled"}/>}{n > 5 && <div className="zk-co-more">+{n - 5} more</div>}</>;
   }
   if (id === "reviews") return <CalloutText>No open reviews.</CalloutText>;
   return <div className="zk-ops">{ops.slice(0, preview ? 3 : 12).map((o, i) => <div key={i} className="zk-op"><code>{o.cmd}</code><span>{o.when}</span></div>)}</div>;
@@ -143,7 +221,7 @@ function ZKRail({ pinned, setPinned, changes, visible, ops, opCount, onPick }) {
     if (co) setCo(next); else openT.current = setTimeout(() => setCo(next), zkMs("--delay-callout", 90));
   };
   const leave = () => { clear(); closeT.current = setTimeout(() => setCo(null), zkMs("--delay-callout-out", 200)); };
-  const count = (id) => id === "bookmarks" ? changes.reduce((s, c) => s + c.bookmarks.length, 0) : id === "undo" ? opCount + " ops" : null;
+  const count = (id) => id === "bookmarks" || id === "tags" ? zkRefs(changes, id).length : id === "undo" ? opCount + " ops" : null;
   const pin = ZK_RAIL.find((r) => r.id === pinned);
   return (
     <>

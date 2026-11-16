@@ -391,6 +391,38 @@ void main() {
     expect(text(tester), 'Commit 1234 is immutable');
   });
 
+  toastTest('Story 10.44: a multi-line refusal shows in mono, its hints one per line after it', (tester) async {
+    actions.refuse = const ZanshinFfiException.withReport(
+      'jj.invalid_input',
+      'Failed to parse name pattern:\n  |\n1 | a b\n  |  ^',
+      precondition: null,
+      warnings: <ZanshinWarning>[],
+      hints: <String>['Try quoting the name.', 'See `jj help -k patterns`.'],
+    );
+    await tester.runAsync(() => model.run(const GraphTagDelete(<String>['a b'])));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(shown(tester)!.tone, ZsToastTone.warn);
+    expect(
+      text(tester),
+      'Failed to parse name pattern:\n  |\n1 | a b\n  |  ^\nTry quoting the name.\nSee `jj help -k patterns`.',
+    );
+    expect(leaves(tester).first.style?.fontFamily, ZsType.monoFamily);
+    expect(leaves(tester).last.style?.fontFamily, isNot(ZsType.monoFamily));
+  });
+
+  toastTest('Story 10.44: forget, tag delete, tag track and untrack say what they did, with Undo', (tester) async {
+    await run(tester, const GraphBookmarkForget('feat'));
+    expect(text(tester), 'Forgot feat');
+    expect(buttons(tester), <String>['Undo']);
+    await run(tester, const GraphTagDelete(<String>['v1', 'v2']));
+    expect(text(tester), 'Deleted tag v1 and v2');
+    await run(tester, const GraphTagTrack('v1', 'origin'));
+    expect(text(tester), 'Started tracking tag v1@origin');
+    await run(tester, const GraphTagUntrack('v1', 'origin'));
+    expect(text(tester), 'Stopped tracking tag v1@origin');
+  });
+
   toastTest('a revision that no longer resolves says so in the CLI’s words, not as a bare id', (tester) async {
     actions.refuse = const ZanshinFfiException('jj.change_not_found', '0803bb67');
     await tester.runAsync(() => model.run(const GraphAbandon(<String>[_b])));

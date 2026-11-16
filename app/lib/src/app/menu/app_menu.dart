@@ -219,6 +219,14 @@ class AppMenuModel extends ChangeNotifier {
       GraphBookmarkUntrack(:final String name, :final String remote) => s.menuBookmarkUntrack(
         '$name@$remote', // l10n-ignore: symbol
       ),
+      GraphBookmarkForget(:final String name) => s.menuBookmarkForget(name),
+      GraphTagDelete(:final List<String> names) => s.menuTagDelete(names.join(', ')),
+      GraphTagTrack(:final String name, :final String remote) => s.menuTagTrack(
+        '$name@$remote', // l10n-ignore: symbol
+      ),
+      GraphTagUntrack(:final String name, :final String remote) => s.menuTagUntrack(
+        '$name@$remote', // l10n-ignore: symbol
+      ),
       GraphUndo(:final GraphAction of) || GraphRedo(:final GraphAction of) => actionName(s, model, of),
       GraphLoggedOperation(:final String command) => command,
       GraphOpRestore(:final String operation) => s.menuRestoreOperation(operation),

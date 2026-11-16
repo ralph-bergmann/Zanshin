@@ -8,6 +8,7 @@ import 'package:zanshin_core/zanshin_core.dart' show Bookmark;
 import 'package:zanshin_settings/zanshin_settings.dart' show RemotePollSetting, SettingsStore;
 
 import '../bookmarks/bookmark_list_model.dart';
+import '../bookmarks/ref_delete.dart';
 import '../graph/active_graph.dart';
 import '../graph/graph_inspector.dart';
 import '../graph/graph_ports.dart';
@@ -195,11 +196,23 @@ class ProjectModule {
     syncing: session.syncing,
   );
 
+  /// Provides the one delete flow of bookmarks and tags: the verbs through [model], the "now" choice's push through
+  /// [sync].
+  @provides
+  @singleton
+  RefDeleteFlow refDelete(GraphViewModel model, SyncModel sync) => RefDeleteFlow(graph: model, push: sync.pushNow);
+
   /// Provides the rail's bookmark list, its picks going through [search].
   @provides
   @singleton
-  BookmarkListModel bookmarkList(ProjectRepo repo, GraphSearchController search) =>
-      BookmarkListModel(RepoBookmarkListSource(repo), search: search);
+  BookmarkListModel bookmarkList(ProjectRepo repo, GraphSearchController search, RefDeleteFlow deletes) =>
+      BookmarkListModel(RepoBookmarkListSource(repo), search: search, deletes: deletes);
+
+  /// Provides the rail's tag list, its picks going through [search].
+  @provides
+  @singleton
+  TagListModel tagList(ProjectRepo repo, GraphSearchController search, RefDeleteFlow deletes) =>
+      TagListModel(RepoTagListSource(repo), search: search, deletes: deletes);
 
   /// Provides the rail's Undo Timeline.
   @provides
@@ -235,7 +248,9 @@ class ProjectScope {
     this.reasons,
     this._toasts,
     this.sync,
+    this.refDelete,
     this.bookmarks,
+    this.tags,
     this.undoTimeline,
     this.operationChanges,
     this._environment,
@@ -267,8 +282,14 @@ class ProjectScope {
   /// Fetch, Push and the remote-change poll.
   final SyncModel sync;
 
+  /// The delete flow of bookmarks and tags.
+  final RefDeleteFlow refDelete;
+
   /// The rail's bookmark list.
   final BookmarkListModel bookmarks;
+
+  /// The rail's tag list.
+  final TagListModel tags;
 
   /// The rail's Undo Timeline.
   final UndoTimelineModel undoTimeline;
@@ -299,7 +320,9 @@ class ProjectScope {
   void dispose() {
     _lifecycle.dispose();
     undoTimeline.dispose();
+    tags.dispose();
     bookmarks.dispose();
+    refDelete.dispose();
     sync.dispose();
     _environment.configWrites.removeListener(reasons.invalidate);
     _environment.configWrites.removeListener(inspector.configChanged);

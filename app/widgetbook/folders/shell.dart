@@ -92,7 +92,7 @@ class _FloatingShellDemoState extends State<FloatingShellDemo> {
   final _controller = ShellController();
   Timer? _scrolling;
 
-  /// The demo's rail items, with the kit's glyphs (DS ui_kits/desktop/chrome.jsx:7-11).
+  /// The demo's rail items, with the kit's glyphs (DS ui_kits/desktop/chrome.jsx:7-12).
   static const _items = <ShellRailItem>[
     ShellRailItem(
       id: 'bookmarks',
@@ -101,6 +101,14 @@ class _FloatingShellDemoState extends State<FloatingShellDemo> {
       count: '4',
       preview: _DemoRows(<String>['main', 'feat/onboarding', 'fix/graph-lanes', 'release/0.4']),
       panel: _DemoRows(<String>['main', 'feat/onboarding', 'fix/graph-lanes', 'release/0.4', 'origin/main']),
+    ),
+    ShellRailItem(
+      id: 'tags',
+      label: 'Tags',
+      icon: ZI.tag,
+      count: '3',
+      preview: _DemoRows(<String>['v1.5.0', 'v1.5.0-rc1', 'v1.4.2']),
+      panel: _DemoRows(<String>['v1.5.0', 'v1.5.0-rc1', 'v1.4.2']),
     ),
     ShellRailItem(
       id: 'undo',

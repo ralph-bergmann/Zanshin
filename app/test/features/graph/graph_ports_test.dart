@@ -1088,6 +1088,59 @@ void main() {
     );
     final String commit = found.entries.single.commitId;
     expect((await source.content(op, <String>[commit]))[commit]!.subject, 'init');
+
+    // Story 10.44: the tag list reads `jj tag list --all-remotes` as rows; the tag and forget verbs run.
+    await repo.handle.tagSet(<String>['v1'], revision: row.target);
+    final tags = RepoTagListSource(repo);
+    final Bookmark tag = (await tags.bookmarks()).single;
+    expect((tag.name, tag.target), ('v1', row.target));
+    expect(tag.kind, isA<LocalBookmark>());
+    await actions.run(const GraphTagDelete(<String>['v1']));
+    expect(await tags.bookmarks(), isEmpty);
+    await actions.run(GraphBookmarkCreate(const <String>['topic'], revision: row.target));
+    await actions.run(const GraphBookmarkForget('topic'));
+    expect((await source.bookmarks()).where((b) => b.name == 'topic'), isEmpty);
+    // Forget, unlike delete, untracks the remote copy at once and leaves it there.
+    await actions.run(const GraphBookmarkTrack('main', 'origin'));
+    expect((await origin())?.tracked, isTrue);
+    await actions.run(const GraphBookmarkForget('main'));
+    expect((await source.bookmarks()).where((b) => b.name == 'main' && b.kind is LocalBookmark), isEmpty);
+    expect((await origin())?.tracked, isFalse, reason: 'main@origin stays, untracked');
+
+    // A remote tag, fetched from a second Git repository on disk: Track and Untrack flip it.
+    final String upstream = pathOf('track-upstream');
+    await Directory(upstream).create();
+    Future<void> gitAt(String at, List<String> args) async {
+      final ProcessResult result = await Process.run('git', <String>['-C', at, ...args]);
+      if (result.exitCode != 0) {
+        fail('git ${args.join(' ')} failed: ${result.stderr}');
+      }
+    }
+
+    await gitAt(upstream, <String>['init', '-b', 'main']);
+    await gitAt(upstream, <String>['config', 'user.email', 'test@test.invalid']);
+    await gitAt(upstream, <String>['config', 'user.name', 'Test']);
+    await gitAt(upstream, <String>['commit', '--allow-empty', '-m', 'tagged', '--no-gpg-sign']);
+    // A lightweight tag, whatever the user's git config says about signing tags.
+    await gitAt(upstream, <String>['-c', 'tag.gpgSign=false', 'tag', '--no-sign', 'v9']);
+    await git(<String>['remote', 'add', 'upstream', upstream]);
+    await repo.handle.gitFetch(remotes: const NamedFetchRemotes(<String>['upstream'])).result;
+    Future<bool?> v9Tracked() async {
+      for (final Bookmark b in await tags.bookmarks()) {
+        if (b.kind case RemoteBookmark(:final String remoteName, :final bool tracked)
+            when b.name == 'v9' && remoteName == 'upstream') {
+          return tracked;
+        }
+      }
+      return null;
+    }
+
+    final bool? before = await v9Tracked();
+    expect(before, isNotNull, reason: 'the fetch brought v9@upstream');
+    await actions.run(const GraphTagUntrack('v9', 'upstream'));
+    expect(await v9Tracked(), isFalse);
+    await actions.run(const GraphTagTrack('v9', 'upstream'));
+    expect(await v9Tracked(), isTrue);
   });
 
   group('Story 10.37: the view state cleanup (real repo)', () {
@@ -1302,6 +1355,17 @@ void main() {
       expect(const GraphBookmarkTrack('my topic', 'up stream').symbol, '"my topic"@"up stream"');
       expect(const GraphBookmarkTrack('my topic', 'origin').command, 'jj bookmark track \'"my topic"@origin\'');
       expect(const GraphBookmarkTrack('a', 'b').pendingKeys, isEmpty);
+      // Story 10.44.
+      expect(const GraphBookmarkForget('feature/auth-flow').command, 'jj bookmark forget feature/auth-flow');
+      expect(const GraphBookmarkForget('fix*').pattern, 'exact:"fix*"');
+      expect(const GraphTagDelete(<String>['v1.5.0', 'my tag']).command, 'jj tag delete v1.5.0 \'"my tag"\'');
+      expect(const GraphTagDelete(<String>['v*']).patterns, <String>['exact:"v*"']);
+      expect(const GraphTagTrack('v1.5.0', 'origin').command, 'jj tag track v1.5.0@origin');
+      expect(const GraphTagUntrack('v1.5.0-rc1', 'up stream').command, 'jj tag untrack \'v1.5.0-rc1@"up stream"\'');
+      expect(const GraphTagUntrack('v1', 'origin').symbol, 'v1@origin');
+      expect(revsetSymbol('main'), 'main');
+      expect(revsetSymbol('my topic'), '"my topic"');
+      expect(const GraphTagDelete(<String>['v1']).pendingKeys, isEmpty);
       expect(const GraphUndo(GraphEdit('k')).command, 'jj undo');
       expect(const GraphRedo(GraphEdit('k')).command, 'jj redo');
       expect(const GraphOpRestore('1a2b3c4d5e6f').command, 'jj op restore 1a2b3c4d5e6f');

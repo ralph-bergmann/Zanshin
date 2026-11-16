@@ -439,6 +439,35 @@ void main() {
       expect(ran.last, isA<GraphBookmarkDelete>().having((a) => a.names, 'names', <String>['b-mark']));
     });
 
+    test('Story 10.44: with the delete flow, Delete hands the name over; a failed read disables it', () {
+      final deleted = <String>[];
+      final ran = <GraphAction>[];
+      ZsMenuItem delete({required bool readFailed}) => _row(
+        _row(
+          graphBookmarkMenuEntries(
+            _en,
+            _l,
+            _node(_b),
+            blocked: null,
+            run: ran.add,
+            bookmarks: readFailed ? null : _rows(tracked: true),
+            readFailed: readFailed,
+            ask: (_) {},
+            delete: deleted.add,
+          ),
+          'b-mark',
+        ).submenu!,
+        'Delete',
+      );
+      final ZsMenuItem item = delete(readFailed: false);
+      expect((item.enabled, item.cmd, item.danger), (true, 'jj bookmark delete b-mark', true));
+      item.onSelected!();
+      expect(deleted, <String>['b-mark']);
+      expect(ran, isEmpty, reason: 'the flow runs it');
+      final ZsMenuItem failed = delete(readFailed: true);
+      expect((failed.enabled, failed.tooltip), (false, "Couldn't read the bookmarks"));
+    });
+
     test('Create… asks for a name; the action names the change', () {
       final GraphNameRequest create = _requests()['create']!;
       expect(create.title, 'Create bookmark here');
@@ -503,6 +532,7 @@ void main() {
       WidgetTester tester, {
       Future<List<Bookmark>> Function()? bookmarks,
       AppWindowActions? windowActions,
+      GraphDeleteBookmark? deleteBookmark,
     }) async {
       source = ScriptedGraphSource(respond: (_) => _layout());
       actions = _Actions();
@@ -520,7 +550,7 @@ void main() {
         ..physicalSize = surface
         ..devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      view = GraphView(model: model, inspectorModel: inspector, bookmarks: bookmarks);
+      view = GraphView(model: model, inspectorModel: inspector, bookmarks: bookmarks, deleteBookmark: deleteBookmark);
       await tester.pumpWidget(
         shellHost(windowActions == null ? view : AppWindowActionsScope(actions: windowActions, child: view)),
       );
@@ -735,6 +765,77 @@ void main() {
       await settle(tester);
       expect(model.drag.payload, isNull);
       expect(actions.ran, isEmpty);
+      await finish(tester);
+    });
+
+    testWidgets('Story 10.44: the popover\'s Delete goes to the delete flow with the --all-remotes rows', (
+      tester,
+    ) async {
+      final deleted = <(String, List<Bookmark>)>[];
+      await pump(
+        tester,
+        bookmarks: () async => _rows(tracked: true),
+        deleteBookmark: (name, rows) => deleted.add((name, rows)),
+      );
+      cards(tester).openBookmarks(_b, Rect.fromCenter(center: tester.getCenter(card(_b)), width: 40, height: 16));
+      await settle(tester);
+      await tester.tap(find.text('b-mark'));
+      await settle(tester);
+      await tester.tap(find.text('Delete'));
+      await tester.pump(m.durBlink);
+      await tester.pump(m.durBlink);
+      await settle(tester);
+      expect(deleted.single.$1, 'b-mark');
+      expect(deleted.single.$2.map((b) => b.kind is RemoteBookmark), <bool>[false, true]);
+      expect(actions.ran, isEmpty, reason: 'the flow decides what runs');
+      await finish(tester);
+    });
+
+    testWidgets('Story 10.44: Delete before the read lands waits for it; a failed read deletes nothing', (
+      tester,
+    ) async {
+      var read = Completer<List<Bookmark>>();
+      final deleted = <(String, List<Bookmark>)>[];
+      await pump(
+        tester,
+        bookmarks: () => read.future,
+        deleteBookmark: (name, rows) => deleted.add((name, rows)),
+      );
+      Future<void> tapDelete() async {
+        cards(tester).openBookmarks(_b, Rect.fromCenter(center: tester.getCenter(card(_b)), width: 40, height: 16));
+        await settle(tester);
+        await tester.tap(find.text('b-mark'));
+        await settle(tester);
+        await tester.tap(find.text('Delete'));
+        await tester.pump(m.durBlink);
+        await tester.pump(m.durBlink);
+        await settle(tester);
+      }
+
+      await tapDelete();
+      expect(deleted, isEmpty, reason: 'the read has not landed');
+      read.complete(_rows(tracked: true));
+      await tester.pump();
+      expect(deleted.single.$1, 'b-mark');
+      expect(
+        deleted.single.$2
+            .where((b) => b.kind is RemoteBookmark && (b.kind as RemoteBookmark).tracked)
+            .map((b) => b.name),
+        <String>['b-mark'],
+        reason: 'the flow gets the tracked remote row',
+      );
+
+      deleted.clear();
+      read = Completer<List<Bookmark>>();
+      await tapDelete();
+      read.completeError(const ZanshinFfiException('jj.io_error', 'disk'));
+      await tester.pump();
+      await tester.pump();
+      expect(deleted, isEmpty);
+      // The popover now knows the read failed: Delete is disabled with the failure, so a tap deletes nothing.
+      await tapDelete();
+      await tester.pump();
+      expect(deleted, isEmpty);
       await finish(tester);
     });
 

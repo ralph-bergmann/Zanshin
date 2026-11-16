@@ -51,6 +51,7 @@ class GraphView extends StatefulWidget {
     this.insets = EdgeInsets.zero,
     this.inspectorModel,
     this.bookmarks,
+    this.deleteBookmark,
     this.search,
     super.key,
   });
@@ -66,6 +67,9 @@ class GraphView extends StatefulWidget {
 
   /// `jj bookmark list --all-remotes`, read by the bookmark popover for Track / Untrack (Story 10.15).
   final Future<List<Bookmark>> Function()? bookmarks;
+
+  /// The bookmark popover's Delete through the project's delete flow (Story 10.44).
+  final GraphDeleteBookmark? deleteBookmark;
 
   /// The card width and detail.
   final GraphViewOptions options;
@@ -397,7 +401,12 @@ class _GraphViewState extends State<GraphView> {
               ),
             if (layout != null) ...<Widget>[
               GraphCardMenuHost(cards: _cards, model: model, inspector: widget.inspectorModel),
-              GraphBookmarkMenuHost(cards: _cards, model: model, bookmarks: widget.bookmarks),
+              GraphBookmarkMenuHost(
+                cards: _cards,
+                model: model,
+                bookmarks: widget.bookmarks,
+                deleteBookmark: widget.deleteBookmark,
+              ),
             ],
             if (caption != null)
               Padding(

@@ -626,8 +626,90 @@ final class GraphBookmarkUntrack extends GraphAction {
   Set<String> get pendingKeys => const <String>{};
 }
 
-/// [name]@[remote] as a remote bookmark symbol: each part bare when it is an identifier, else a string literal.
+/// `jj bookmark forget <name>` (Story 10.44): exactly that name (a glob-like one as `exact:`).
+final class GraphBookmarkForget extends GraphAction {
+  /// Forgets the bookmark [name].
+  const GraphBookmarkForget(this.name);
+
+  /// The bookmark name.
+  final String name;
+
+  /// The pattern jj receives, the same text the command shows.
+  String get pattern => _exactPattern(name);
+
+  @override
+  String get command => _jj(<String>['bookmark', 'forget', pattern]); // l10n-ignore: jj command
+
+  @override
+  Set<String> get pendingKeys => const <String>{};
+}
+
+/// `jj tag delete <names>` (Story 10.44): exactly these names (a glob-like one as `exact:`).
+final class GraphTagDelete extends GraphAction {
+  /// Deletes the tags [names].
+  const GraphTagDelete(this.names);
+
+  /// The tag names.
+  final List<String> names;
+
+  /// The patterns jj receives, the same text the command shows.
+  List<String> get patterns => names.map(_exactPattern).toList();
+
+  @override
+  String get command => _jj(<String>['tag', 'delete', ...patterns]); // l10n-ignore: jj command
+
+  @override
+  Set<String> get pendingKeys => const <String>{};
+}
+
+/// `jj tag track <name>@<remote>` (Story 10.44): exactly that remote tag.
+final class GraphTagTrack extends GraphAction {
+  /// Tracks the tag [name]@[remote].
+  const GraphTagTrack(this.name, this.remote);
+
+  /// The tag name.
+  final String name;
+
+  /// The remote.
+  final String remote;
+
+  /// The `TAG@REMOTE` symbol jj receives, the same text the command shows.
+  String get symbol => remoteBookmarkSymbol(name, remote);
+
+  @override
+  String get command => _jj(<String>['tag', 'track', symbol]); // l10n-ignore: jj command
+
+  @override
+  Set<String> get pendingKeys => const <String>{};
+}
+
+/// `jj tag untrack <name>@<remote>` (Story 10.44): exactly that remote tag.
+final class GraphTagUntrack extends GraphAction {
+  /// Stops tracking the tag [name]@[remote].
+  const GraphTagUntrack(this.name, this.remote);
+
+  /// The tag name.
+  final String name;
+
+  /// The remote.
+  final String remote;
+
+  /// The `TAG@REMOTE` symbol jj receives, the same text the command shows.
+  String get symbol => remoteBookmarkSymbol(name, remote);
+
+  @override
+  String get command => _jj(<String>['tag', 'untrack', symbol]); // l10n-ignore: jj command
+
+  @override
+  Set<String> get pendingKeys => const <String>{};
+}
+
+/// [name]@[remote] as a remote bookmark (or tag) symbol: each part bare when it is an identifier, else a string literal.
 String remoteBookmarkSymbol(String name, String remote) => '${_revsetSymbol(name)}@${_revsetSymbol(remote)}';
+
+/// [name] as a revset symbol (a bookmark or tag name in `jj new <name>`): bare when it is an identifier, else a string
+/// literal.
+String revsetSymbol(String name) => _revsetSymbol(name);
 
 /// `jj undo` of Zanshin's own latest operation, [of]'s.
 final class GraphUndo extends GraphAction {
@@ -944,6 +1026,10 @@ class RepoGraphActions implements GraphActions {
         ),
       GraphBookmarkTrack(:final String symbol) => handle.bookmarkTrack(<String>[symbol]),
       GraphBookmarkUntrack(:final String symbol) => handle.bookmarkUntrack(<String>[symbol]),
+      GraphBookmarkForget(:final String pattern) => handle.bookmarkForget(<String>[pattern]),
+      GraphTagDelete() => handle.tagDelete(action.patterns),
+      GraphTagTrack(:final String symbol) => handle.tagTrack(<String>[symbol]),
+      GraphTagUntrack(:final String symbol) => handle.tagUntrack(<String>[symbol]),
       GraphUndo() => handle.undo(),
       GraphRedo() => handle.redo(),
       GraphOpRestore(:final String operation) => handle.opRestore(operation),

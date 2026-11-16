@@ -1,4 +1,4 @@
-<!-- @dsCard group="Controls" viewport="1100x560" name="Feedback — progress, toasts, confirmation" subtitle="Spinner, ProgressBar, Skeleton, the three toast tones, ConfirmDialog for what jj undo can't reverse" -->
+<!-- @dsCard group="Controls" viewport="1100x1080" name="Feedback — progress, toasts, confirmation" subtitle="Spinner, ProgressBar, Skeleton, the three toast tones, ConfirmDialog for what jj undo can't reverse, with choices" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -57,6 +57,18 @@ body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-si
             {!open && <span className="p">closed — it comes back</span>}
           </div>
           <p className="p">Destructive: the filled red button is the one primary; focus starts on Cancel; ↩ presses the focused button, ⌘↩ confirms, Esc cancels. Warnings use the gold primary with ↩.</p>
+          <span className="lbl" style={{ marginTop: 6 }}>Choices — one decision, different commands</span>
+          <div className="stage" style={{ height: "auto", padding: "16px 0" }}>
+            <ConfirmDialog scrim={false} title="Delete feature/auth-flow?" confirmLabel="Delete" defaultValue="push" choicesLabel="Where to delete" onConfirm={() => {}} onCancel={() => {}}
+              choices={[
+                { id: "here", label: "Only here — keep it on origin", cmd: ["jj bookmark forget feature/auth-flow"], note: "Undo works. origin keeps it; it stays here as an untracked remote bookmark." },
+                { id: "push", label: "Here, and on origin when you push the deletion", cmd: ["jj bookmark delete feature/auth-flow"], note: "Undo works until you push. A plain push skips deletions; the Push sheet offers to push them." },
+                { id: "now", label: "Here and on origin now", cmd: ["jj bookmark delete feature/auth-flow", "jj git push --remote origin --bookmark feature/auth-flow"], note: "Can’t be undone: origin loses the bookmark.", danger: true },
+              ]}>
+              The bookmark is also on origin. Where should it go?
+            </ConfirmDialog>
+          </div>
+          <p className="p">Each choice shows the exact commands it runs, in order; the reversible middle choice is the default; a choice that can’t be undone is red.</p>
         </div>
       </div>
     );

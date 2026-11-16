@@ -146,11 +146,7 @@ ShellToastEntry? graphOutcomeEntry(GraphOutcome outcome, {required GraphViewMode
       tone: ZsToastTone.warn,
       build: (context, dismiss) => ZsToast(
         tone: ZsToastTone.warn,
-        message: TextSpan(
-          text: error.code == 'jj.change_not_found' && error.context != null
-              ? context.l10n.toastRevisionNotFound(error.context!)
-              : error.context ?? error.code,
-        ),
+        message: _refusal(context, error),
         onDismiss: dismiss,
         identifier: 'graph-toast',
       ),
@@ -215,6 +211,24 @@ ShellToastEntry? graphOutcomeEntry(GraphOutcome outcome, {required GraphViewMode
         identifier: 'graph-toast',
       );
     },
+  );
+}
+
+/// jj's refusal [error] as the warn toast shows it: its text — a multi-line one (a caret diagram) in mono, so its
+/// columns line up — then its hints, one per line.
+InlineSpan _refusal(BuildContext context, ZanshinFfiException error) {
+  final String? detail = error.context;
+  final String text = error.code == 'jj.change_not_found' && detail != null
+      ? context.l10n.toastRevisionNotFound(detail)
+      : detail ?? error.code;
+  return TextSpan(
+    children: <InlineSpan>[
+      TextSpan(
+        text: text,
+        style: text.contains('\n') ? ZsType.id.copyWith(color: ZsColors.of(context).text) : null,
+      ),
+      for (final String hint in error.hints) TextSpan(text: '\n$hint'), // l10n-ignore: jj's hint, verbatim
+    ],
   );
 }
 
@@ -325,6 +339,18 @@ InlineSpan _text(AppLocalizations strings, ZsColors colors, GraphOutcome outcome
       parts = <InlineSpan>[toastMono(colors, '$name@$remote')]; // l10n-ignore: jj's symbol
     case GraphBookmarkUntrack(:final String name, :final String remote):
       message = strings.toastBookmarkUntracked(s0);
+      parts = <InlineSpan>[toastMono(colors, '$name@$remote')]; // l10n-ignore: jj's symbol
+    case GraphBookmarkForget(:final String name):
+      message = strings.toastBookmarkForgot(s0);
+      parts = <InlineSpan>[toastMono(colors, name)];
+    case GraphTagDelete(names: final List<String> deleted):
+      message = strings.toastTagDeleted(s0);
+      parts = <InlineSpan>[names(deleted)];
+    case GraphTagTrack(:final String name, :final String remote):
+      message = strings.toastTagTracked(s0);
+      parts = <InlineSpan>[toastMono(colors, '$name@$remote')]; // l10n-ignore: jj's symbol
+    case GraphTagUntrack(:final String name, :final String remote):
+      message = strings.toastTagUntracked(s0);
       parts = <InlineSpan>[toastMono(colors, '$name@$remote')]; // l10n-ignore: jj's symbol
     case GraphUndo(:final GraphAction of):
       message = strings.toastUndid(s0);

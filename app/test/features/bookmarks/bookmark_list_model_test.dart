@@ -287,4 +287,157 @@ void main() {
       expect(rig.actions.ran.first, isA<GraphBookmarkTrack>());
     },
   );
+
+  group('Story 10.44', () {
+    /// A row of [b] in the flat list, kind [kind].
+    BookmarkRow row(Bookmark b, {RefKind kind = RefKind.bookmark}) =>
+        BookmarkRow(bookmark: b, state: BookmarkRowState.local, prefix: 2, kind: kind);
+
+    String show(RefTreeRow r) => switch (r) {
+      RefFolderRow(:final String name, :final bool open, :final int depth) => '${'  ' * depth}$name${open ? '' : ' +'}',
+      RefLeafRow(:final String label, :final BookmarkRow row, :final int depth) =>
+        '${'  ' * depth}$label${row.remote == null ? '' : '@${row.remote}'}',
+    };
+
+    final rows = <BookmarkRow>[
+      row(localRow('main', 'k1')),
+      row(localRow('onboarding/step-1', 'k0')),
+      row(remoteRow('onboarding/step-2', 'origin', 'k0')),
+      row(localRow('feature/auth-flow', 'k2')),
+      row(localRow('a/b/', 'k2')),
+    ];
+
+    test('the tree: folders first by name, then the leaves in list order; a remote row beside the local one', () {
+      expect(refTree(rows).map(show), <String>[
+        'a/',
+        '  b/',
+        '    a/b/',
+        'feature/',
+        '  auth-flow',
+        'onboarding/',
+        '  step-1',
+        '  step-2@origin',
+        'main',
+      ]);
+      final RefLeafRow leaf = refTree(rows).whereType<RefLeafRow>().singleWhere((r) => r.label == 'step-2');
+      expect((leaf.index, leaf.depth), (2, 1), reason: 'the index is the flat list\'s');
+      expect(refTree(rows).whereType<RefFolderRow>().map((f) => f.path), <String>[
+        'a/',
+        'a/b/',
+        'feature/',
+        'onboarding/',
+      ]);
+    });
+
+    test('the filter keeps the matching leaves and their folders, all open; a folded folder hides its rows', () {
+      expect(refTree(rows, filter: 'ONB').map(show), <String>['onboarding/', '  step-1', '  step-2@origin']);
+      expect(refTree(rows, filter: 'step-2@orig').map(show), <String>['onboarding/', '  step-2@origin']);
+      expect(refTree(rows, filter: 'x'), isEmpty);
+      expect(refTree(rows, collapsed: <String>{'onboarding/'}).map(show), contains('onboarding/ +'));
+      expect(refTree(rows, collapsed: <String>{'onboarding/'}).map(show), isNot(contains('  step-1')));
+      expect(
+        refTree(rows, filter: 'step', collapsed: <String>{'onboarding/'}).map(show),
+        <String>['onboarding/', '  step-1', '  step-2@origin'],
+        reason: 'a filter opens every folder it keeps',
+      );
+    });
+
+    test('the model keeps the filter and the folded folders, and its tree follows them', () async {
+      final BookmarkRig rig = await _rig(_rows());
+      var notified = 0;
+      rig.model.addListener(() => notified++);
+      expect(rig.model.tree.map(show), <String>[
+        'release/',
+        '  1.5.x@origin',
+        'feat',
+        'feat@origin',
+        'main',
+        'main@origin',
+      ]);
+      rig.model.toggleFolder('release/');
+      expect(rig.model.tree.map(show), <String>['release/ +', 'feat', 'feat@origin', 'main', 'main@origin']);
+      rig.model.filter = 'mai';
+      expect(rig.model.tree.map(show), <String>['main', 'main@origin']);
+      rig.model.filter = 'mai';
+      rig.model.toggleFolder('release/');
+      expect(rig.model.collapsed, isEmpty);
+      expect(notified, 3);
+    });
+
+    test(
+      'row verbs: New and Delete… on a local row, Track or Untrack then New on a remote one, none without target',
+      () {
+        expect(row(localRow('main', 'k1')).actions, <RefRowAction>[RefRowAction.newHere, RefRowAction.delete]);
+        expect(row(remoteRow('main', 'origin', 'k1')).actions, <RefRowAction>[
+          RefRowAction.track,
+          RefRowAction.newHere,
+        ]);
+        expect(row(localRow('gone', null)).actions, isEmpty);
+        expect(row(remoteRow('new', 'origin', null)).actions, <RefRowAction>[RefRowAction.track]);
+        expect(row(remoteRow('new', 'origin', null)).trackAction?.command, 'jj bookmark untrack new@origin');
+        expect(row(localRow('main', 'k1')).renamable, isTrue);
+        expect(row(localRow('v1', 'k1'), kind: RefKind.tag).renamable, isFalse);
+        // The shown command is the one that runs: on the target's change id.
+        expect(BookmarkListModel.newCommand(row(localRow('my topic', 'k1'))), 'jj new k1');
+        expect(BookmarkListModel.newCommand(row(remoteRow('main', 'origin', 'k2'))), 'jj new k2');
+        // A tag row's track verbs are jj tag's.
+        expect(
+          row(remoteRow('v1', 'origin', 'k1'), kind: RefKind.tag).trackAction?.command,
+          'jj tag untrack v1@origin',
+        );
+        expect(
+          row(remoteRow('v1', 'origin', 'k1', tracked: false), kind: RefKind.tag).trackAction?.command,
+          'jj tag track v1@origin',
+        );
+      },
+    );
+
+    test('New runs on the target change; Delete… without a tracked remote deletes at once', () async {
+      final BookmarkRig rig = await _rig(<Bookmark>[
+        localRow('wip', 'k0'),
+        remoteRow('wip', 'origin', 'k0', tracked: false, synced: false),
+        remoteRow('wip', 'git', 'k0'),
+      ]);
+      await rig.model.newHere(_row(rig, 'wip'));
+      await rig.model.newHere(_row(rig, 'wip@origin'));
+      rig.model.delete(_row(rig, 'wip@origin'));
+      rig.model.delete(_row(rig, 'wip'));
+      await pumpEventQueue();
+      expect(rig.actions.ran.map((a) => a.command), <String>['jj new k0', 'jj new k0', 'jj bookmark delete wip']);
+      expect(rig.deletes.pending, isNull);
+    });
+
+    test('a tag row maps jj tag list --all-remotes: a remote tag is a remote row without distances', () {
+      final Bookmark local = tagRow(
+        const Tag(name: 'v1', target: 'k1', kind: LocalTag(), conflicted: false, synced: true),
+      );
+      expect((local.name, local.target, local.synced), ('v1', 'k1', true));
+      expect(local.kind, isA<LocalBookmark>());
+      final Bookmark remote = tagRow(
+        const Tag(name: 'v1', target: 'k2', kind: RemoteTag('origin', tracked: true), conflicted: true, synced: false),
+      );
+      final kind = remote.kind as RemoteBookmark;
+      expect(
+        (kind.remoteName, kind.tracked, kind.ahead, kind.behind, remote.conflicted),
+        ('origin', true, null, null, true),
+      );
+      // A tracked remote tag that differs shows ↕.
+      expect(bookmarkRowState(remote, <Bookmark>[remote], divergent: false).$1, BookmarkRowState.conflicted);
+      final Bookmark moved = tagRow(
+        const Tag(name: 'v1', target: 'k2', kind: RemoteTag('origin', tracked: true), conflicted: false, synced: false),
+      );
+      expect(bookmarkRowState(moved, <Bookmark>[moved], divergent: false).$1, BookmarkRowState.diverged);
+    });
+
+    test('a TagListModel lists tags: its rows carry the tag kind', () async {
+      final rig = BookmarkRig(FakeBookmarkListSource(<Bookmark>[localRow('v1', 'k1')]), kind: RefKind.tag);
+      addTearDown(rig.dispose);
+      await pumpEventQueue();
+      expect(rig.model, isA<TagListModel>());
+      expect(rig.model.rows.single.kind, RefKind.tag);
+      rig.model.delete(rig.model.rows.single);
+      await pumpEventQueue();
+      expect(rig.actions.ran.single.command, 'jj tag delete v1');
+    });
+  });
 }

@@ -71,6 +71,7 @@ class SyncModel extends ChangeNotifier implements GraphMenuSync {
   var _pushRemotes = const <String>[];
   var _remoteNames = const <String>[];
   var _fetching = false;
+  var _pushing = false;
   double? _fetchProgress;
   var _changes = const <String, List<String>>{};
   var _polling = false;
@@ -98,11 +99,11 @@ class SyncModel extends ChangeNotifier implements GraphMenuSync {
 
   /// Whether Fetch may run.
   @override
-  bool get canFetch => !_stale && !_fetching && _push == null && _fetchRemotes.isNotEmpty;
+  bool get canFetch => !_stale && !_fetching && !_pushing && _push == null && _fetchRemotes.isNotEmpty;
 
   /// Whether Push may open its sheet.
   @override
-  bool get canPush => !_stale && !_fetching && _push == null && _remoteNames.isNotEmpty;
+  bool get canPush => !_stale && !_fetching && !_pushing && _push == null && _remoteNames.isNotEmpty;
 
   /// Whether the repository has a remote at all.
   bool get hasRemote => _remoteNames.isNotEmpty;
@@ -298,6 +299,59 @@ class SyncModel extends ChangeNotifier implements GraphMenuSync {
     unawaited(model.load());
     _notify();
   }
+
+  /// Runs [request] at once, without the sheet (Story 10.44: the delete sheet's "now" choice): the project's dot reads
+  /// syncing while it runs; its result shows in the push toast (Undo while recorded), a failure shows jj's text. Skipped
+  /// while stale, a fetch or another push runs, or the sheet is open — the error toast says why, since the caller's
+  /// verbs before it already ran. True when it pushed without a failure.
+  Future<bool> pushNow(PushRequest request) async {
+    if (_disposed) {
+      return false;
+    }
+    if (_stale || _fetching || _pushing || _push != null) {
+      final bool stale = _stale;
+      _show(_pushFailedEntry((strings) => stale ? strings.staleTitle : strings.toastPushBusy));
+      return false;
+    }
+    _pushing = true;
+    _notify();
+    try {
+      final NetworkOperation<GitPushResult> operation = _sync.push(request.asPush);
+      final SyncRun? syncing = _syncing;
+      final GitPushResult result = await (syncing == null ? operation.result : syncing(() => operation.result));
+      final PushFailure? failure = result.failure;
+      if (failure != null && !result.recorded) {
+        _show(_pushFailedEntry((_) => <String>[failure.message, ?failure.hint].join('\n')));
+      } else {
+        _pushed(result);
+      }
+      return failure == null;
+    } on ZanshinFfiException catch (error) {
+      _log.warning('the push failed: ${error.code}');
+      if (error.code != 'jj.stale_working_copy') {
+        _show(_pushFailedEntry((_) => error.context ?? error.code));
+      }
+      return false;
+    } on Object catch (error, stack) {
+      // Not jj's refusal (a closed handle): the caller does not await it, so it is reported here.
+      _log.warning('the push failed: ${error.runtimeType}', error, stack);
+      _show(_pushFailedEntry((_) => '$error'));
+      return false;
+    } finally {
+      _pushing = false;
+      _notify();
+    }
+  }
+
+  ShellToastEntry _pushFailedEntry(String Function(AppLocalizations strings) detail) => ShellToastEntry(
+    tone: ZsToastTone.error,
+    build: (context, dismiss) => ZsToast(
+      tone: ZsToastTone.error,
+      message: TextSpan(text: context.l10n.toastPushFailed(detail(context.l10n))),
+      onDismiss: dismiss,
+      identifier: 'sync-toast',
+    ),
+  );
 
   /// The sheet's exit ended: it is gone.
   void pushSheetClosed() {

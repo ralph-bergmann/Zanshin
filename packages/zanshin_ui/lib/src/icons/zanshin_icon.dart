@@ -204,6 +204,7 @@ abstract final class ZI {
   static const squashInto = 'squash-into';
   static const stackCollapse = 'stack-collapse';
   static const sun = 'sun';
+  static const tag = 'tag';
   static const undo = 'undo';
   static const updown = 'updown';
   static const user = 'user';
@@ -269,6 +270,7 @@ abstract final class ZI {
     squashInto,
     stackCollapse,
     sun,
+    tag,
     undo,
     updown,
     user,

@@ -4,6 +4,8 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../bookmarks/bookmark_list_model.dart' show RefKind;
+import '../bookmarks/ref_delete.dart';
 import '../graph/active_graph.dart';
 import '../graph/graph_controls.dart';
 import '../graph/graph_view.dart';
@@ -184,15 +186,20 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
             scope: scope,
             // Keyed by the scope, so a project switch mounts fresh states (no old search text, selection or scroll).
             // The Push sheet mounts from the graph slot: inside the shell's scope (it holds calm), outside any glass.
-            graph: PushSheetHost(
-              sync: scope.sync,
-              child: GraphView(
-                key: ObjectKey(scope),
-                model: model,
-                options: scope.preferences.options,
-                inspectorModel: scope.inspector,
-                bookmarks: scope.remoteBookmarks,
-                search: scope.search,
+            graph: RefDeleteHost(
+              flow: scope.refDelete,
+              child: PushSheetHost(
+                sync: scope.sync,
+                child: GraphView(
+                  key: ObjectKey(scope),
+                  model: model,
+                  options: scope.preferences.options,
+                  inspectorModel: scope.inspector,
+                  bookmarks: scope.remoteBookmarks,
+                  deleteBookmark: (name, rows) =>
+                      scope.refDelete.delete(RefDeleteRequest.of(RefKind.bookmark, name, rows)),
+                  search: scope.search,
+                ),
               ),
             ),
             view: GraphViewControls(

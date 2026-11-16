@@ -134,4 +134,18 @@ a.zs-link[href]{cursor:pointer}
 .zs-alert-cmd{display:block;padding:8px 10px;border-radius:var(--radius-md);background:var(--code-bg);border:1px solid var(--fl-border);font:var(--fs-id)/1.55 var(--font-mono);color:var(--text-muted);white-space:pre-wrap;word-break:break-all}
 .zs-alert-ft{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px}
 .zs-alert-key{margin-right:auto;font-size:var(--fs-sm);color:var(--text-faint)}
+/* ConfirmDialog choices — one decision whose choices run different commands (Story 10.44's delete sheet) */
+.zs-alert-choices{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.zs-alert-choice{display:grid;grid-template-columns:15px minmax(0,1fr);gap:10px;align-items:start;padding:10px 12px;border:0;border-radius:var(--radius-card);background:transparent;color:inherit;font:inherit;text-align:left;cursor:default;transition:background var(--dur-hover) var(--ease-state)}
+.zs-alert-choice:hover{background:var(--fl-hover)}
+.zs-alert-choice:hover .zs-radio:not(.is-on){border-color:var(--text-muted)}
+.zs-alert-choice.is-on{background:var(--fl-on)}
+.zs-alert-choice:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px}
+.zs-alert-choice .zs-radio{margin-top:1px}
+.zs-alert-choice-t{display:flex;flex-direction:column;gap:4px;min-width:0}
+.zs-alert-choice-l{display:flex;align-items:center;gap:8px;font-size:var(--fs-control);font-weight:500;color:var(--text)}
+.zs-alert-default{font-size:var(--fs-xs);font-weight:400;color:var(--text-faint)}
+.zs-alert-choice-cmd{font:var(--fs-sm)/1.5 var(--font-mono);color:var(--text-muted);white-space:pre-wrap;word-break:break-all}
+.zs-alert-choice-n{font-size:var(--fs-id);line-height:1.4;color:var(--text-dim)}
+.zs-alert-choice.is-danger .zs-alert-choice-l,.zs-alert-choice.is-danger .zs-alert-choice-n{color:var(--rem)}
 

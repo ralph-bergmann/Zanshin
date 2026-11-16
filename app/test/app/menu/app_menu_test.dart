@@ -650,6 +650,17 @@ void main() {
     );
   });
 
+  test('Undo and Redo name forget and the tag verbs (Story 10.44)', () {
+    final model = GraphViewModel();
+    addTearDown(model.dispose);
+    final AppLocalizations s = platformStrings();
+    String name(GraphAction action) => AppMenuModel.actionName(s, model, action);
+    expect(name(const GraphBookmarkForget('feat')), 'Forget Bookmark feat');
+    expect(name(const GraphTagDelete(<String>['v1', 'v2'])), 'Delete Tag v1, v2');
+    expect(name(const GraphTagTrack('v1', 'origin')), 'Track Tag v1@origin');
+    expect(name(const GraphUndo(GraphTagUntrack('v1', 'origin'))), 'Untrack Tag v1@origin');
+  });
+
   test('Undo and Redo name the drop verbs (Story 10.10)', () {
     final model = GraphViewModel();
     addTearDown(model.dispose);

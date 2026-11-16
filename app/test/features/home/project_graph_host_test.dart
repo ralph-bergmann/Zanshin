@@ -4,6 +4,8 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart' show TagListModel;
+import 'package:zanshin/src/features/bookmarks/ref_delete.dart';
 import 'package:zanshin/src/features/graph/active_graph.dart';
 import 'package:zanshin/src/features/graph/graph_minimap.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart' show GraphLoad;
@@ -17,6 +19,7 @@ import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin/src/features/sync/sync_model.dart';
 import 'package:zanshin/src/features/undo_timeline/operation_changes.dart';
+import 'package:zanshin_core/zanshin_core.dart' show Bookmark, LocalBookmark, RemoteBookmark;
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import '../../helpers/fake_projects.dart';
@@ -77,6 +80,24 @@ void main() {
     final GraphView view = tester.widget<GraphView>(find.byType(GraphView));
     expect(view.inspectorModel, isNotNull, reason: "the card menu's Describe… opens the inspector");
     expect(view.bookmarks, isNotNull, reason: "the bookmark popover's Track / Untrack read");
+    // Story 10.44: the popover's Delete goes to the project's delete flow, whose sheet sits above the graph.
+    expect(find.ancestor(of: find.byType(GraphView), matching: find.byType(RefDeleteHost)), findsOneWidget);
+    final ProjectScope scope = lastSlots!.scope!;
+    expect(view.deleteBookmark, isNotNull);
+    view.deleteBookmark!('feat', <Bookmark>[
+      const Bookmark(name: 'feat', target: 'a', kind: LocalBookmark(), conflicted: false, synced: true),
+      const Bookmark(
+        name: 'feat',
+        target: 'a',
+        kind: RemoteBookmark('origin', tracked: true),
+        conflicted: false,
+        synced: true,
+      ),
+    ]);
+    expect(scope.refDelete.pending?.name, 'feat');
+    expect(scope.refDelete.pending?.remotes, <String>['origin']);
+    scope.refDelete.cancel();
+    await tester.pump();
 
     // Story 10.16: the minimap slot follows View › Show Minimap (default on).
     expect(lastSlots?.minimap, isA<GraphMinimap>());
@@ -200,6 +221,14 @@ void main() {
     expect(one.inspector.graph, same(one.model));
     expect(one.bookmarks.graph, same(one.model));
     expect(one.bookmarks.search, same(one.search));
+    // Story 10.44: one delete flow for both lists, over the graph's runner and the sync's push.
+    expect(one.tags, isA<TagListModel>());
+    expect(one.tags.search, same(one.search));
+    expect(one.bookmarks.deletes, same(one.refDelete));
+    expect(one.tags.deletes, same(one.refDelete));
+    expect(one.refDelete.graph, same(one.model));
+    expect(one.refDelete.push, isNotNull);
+    expect(other.refDelete, isNot(same(one.refDelete)));
     expect(one.binding.model, same(one.model));
     expect(one.binding.sync, same(one.sync));
     expect(one.inspector.settings, same(component.settings));

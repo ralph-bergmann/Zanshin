@@ -2414,6 +2414,30 @@ abstract class AppLocalizations {
   /// **'Stopped tracking {name}'**
   String toastBookmarkUntracked(String name);
 
+  /// Operation toast after jj bookmark forget; name is the bookmark name.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot {name}'**
+  String toastBookmarkForgot(String name);
+
+  /// Operation toast after jj tag delete; names are tag names.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted tag {names}'**
+  String toastTagDeleted(String names);
+
+  /// Operation toast after jj tag track; name is the remote tag (name@remote).
+  ///
+  /// In en, this message translates to:
+  /// **'Started tracking tag {name}'**
+  String toastTagTracked(String name);
+
+  /// Operation toast after jj tag untrack; name is the remote tag (name@remote).
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped tracking tag {name}'**
+  String toastTagUntracked(String name);
+
   /// Operation toast after jj undo; command is the jj command that was undone.
   ///
   /// In en, this message translates to:
@@ -2810,6 +2834,30 @@ abstract class AppLocalizations {
   /// **'Untrack {name}'**
   String menuBookmarkUntrack(String name);
 
+  /// Names jj bookmark forget in Undo/Redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Forget Bookmark {name}'**
+  String menuBookmarkForget(String name);
+
+  /// Names jj tag delete in Undo/Redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Tag {names}'**
+  String menuTagDelete(String names);
+
+  /// Names jj tag track in Undo/Redo; name is the remote tag (name@remote).
+  ///
+  /// In en, this message translates to:
+  /// **'Track Tag {name}'**
+  String menuTagTrack(String name);
+
+  /// Names jj tag untrack in Undo/Redo; name is the remote tag (name@remote).
+  ///
+  /// In en, this message translates to:
+  /// **'Untrack Tag {name}'**
+  String menuTagUntrack(String name);
+
   /// Change menu: jj git fetch.
   ///
   /// In en, this message translates to:
@@ -2990,18 +3038,6 @@ abstract class AppLocalizations {
   /// **'{name} — {state}'**
   String bookmarksRow(String name, String state);
 
-  /// Bookmark row state, short: a local bookmark no remote tracks.
-  ///
-  /// In en, this message translates to:
-  /// **'local'**
-  String get bookmarksStateLocalShort;
-
-  /// Bookmark row state, short: a remote bookmark that is not tracked.
-  ///
-  /// In en, this message translates to:
-  /// **'remote'**
-  String get bookmarksStateRemoteShort;
-
   /// Bookmark row state, short: jj's (deleted) — a local bookmark deleted while it still tracks a remote.
   ///
   /// In en, this message translates to:
@@ -3103,6 +3139,174 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Another action is running'**
   String get bookmarksBusy;
+
+  /// Placeholder and VoiceOver name of the filter field on top of the Bookmarks view.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter bookmarks'**
+  String get bookmarksFilter;
+
+  /// Bookmarks view: the filter matches no bookmark; query is the typed text.
+  ///
+  /// In en, this message translates to:
+  /// **'No bookmark matches “{query}”.'**
+  String bookmarksNoMatch(String query);
+
+  /// The rail item, its preview's and its pinned panel's title: jj's tags.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get tagsTitle;
+
+  /// Tags: the repository has no tag; command is jj's command, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'No tags yet. Create one with `{command}`.'**
+  String tagsEmpty(String command);
+
+  /// Tags: reading jj's tag list failed; detail is jj's error, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'The tags could not be read: {detail}'**
+  String tagsLoadFailed(String detail);
+
+  /// Placeholder and VoiceOver name of the filter field on top of the Tags view.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter tags'**
+  String get tagsFilter;
+
+  /// Tags view: the filter matches no tag; query is the typed text.
+  ///
+  /// In en, this message translates to:
+  /// **'No tag matches “{query}”.'**
+  String tagsNoMatch(String query);
+
+  /// Bookmark or tag row button and menu row: jj new on the bookmark or tag.
+  ///
+  /// In en, this message translates to:
+  /// **'New change here'**
+  String get refsNewHere;
+
+  /// Bookmark or tag row button and menu row: deletes it, asking first when a remote tracks it.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete…'**
+  String get refsDelete;
+
+  /// Bookmark row menu: opens the name sheet for jj bookmark rename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename…'**
+  String get refsRename;
+
+  /// Bookmark or tag row menu: copies its full name (name@remote for a remote row).
+  ///
+  /// In en, this message translates to:
+  /// **'Copy name'**
+  String get refsCopyName;
+
+  /// VoiceOver name of a bookmark or tag row's right-click menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Actions'**
+  String get refsActions;
+
+  /// Title of the sheet that asks where a deleted bookmark or tag should go.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {name}?'**
+  String refDeleteTitle(String name);
+
+  /// Delete sheet body for a bookmark; remotes are the remote names that track it, comma-joined.
+  ///
+  /// In en, this message translates to:
+  /// **'The bookmark is also on {remotes}. Where should it go?'**
+  String refDeleteBodyBookmark(String remotes);
+
+  /// Delete sheet body for a tag; remotes are the remote names that track it, comma-joined.
+  ///
+  /// In en, this message translates to:
+  /// **'The tag is also on {remotes}. Where should it go?'**
+  String refDeleteBodyTag(String remotes);
+
+  /// VoiceOver name of the delete sheet's choice group.
+  ///
+  /// In en, this message translates to:
+  /// **'Where to delete'**
+  String get refDeleteChoices;
+
+  /// Delete sheet choice: forget it locally, the remotes keep it.
+  ///
+  /// In en, this message translates to:
+  /// **'Only here — keep it on {remotes}'**
+  String refDeleteOnlyHere(String remotes);
+
+  /// Note under the delete sheet's Only here choice for a bookmark: jj bookmark forget untracks the remote copy at once.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo works. {remotes} keeps it; it stays here as an untracked remote bookmark.'**
+  String refDeleteOnlyHereNote(String remotes);
+
+  /// Note under the delete sheet's Only here choice for a tag: the untrack is its own operation, so Undo of the delete leaves it untracked.
+  ///
+  /// In en, this message translates to:
+  /// **'{remotes} keeps it; it stays here as an untracked remote tag. Undo brings the tag back, still untracked.'**
+  String refDeleteOnlyHereNoteTag(String remotes);
+
+  /// Delete sheet choice (the default): delete it locally; the next push of the deletion removes it on the remotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Here, and on {remotes} when you push the deletion'**
+  String refDeleteOnPush(String remotes);
+
+  /// Note under the delete sheet's default choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo works until you push. A plain push skips deletions; the Push sheet offers to push them.'**
+  String get refDeleteOnPushNote;
+
+  /// Delete sheet choice: delete it and push the deletion at once.
+  ///
+  /// In en, this message translates to:
+  /// **'Here and on {remotes} now'**
+  String refDeleteNow(String remotes);
+
+  /// Note under the delete sheet's Now choice for a bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t be undone: {remotes} loses the bookmark.'**
+  String refDeleteNowNoteBookmark(String remotes);
+
+  /// Note under the delete sheet's Now choice for a tag.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t be undone: {remotes} loses the tag.'**
+  String refDeleteNowNoteTag(String remotes);
+
+  /// Mark beside the delete sheet's default choice.
+  ///
+  /// In en, this message translates to:
+  /// **'default'**
+  String get refDeleteDefault;
+
+  /// The delete sheet's confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get refDeleteConfirm;
+
+  /// Why a push from the delete sheet did not run; shown inside toastPushFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'another fetch or push is running'**
+  String get toastPushBusy;
+
+  /// Error toast when a push run from the delete sheet failed; detail is jj's text, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'The push failed: {detail}'**
+  String toastPushFailed(String detail);
 
   /// Card menu row: jj new on the change.
   ///
