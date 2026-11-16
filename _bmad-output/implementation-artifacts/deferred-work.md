@@ -3171,3 +3171,12 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **The runner's XCTests, now including the Story 11.26 button placement, still run in no gate step.** Medium.
   - Same gap as "The runner's XCTests (`MenuStateChannel`) run in no gate step" above; this run ran them by hand (4 passed).
   - **Follow-up:** a gate step `xcodebuild test -workspace app/macos/Runner.xcworkspace -scheme Runner -only-testing:RunnerTests` for changes under `app/macos/` (a gate change for Ralph), or none.
+
+## Surfaced in Story 11.27 (bmad-build-auto, 2026-11-16)
+
+- **At 150 % the project window's lights sit at 51 pt (44–58); on a macOS whose titlebar is shorter than about 59 pt they would leave their superview and be clipped.** Medium (unverified).
+  - `placeWindowButtons()` in `app/macos/Runner/MainWindowChrome.swift` puts the centre at window height − `buttonMidY` with no clamp; the XCTest shows the buttons inside a 66 pt titlebar on macOS 27 only, and the deployment target is 12.0.
+  - **Follow-up:** run the app at 150 % on macOS 15 (or read its titlebar height); if it is short, clamp the line or cap the zoom there.
+- **The runner's XCTests now also witness the hover fix and the `restore` / `placeButtons` parsing, and still run in no gate step.** Medium.
+  - Same gap as the two entries above; reverting the frame observer to a synchronous move would pass the gate. This run ran them by hand (6 passed).
+  - **Follow-up:** the gate step named above (a gate change for Ralph), or none.
