@@ -3180,3 +3180,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - ~~**The runner's XCTests now also witness the hover fix and the `restore` / `placeButtons` parsing, and still run in no gate step.**~~ — RESOLVED 2026-11-16 (console session, commit a82ae42b): gate step `test-runner` for `app/macos/` changes. Medium.
   - Same gap as the two entries above; reverting the frame observer to a synchronous move would pass the gate. This run ran them by hand (6 passed).
   - **Follow-up:** the gate step named above (a gate change for Ralph), or none.
+
+## Surfaced in Story 9.60 (bmad-build-auto, 2026-11-16)
+
+- **A config error that names its file carries no hint, while the CLI prints "Hint: Check the config file: <path>" for a wrong-typed value, a TOML parse failure and a failed migration.** Medium.
+  - CLI @ v0.47.0 `cli/src/command_error.rs:415-447` and `config_get_error_hint` (`:1000-1007`) add the hint when the error has a `source_path`; Zanshin's `value_error` / `file_error` (`crates/zanshin-jj/src/config.rs:338-351`) set no hints, and `migrate` (`:1066-1075`) puts "Check the config file: …" into the reason. Pre-existing; Story 9.60's non-goal "other config errors".
+  - **Follow-up:** fill `ConfigError::Load.hints` from the error's `source_path` in `value_error`, `file_error` and `migrate` (moving migrate's line out of the reason), and check each carrier forwards it — the hints channel on `jj.config_error` exists since Story 9.60.
