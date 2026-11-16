@@ -293,6 +293,166 @@ fn new_change_empty_parents_returns_invalid_input() {
     assert!(matches!(result, Err(MutateError::InvalidInput { .. })));
 }
 
+// ── new_change_on ────────────────────────────────────────────────────────────────
+
+/// The hex ids of `@`'s parents at the head — after `new_change_on`, the new change's parents.
+fn wc_parent_hexes(workspace_root: &Path) -> Vec<String> {
+    let settings = test_helpers::test_settings();
+    let workspace = test_helpers::load_workspace(
+        &settings,
+        workspace_root,
+        &default_backend_factories(),
+        &default_working_copy_factories(),
+    )
+    .expect("oracle workspace load");
+    let repo = pollster::block_on(workspace.load_at_head()).expect("oracle load_at_head");
+    let wc = repo
+        .view()
+        .get_wc_commit_id(workspace.workspace_name())
+        .expect("@")
+        .clone();
+    let commit = repo.store().get_commit(&wc).unwrap();
+    commit
+        .parent_ids()
+        .iter()
+        .map(jj_lib::object_id::ObjectId::hex)
+        .collect()
+}
+
+fn revsets(names: &[&str]) -> Vec<String> {
+    names.iter().map(|name| (*name).to_owned()).collect()
+}
+
+#[test]
+fn new_change_on_a_local_bookmark_creates_a_child_of_its_commit() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    test_helpers::set_local_bookmark(&fx.path, "main", &[&layout.commit3_commit_hex]);
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    let result = repo.new_change_on(&revsets(&["main"])).unwrap();
+
+    assert!(result.committed);
+    assert_eq!(result.new_change_ids.len(), 1);
+    assert_eq!(result.working_copy_change_id.as_ref(), Some(&result.new_change_ids[0]));
+    assert_eq!(wc_parent_hexes(&fx.path), vec![layout.commit3_commit_hex]);
+    let ops = repo.op_log(Some(1)).unwrap();
+    assert_eq!(ops[0].description, "new empty commit");
+    assert_eq!(result.new_op_id, ops[0].id);
+}
+
+#[test]
+fn new_change_on_a_remote_bookmark_creates_a_child_of_its_remote_target() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    test_helpers::set_remote_bookmark(&fx.path, "main", "origin", &layout.commit1_commit_hex, false);
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    repo.new_change_on(&revsets(&["main@origin"])).unwrap();
+
+    assert_eq!(wc_parent_hexes(&fx.path), vec![layout.commit1_commit_hex]);
+}
+
+/// A change id refuses a divergent change; a bookmark names one of its commits and resolves.
+#[test]
+fn new_change_on_a_bookmark_of_a_divergent_change_uses_the_bookmarks_commit() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let twin = test_helpers::add_divergent_twin(&fx.path, &layout.commit1_commit_hex, "divergent twin");
+    test_helpers::set_local_bookmark(&fx.path, "main", &[&twin]);
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    repo.new_change_on(&revsets(&["main"])).unwrap();
+
+    assert_eq!(wc_parent_hexes(&fx.path), vec![twin]);
+}
+
+#[test]
+fn new_change_on_a_conflicted_bookmark_refuses_and_writes_nothing() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    test_helpers::set_local_bookmark(
+        &fx.path,
+        "main",
+        &[&layout.commit1_commit_hex, &layout.commit3_commit_hex],
+    );
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = repo.op_log(Some(1)).unwrap().swap_remove(0).id;
+
+    let err = repo
+        .new_change_on(&revsets(&["main"]))
+        .expect_err("a conflicted ref refuses");
+
+    assert!(
+        matches!(&err, MutateError::RevsetResolutionError { reason, .. } if reason == "Name `main` is conflicted"),
+        "{err:?}"
+    );
+    assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "nothing is written");
+}
+
+#[test]
+fn new_change_on_an_unknown_name_refuses() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    let err = repo
+        .new_change_on(&revsets(&["nope"]))
+        .expect_err("an unknown name refuses");
+
+    assert!(
+        matches!(&err, MutateError::RevsetResolutionError { reason, .. } if reason == "Revision `nope` doesn't exist"),
+        "{err:?}"
+    );
+    let err = repo
+        .new_change_on(&revsets(&["main |"]))
+        .expect_err("a parse error refuses");
+    assert!(matches!(err, MutateError::RevsetParseError { .. }), "{err:?}");
+}
+
+#[test]
+fn new_change_on_an_empty_union_or_list_refuses() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = repo.op_log(Some(1)).unwrap().swap_remove(0).id;
+
+    let err = repo
+        .new_change_on(&revsets(&["none()"]))
+        .expect_err("an empty union refuses");
+    assert!(
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "No revisions found to use as parent"),
+        "{err:?}"
+    );
+    let err = repo.new_change_on(&[]).expect_err("an empty list refuses");
+    assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+    assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "nothing is written");
+}
+
+#[test]
+fn new_change_on_drops_duplicates_and_merges_distinct_revsets() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    test_helpers::set_local_bookmark(&fx.path, "a", &[&layout.commit3_commit_hex]);
+    test_helpers::set_local_bookmark(&fx.path, "b", &[&layout.wc_commit_hex]);
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    // The merge first: moving `@` off the fixture's empty `@` would abandon it otherwise.
+    repo.new_change_on(&revsets(&["a", "b"])).unwrap();
+    assert_eq!(
+        wc_parent_hexes(&fx.path),
+        vec![layout.commit3_commit_hex.clone(), layout.wc_commit_hex]
+    );
+
+    repo.new_change_on(&revsets(&["a", "a"])).unwrap();
+    assert_eq!(wc_parent_hexes(&fx.path), vec![layout.commit3_commit_hex]);
+}
+
 // ── edit ─────────────────────────────────────────────────────────────────────────
 
 #[test]

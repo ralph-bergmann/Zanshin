@@ -206,6 +206,7 @@ class TestComponent$Component implements _i1.TestComponent {
       zanshinDiagnosticsModule,
     );
     _graphSourceOf$Provider = _GraphSourceOf$Provider(testModule);
+    _refListSourceOf$Provider = _RefListSourceOf$Provider(testModule);
     _remoteSyncOf$Provider = _RemoteSyncOf$Provider(
       _projectsEnvironment$Provider,
       testModule,
@@ -261,6 +262,8 @@ class TestComponent$Component implements _i1.TestComponent {
   late final _GetDiagnostics$Provider _getDiagnostics$Provider;
 
   late final _GraphSourceOf$Provider _graphSourceOf$Provider;
+
+  late final _RefListSourceOf$Provider _refListSourceOf$Provider;
 
   late final _RemoteSyncOf$Provider _remoteSyncOf$Provider;
 
@@ -393,6 +396,7 @@ class ProjectComponent$Subcomponent implements _i13.ProjectComponent {
         );
     final projectComponent$bookmarkListModel$Provider =
         _ProjectComponent$BookmarkListModel$Provider(
+          _parent._refListSourceOf$Provider,
           _projectComponent$projectRepo$Provider,
           projectComponent$graphSearchController$Provider,
           projectComponent$refDeleteFlow$Provider,
@@ -477,6 +481,7 @@ class ProjectComponent$Subcomponent implements _i13.ProjectComponent {
         );
     final projectComponent$tagListModel$Provider =
         _ProjectComponent$TagListModel$Provider(
+          _parent._refListSourceOf$Provider,
           _projectComponent$projectRepo$Provider,
           projectComponent$graphSearchController$Provider,
           projectComponent$refDeleteFlow$Provider,
@@ -830,11 +835,14 @@ class _OpenUrl$Provider implements _i25.Provider<_i32.OpenUrl> {
 class _ProjectComponent$BookmarkListModel$Provider
     implements _i25.Provider<_i33.BookmarkListModel> {
   _ProjectComponent$BookmarkListModel$Provider(
+    this._refListSourceOf$Provider,
     this._projectComponent$projectRepo$Provider,
     this._projectComponent$graphSearchController$Provider,
     this._projectComponent$refDeleteFlow$Provider,
     this._module,
   );
+
+  final _RefListSourceOf$Provider _refListSourceOf$Provider;
 
   final _ProjectComponent$ProjectRepo$Provider
   _projectComponent$projectRepo$Provider;
@@ -850,6 +858,7 @@ class _ProjectComponent$BookmarkListModel$Provider
   late final _i33.BookmarkListModel _singleton = _create();
 
   _i33.BookmarkListModel _create() => _module.bookmarkList(
+    _refListSourceOf$Provider.get(),
     _projectComponent$projectRepo$Provider.get(),
     _projectComponent$graphSearchController$Provider.get(),
     _projectComponent$refDeleteFlow$Provider.get(),
@@ -1457,11 +1466,14 @@ class _ProjectComponent$SyncModel$Provider
 class _ProjectComponent$TagListModel$Provider
     implements _i25.Provider<_i33.TagListModel> {
   _ProjectComponent$TagListModel$Provider(
+    this._refListSourceOf$Provider,
     this._projectComponent$projectRepo$Provider,
     this._projectComponent$graphSearchController$Provider,
     this._projectComponent$refDeleteFlow$Provider,
     this._module,
   );
+
+  final _RefListSourceOf$Provider _refListSourceOf$Provider;
 
   final _ProjectComponent$ProjectRepo$Provider
   _projectComponent$projectRepo$Provider;
@@ -1477,6 +1489,7 @@ class _ProjectComponent$TagListModel$Provider
   late final _i33.TagListModel _singleton = _create();
 
   _i33.TagListModel _create() => _module.tagList(
+    _refListSourceOf$Provider.get(),
     _projectComponent$projectRepo$Provider.get(),
     _projectComponent$graphSearchController$Provider.get(),
     _projectComponent$refDeleteFlow$Provider.get(),
@@ -1695,6 +1708,15 @@ class _ProjectsWindowFactory$Provider
 
   @override
   _i18.ProjectsWindowFactory get() => _factory;
+}
+
+class _RefListSourceOf$Provider implements _i25.Provider<_i13.RefListSourceOf> {
+  const _RefListSourceOf$Provider(this._module);
+
+  final _i1.TestModule _module;
+
+  @override
+  _i13.RefListSourceOf get() => _module.refListSourceOf();
 }
 
 class _RemoteSyncOf$Provider implements _i25.Provider<_i13.RemoteSyncOf> {

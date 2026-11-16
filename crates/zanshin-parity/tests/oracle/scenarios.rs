@@ -2534,6 +2534,39 @@ pub fn scenarios() -> Vec<Scenario> {
             },
             |s| vec!["new".to_owned(), "-B".to_owned(), s.change_arg("C")],
         ),
+        // ── Story 10.44 closing run: `jj new <REVSETS>` by name ──────────────────────
+        simple(
+            "new_on_bookmark",
+            |repo, _, _| {
+                let result = repo.new_change_on(&["b-mark".to_owned()]);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["new", "b-mark"]),
+        ),
+        simple(
+            "new_on_unknown_name",
+            |repo, _, _| {
+                let result = repo.new_change_on(&["nope".to_owned()]);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["new", "nope"]),
+        ),
+        simple(
+            "new_on_empty_revset",
+            |repo, _, _| {
+                let result = repo.new_change_on(&["none()".to_owned()]);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["new", "none()"]),
+        ),
+        simple(
+            "new_on_duplicate_names",
+            |repo, _, _| {
+                let result = repo.new_change_on(&["b-mark".to_owned(), "b-mark".to_owned()]);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["new", "b-mark", "b-mark"]),
+        ),
         Scenario {
             // `@` an empty, undescribed child of C — the GUI's common `-B @`.
             setup: &[Step::Jj(&["new"])],

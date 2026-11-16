@@ -38,6 +38,15 @@ const projectRoot = Qualifier(#projectRoot);
 /// Opens the graph source of a repository. The app binds [RepoGraphSource]; tests bind a scripted source.
 typedef GraphSourceOf = GraphSource Function(ProjectRepo repo);
 
+/// Opens the bookmark or tag list source of a repository. The app binds [repoRefListSourceOf]; tests bind a fake.
+typedef RefListSourceOf = BookmarkListSource Function(ProjectRepo repo, RefKind kind);
+
+/// The app's [RefListSourceOf]: jj's bookmark or tag reads over the repository's handle.
+BookmarkListSource repoRefListSourceOf(ProjectRepo repo, RefKind kind) => switch (kind) {
+  RefKind.bookmark => RepoBookmarkListSource(repo),
+  RefKind.tag => RepoTagListSource(repo),
+};
+
 /// Opens the remote sync of the repository at `root`. The app binds [repoRemoteSyncOf]; tests bind a fake.
 typedef RemoteSyncOf = RemoteSync Function(ProjectRepo repo, String root);
 
@@ -205,14 +214,22 @@ class ProjectModule {
   /// Provides the rail's bookmark list, its picks going through [search].
   @provides
   @singleton
-  BookmarkListModel bookmarkList(ProjectRepo repo, GraphSearchController search, RefDeleteFlow deletes) =>
-      BookmarkListModel(RepoBookmarkListSource(repo), search: search, deletes: deletes);
+  BookmarkListModel bookmarkList(
+    RefListSourceOf sourceOf,
+    ProjectRepo repo,
+    GraphSearchController search,
+    RefDeleteFlow deletes,
+  ) => BookmarkListModel(sourceOf(repo, RefKind.bookmark), search: search, deletes: deletes);
 
   /// Provides the rail's tag list, its picks going through [search].
   @provides
   @singleton
-  TagListModel tagList(ProjectRepo repo, GraphSearchController search, RefDeleteFlow deletes) =>
-      TagListModel(RepoTagListSource(repo), search: search, deletes: deletes);
+  TagListModel tagList(
+    RefListSourceOf sourceOf,
+    ProjectRepo repo,
+    GraphSearchController search,
+    RefDeleteFlow deletes,
+  ) => TagListModel(sourceOf(repo, RefKind.tag), search: search, deletes: deletes);
 
   /// Provides the rail's Undo Timeline.
   @provides

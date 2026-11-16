@@ -983,6 +983,20 @@ void main() {
       expect(status.parentChangeId, second);
     });
 
+    test('new on a bookmark name passes the revset to jj, which resolves it', () async {
+      final (ProjectRepo repo, GraphViewModel model, String first, _) = await setUpRepo('new-on-name');
+      expect(
+        await model.run(GraphBookmarkCreate(const <String>['my topic'], revision: first)),
+        isA<GraphActionDone>(),
+      );
+      final GraphActionResult result = await model.run(
+        GraphNew(revsets: <String>[revsetSymbol('my topic')], revsetTarget: first),
+      );
+      final WorkingCopyStatus status = await repo.handle.status();
+      expect(status.workingCopyChangeId, (result as GraphActionDone).outcome.born.single);
+      expect(status.parentChangeId, first);
+    });
+
     test('bookmark create -r, move of a glob-like name, rename', () async {
       final (ProjectRepo repo, GraphViewModel model, String first, String second) = await setUpRepo('bookmarks');
       expect(
@@ -1322,6 +1336,9 @@ void main() {
         const GraphNew(insertAfter: <String>['aaa'], insertBefore: <String>['bbb', 'ccc']).command,
         'jj new -A aaa -B bbb -B ccc',
       );
+      expect(GraphNew(revsets: <String>[revsetSymbol('main')], revsetTarget: 'k').command, 'jj new main');
+      expect(GraphNew(revsets: <String>[remoteBookmarkSymbol('main', 'origin')]).command, 'jj new main@origin');
+      expect(GraphNew(revsets: <String>[revsetSymbol('my topic')]).command, 'jj new \'"my topic"\'');
       expect(const GraphAbandon(<String>['aaa', 'bbb']).command, 'jj abandon aaa bbb');
       expect(const GraphRevert('rrr').command, 'jj revert -r rrr -B @');
       expect(const GraphSquash(revision: 'sss').command, 'jj squash -r sss');
@@ -1446,6 +1463,7 @@ void main() {
     test('pending keys are the changes the action names', () {
       expect(const GraphEdit('a').pendingKeys, <String>{'a'});
       expect(const GraphNew(parents: <String>['a'], insertBefore: <String>['b']).pendingKeys, <String>{'a', 'b'});
+      expect(const GraphNew(revsets: <String>['main'], revsetTarget: 'k').pendingKeys, <String>{'k'});
       expect(const GraphAbandon(<String>['a', 'b']).pendingKeys, <String>{'a', 'b'});
       expect(const GraphSquash(from: <String>['s'], into: 't').pendingKeys, <String>{'s', 't'});
       expect(const GraphSquash().pendingKeys, isEmpty);

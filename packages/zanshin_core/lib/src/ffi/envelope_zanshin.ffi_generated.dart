@@ -2898,6 +2898,11 @@ class RevsetErrorDetailObjectBuilder extends fb.ObjectBuilder {
 ///  `insert_after` / `insert_before` (Story 9.48) are read ONLY by `zanshin_new_change`: the
 ///  CLI's `jj new -A` / `-B` targets. ABSENT or empty means the flag was not given;
 ///  `zanshin_abandon` and `zanshin_parallelize` ignore both.
+///
+///  `revsets` (Story 10.44 closing run) is read ONLY by `zanshin_new_change`: the CLI's
+///  positional `jj new <REVSETS>` as revset text (a bookmark, a tag, `name@remote`), resolved
+///  through jj's symbol resolver. Non-empty `revsets` must come alone — with any of the three id
+///  lists the buffer is refused (`ffi.invalid_argument`).
 class ChangeIdList {
   ChangeIdList._(this._bc, this._bcOffset);
   factory ChangeIdList(List<int> bytes) {
@@ -2915,10 +2920,11 @@ class ChangeIdList {
   List<String>? get insertAfter => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   List<String>? get insertBefore =>
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get revsets => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
 
   @override
   String toString() {
-    return 'ChangeIdList{kind: ${kind}, changeIds: ${changeIds}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}}';
+    return 'ChangeIdList{kind: ${kind}, changeIds: ${changeIds}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}, revsets: ${revsets}}';
   }
 }
 
@@ -2935,7 +2941,7 @@ class ChangeIdListBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(5);
   }
 
   int addKind(RequestKind? kind) {
@@ -2958,6 +2964,11 @@ class ChangeIdListBuilder {
     return fbBuilder.offset;
   }
 
+  int addRevsetsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2968,16 +2979,19 @@ class ChangeIdListObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _changeIds;
   final List<String>? _insertAfter;
   final List<String>? _insertBefore;
+  final List<String>? _revsets;
 
   ChangeIdListObjectBuilder({
     RequestKind? kind,
     List<String>? changeIds,
     List<String>? insertAfter,
     List<String>? insertBefore,
+    List<String>? revsets,
   }) : _kind = kind,
        _changeIds = changeIds,
        _insertAfter = insertAfter,
-       _insertBefore = insertBefore;
+       _insertBefore = insertBefore,
+       _revsets = revsets;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2991,11 +3005,15 @@ class ChangeIdListObjectBuilder extends fb.ObjectBuilder {
     final int? insertBeforeOffset = _insertBefore == null
         ? null
         : fbBuilder.writeList(_insertBefore!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(4);
+    final int? revsetsOffset = _revsets == null
+        ? null
+        : fbBuilder.writeList(_revsets!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(5);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, changeIdsOffset);
     fbBuilder.addOffset(2, insertAfterOffset);
     fbBuilder.addOffset(3, insertBeforeOffset);
+    fbBuilder.addOffset(4, revsetsOffset);
     return fbBuilder.endTable();
   }
 

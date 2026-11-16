@@ -45,6 +45,7 @@ class TestModule {
     ProjectsEnvironment? environment,
     this.graphSources,
     this.remoteSyncs,
+    this.refListSources,
   }) : repos = repos ?? FakeProjectRepos(),
        environment = environment ?? FakeProjectsEnvironment();
 
@@ -59,6 +60,9 @@ class TestModule {
 
   /// What an open repository's sync runs through; null is the app's.
   final RemoteSyncOf? remoteSyncs;
+
+  /// What an open repository's Bookmarks and Tags lists read from; null is the app's.
+  final RefListSourceOf? refListSources;
 
   /// Provides [repos].
   @provides
@@ -77,6 +81,10 @@ class TestModule {
   /// Provides [remoteSyncs].
   @provides
   RemoteSyncOf remoteSyncOf(ProjectsEnvironment environment) => remoteSyncs ?? repoRemoteSyncOf(environment);
+
+  /// Provides [refListSources].
+  @provides
+  RefListSourceOf refListSourceOf() => refListSources ?? repoRefListSourceOf;
 }
 
 /// main.dart's graph, with [TestModule] last so its bindings win; every app module's provider is still checked, so

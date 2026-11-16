@@ -1124,10 +1124,10 @@ class ZanshinWorker {
   /// Sends a [NewChangeCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
   ///
-  /// Throws [ArgumentError] if a [parents] / [insertAfter] / [insertBefore]
-  /// entry contains an interior NUL (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
-  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`,
-  /// `jj.immutable`, `jj.config_error`). Completes with a [StateError] after
+  /// Throws [ArgumentError] if a [parents] / [insertAfter] / [insertBefore] /
+  /// [revsets] entry contains an interior NUL (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_parse_error`, `jj.immutable`, `jj.config_error`). Completes with a [StateError] after
   /// [close]. The close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.newChange].
   Future<repo_ffi_mutate.MutationResult> newChange(
@@ -1135,11 +1135,13 @@ class ZanshinWorker {
     List<String> parents, {
     List<String> insertAfter = const [],
     List<String> insertBefore = const [],
+    List<String> revsets = const [],
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
     rejectInteriorNuls(parents, 'parents');
     rejectInteriorNuls(insertAfter, 'insertAfter');
     rejectInteriorNuls(insertBefore, 'insertBefore');
+    rejectInteriorNuls(revsets, 'revsets');
     final Uint8List bytes = await send(
       NewChangeCommand(
         commandId: _correlator.allocateId(),
@@ -1147,6 +1149,7 @@ class ZanshinWorker {
         parents: parents,
         insertAfter: insertAfter,
         insertBefore: insertBefore,
+        revsets: revsets,
       ),
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
@@ -4165,6 +4168,7 @@ void _workerEntry(_WorkerInit init) {
           :final List<String> parents,
           :final List<String> insertAfter,
           :final List<String> insertBefore,
+          :final List<String> revsets,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -4177,6 +4181,7 @@ void _workerEntry(_WorkerInit init) {
               parents,
               insertAfter: insertAfter,
               insertBefore: insertBefore,
+              revsets: revsets,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

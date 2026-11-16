@@ -84,6 +84,10 @@ class AppModule {
   @provides
   GraphSourceOf graphSourceOf() => RepoGraphSource.new;
 
+  /// Provides what an open repository's Bookmarks and Tags lists read from.
+  @provides
+  RefListSourceOf refListSourceOf() => repoRefListSourceOf;
+
   /// Provides what an open repository's Fetch, Push and poll run through.
   @provides
   RemoteSyncOf remoteSyncOf(ProjectsEnvironment environment) => repoRemoteSyncOf(environment);

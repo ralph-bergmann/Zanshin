@@ -12,11 +12,13 @@ import 'package:flutter/src/widgets/_window.dart';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart' show RefKind;
 import 'package:zanshin/src/features/graph/active_graph.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
 import 'package:zanshin/src/features/graph/graph_search_field.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
+import 'package:zanshin/src/features/home/project_scope.dart' show GraphSourceOf, RefListSourceOf;
 import 'package:zanshin/src/features/projects/project_capsule.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
@@ -26,15 +28,17 @@ import 'package:zanshin/src/features/shell/top_bar.dart';
 import 'package:zanshin/src/features/undo_timeline/undo_timeline_view.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_core/zanshin_core.dart'
-    show RepoDetectResult, RepoKind, ZanshinFfiException, ZanshinWarning, ZanshinWarningCode;
+    show Bookmark, RepoDetectResult, RepoKind, ZanshinFfiException, ZanshinWarning, ZanshinWarningCode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart' show ZanshinShellPlatform;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../helpers/fake_bookmark_list.dart';
 import '../../helpers/fake_projects.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
+import '../../helpers/scripted_graph_source.dart';
 import '../../helpers/shell_host.dart';
 import '../../helpers/test_component.dart';
 
@@ -70,16 +74,22 @@ void main() {
 
   /// Pumps the DI graph's home page over a fresh settings store and the graph's project session on fake repositories
   /// ([repos], a fresh one when null) in a 1440 × 900 window showing [appearance], wrapped by [wrap]; returns the
-  /// session, which [before] sees first. The graph is published to [activeGraph], the graph's.
+  /// session, which [before] sees first. The graph is published to [activeGraph], the graph's. [graphSources] and
+  /// [refListSources] replace what the graph and the Bookmarks and Tags lists read, the app's when null.
   Future<ProjectSession> pumpHome(
     WidgetTester tester, {
     ZsAppearance appearance = const ZsAppearance(),
     Widget Function(Widget home)? wrap,
     FakeProjectRepos? repos,
     Future<void> Function(ProjectSession session)? before,
+    GraphSourceOf? graphSources,
+    RefListSourceOf? refListSources,
   }) async {
     useShellWindow(tester);
-    final TestComponent component = await testComponent(tester, testModule: TestModule(repos: repos));
+    final TestComponent component = await testComponent(
+      tester,
+      testModule: TestModule(repos: repos, graphSources: graphSources, refListSources: refListSources),
+    );
     final ProjectSession session = component.session;
     addTearDown(session.dispose);
     if (before != null) {
@@ -520,6 +530,48 @@ void main() {
     expect(find.bySemanticsIdentifier('rail-undo'), findsNothing);
     expect(find.bySemanticsIdentifier('rail-bookmarks'), findsNothing);
     handle.dispose();
+  });
+
+  testWidgets('each rail count follows its own list as it loads, the Tags one after the Bookmarks one', (tester) async {
+    final bookmarks = FakeBookmarkListSource(<Bookmark>[localRow('main', 'k0'), localRow('topic', 'k1')])
+      ..gate = Completer<void>();
+    final tags = FakeBookmarkListSource(<Bookmark>[localRow('v1', 'k0'), localRow('v2', 'k1'), localRow('v3', 'k2')])
+      ..gate = Completer<void>();
+    final ProjectSession session = await pumpHome(
+      tester,
+      // The lists read once the graph has an operation.
+      graphSources: (_) => ScriptedGraphSource(respond: bookmarkLayout),
+      refListSources: (_, kind) => switch (kind) {
+        RefKind.bookmark => bookmarks,
+        RefKind.tag => tags,
+      },
+    );
+    String? count(String id) =>
+        tester.widget<FloatingShell>(find.byType(FloatingShell)).railItems.singleWhere((item) => item.id == id).count;
+    // The lists read in the real zone the open ran in: let it run, then rebuild.
+    Future<void> drain() async {
+      for (var i = 0; i < 3; i++) {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+      }
+    }
+
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+    await drain();
+    expect((bookmarks.reads, tags.reads), (1, 1), reason: 'both reads started and wait on their gates');
+    expect(count('bookmarks'), isNull);
+    expect(count('tags'), isNull);
+
+    bookmarks.gate!.complete();
+    await drain();
+    expect(count('bookmarks'), '2', reason: "the bookmark list's own load rebuilds the rail");
+    expect(count('tags'), isNull, reason: 'the tags have not loaded yet');
+
+    tags.gate!.complete();
+    await drain();
+    expect(count('tags'), '3', reason: "the tag list's own load rebuilds the rail");
+    expect(count('bookmarks'), '2');
   });
 
   testWidgets("a Recent row of the capsule's menu switches the project; the capsule shows the new one", (tester) async {

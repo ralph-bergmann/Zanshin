@@ -466,8 +466,8 @@ void main() {
       );
       expect(tester.widget<ZsButton>(_button('bookmark-track-4')).label, 'Track');
       expect(_tooltipOf(tester, _button('bookmark-track-4')).cmd, 'jj bookmark track release/1.5.x@origin');
-      // The shown command is the one that runs: jj new on the target's change id.
-      expect(_tooltipOf(tester, _iconButton('bookmark-row-new-4')).cmd, 'jj new hid');
+      // The shown command is the one that runs: jj new on the ref's name.
+      expect(_tooltipOf(tester, _iconButton('bookmark-row-new-4')).cmd, 'jj new release/1.5.x@origin');
       expect(_iconButton('bookmark-row-delete-4'), findsNothing);
       await tester.tap(_button('bookmark-track-4'));
       await tester.pump();
@@ -476,15 +476,20 @@ void main() {
 
       await hover(tester, _text('main@origin'));
       expect(tester.widget<ZsButton>(_button('bookmark-track-3')).label, 'Untrack');
-      expect(_tooltipOf(tester, _iconButton('bookmark-row-new-3')).cmd, 'jj new k1');
+      expect(_tooltipOf(tester, _iconButton('bookmark-row-new-3')).cmd, 'jj new main@origin');
 
       await hover(tester, _text('main'));
       expect(_button('bookmark-track-2'), findsNothing);
-      expect(_tooltipOf(tester, _iconButton('bookmark-row-new-2')).cmd, 'jj new k1');
+      expect(_tooltipOf(tester, _iconButton('bookmark-row-new-2')).cmd, 'jj new main');
       expect(_tooltipOf(tester, _iconButton('bookmark-row-delete-2')).cmd, 'jj bookmark delete main');
       await tester.tap(_iconButton('bookmark-row-new-2'));
       await tester.pump();
-      expect(rig.actions.ran.last, isA<GraphNew>().having((a) => a.parents, 'parents', <String>['k1']));
+      expect(
+        rig.actions.ran.last,
+        isA<GraphNew>()
+            .having((a) => a.revsets, 'revsets', <String>['main'])
+            .having((a) => a.revsetTarget, 'revsetTarget', 'k1'),
+      );
     });
   });
 

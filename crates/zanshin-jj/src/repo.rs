@@ -1601,7 +1601,46 @@ impl Repo {
     ) -> Result<crate::MutationResult, crate::MutateError> {
         let args = crate::mutate::check_new_args(parents, insert_after, insert_before);
         self.with_checked_verb(cli_command::NEW, args, |repo, ctx| {
-            crate::mutate::new_change(repo.workspace_mut(), ctx, parents, insert_after, insert_before)
+            crate::mutate::new_change(repo.workspace_mut(), ctx, parents, insert_after, insert_before, &[])
+        })
+    }
+
+    /// Creates a new, empty change on the commits `revsets` name and switches the working copy to
+    /// it — the CLI's `jj new <REVSETS>`, for a caller that holds a name (a bookmark, a tag,
+    /// `name@remote`) rather than a change id.
+    ///
+    /// Each revset is parsed "In revset expression" and evaluated in argument order; their commits
+    /// are the new change's parents in that order without duplicates, so `["a", "a"]` is one
+    /// parent and `["a", "b"]` a merge. Unlike [`Repo::new_change`]'s change ids, a name resolves
+    /// through jj's symbol resolver: a bookmark on one commit of a divergent change gives that
+    /// commit, a conflicted bookmark or tag refuses. Everything after the parents — the merged
+    /// tree, the description, the bookmark advance for exactly one parent, the op "new empty
+    /// commit" — is [`Repo::new_change`]'s.
+    ///
+    /// # Errors
+    ///
+    /// Every refusal happens before the first write; nothing is written.
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `revsets` is empty (before the snapshot, as there
+    ///   is no `@` default), or the revsets name no commit ("No revisions found to use as
+    ///   parent"); otherwise as [`Repo::new_change`] with one or more positional parents.
+    /// - [`crate::MutateError::RevsetParseError`] — a revset does not parse (jj's hints in
+    ///   `hints`).
+    /// - [`crate::MutateError::RevsetResolutionError`] — a symbol does not resolve: an unknown
+    ///   name, a conflicted ref, a divergent change id (jj's hints in `hints`).
+    /// - [`crate::MutateError::Config`], [`crate::MutateError::Precondition`],
+    ///   [`crate::MutateError::Backend`] — as [`Repo::new_change`].
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn new_change_on(&mut self, revsets: &[String]) -> Result<crate::MutationResult, crate::MutateError> {
+        let args = if revsets.is_empty() {
+            Err(crate::MutateError::invalid(
+                "new_change_on requires at least one revset".to_owned(),
+            ))
+        } else {
+            Ok(())
+        };
+        self.with_checked_verb(cli_command::NEW, args, |repo, ctx| {
+            crate::mutate::new_change(repo.workspace_mut(), ctx, &[], &[], &[], revsets)
         })
     }
 

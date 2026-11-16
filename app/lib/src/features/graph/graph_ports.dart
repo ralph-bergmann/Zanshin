@@ -220,13 +220,15 @@ final class GraphDescribe extends GraphAction {
   Set<String> get pendingKeys => <String>{id};
 }
 
-/// `jj new <parents>`, `jj new -A <insertAfter> -B <insertBefore>`.
+/// `jj new <parents>`, `jj new -A <insertAfter> -B <insertBefore>`, `jj new <revsets>`.
 final class GraphNew extends GraphAction {
-  /// A new change on [parents], or inserted after [insertAfter] / before [insertBefore].
+  /// A new change on [parents], inserted after [insertAfter] / before [insertBefore], or on the commits [revsets] name.
   const GraphNew({
     this.parents = const <String>[],
     this.insertAfter = const <String>[],
     this.insertBefore = const <String>[],
+    this.revsets = const <String>[],
+    this.revsetTarget,
   });
 
   /// The new change's parents.
@@ -238,16 +240,24 @@ final class GraphNew extends GraphAction {
   /// `-B`.
   final List<String> insertBefore;
 
+  /// Positional revsets (a bookmark or tag symbol): they run as given and show shell-quoted; jj resolves them, not
+  /// Zanshin.
+  final List<String> revsets;
+
+  /// The change key [revsets] name now — the pending card, the reload anchor and the selection follow.
+  final String? revsetTarget;
+
   @override
   String get command => _jj(<String>[
     'new', // l10n-ignore: jj command
     ...parents,
+    ...revsets,
     for (final id in insertAfter) ...<String>['-A', id],
     for (final id in insertBefore) ...<String>['-B', id],
   ]);
 
   @override
-  Set<String> get pendingKeys => <String>{...parents, ...insertAfter, ...insertBefore};
+  Set<String> get pendingKeys => <String>{...parents, ?revsetTarget, ...insertAfter, ...insertBefore};
 }
 
 /// `jj rebase -s <source>` or `-r <revisions>`, with `-o <onto>` or `-A <insertAfter>` / `-B <insertBefore>` (Story
@@ -955,10 +965,15 @@ class RepoGraphActions implements GraphActions {
         changeId: id,
         description: description,
       ),
-      GraphNew(:final List<String> parents, :final List<String> insertAfter, :final List<String> insertBefore) =>
-        parents.isEmpty && insertAfter.isEmpty && insertBefore.isEmpty
+      GraphNew(
+        :final List<String> parents,
+        :final List<String> insertAfter,
+        :final List<String> insertBefore,
+        :final List<String> revsets,
+      ) =>
+        parents.isEmpty && insertAfter.isEmpty && insertBefore.isEmpty && revsets.isEmpty
             ? _newOnAt(handle)
-            : handle.newChange(parents, insertAfter: insertAfter, insertBefore: insertBefore),
+            : handle.newChange(parents, insertAfter: insertAfter, insertBefore: insertBefore, revsets: revsets),
       GraphRebase(
         :final List<String> source,
         :final List<String> revisions,

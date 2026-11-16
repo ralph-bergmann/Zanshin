@@ -3078,6 +3078,11 @@ external int zanshin_network_token();
 /// children (`-A`), the `-B` targets' parents and the targets (`-B`), or the two lists
 /// (both); those children are rebased onto it, keeping their other parents. No bookmark
 /// advances.
+/// - `revsets` (Story 10.44 closing run): the CLI's `jj new <REVSETS>` — each entry is revset
+/// text (a bookmark, a tag, `name@remote`) parsed and resolved in order like the CLI's
+/// positional revisions; their commits are the parents, as for `parents` above. A bookmark on
+/// one commit of a divergent change resolves to that commit; a conflicted ref refuses. It must
+/// come alone, without any of the three id lists.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success:
 /// `new_change_ids` = `[the new change]`, which is also the new `@`.
@@ -3089,9 +3094,11 @@ external int zanshin_network_token();
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
 /// is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
-/// `Abandon`-tagged buffer is refused here rather than treated as `parents`.
-/// - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`, or all three
-/// lists empty (both before the snapshot: nothing written, no `precondition`); (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
+/// `Abandon`-tagged buffer is refused here rather than treated as `parents`. Or `revsets`
+/// comes with any of the three id lists (refused while the buffer is read).
+/// - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`, or all four
+/// lists empty (both before the snapshot: nothing written, no `precondition`); `revsets` that
+/// name no commit ("No revisions found to use as parent"); (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
 /// including the root commit, refused before anything is written, after the description
 /// template is parsed (as the CLI's backend write refuses it), with the Git backend's own text
 /// ("The Git backend does not support creating merge commits with the root commit as one of the
@@ -3100,8 +3107,10 @@ external int zanshin_network_token();
 /// Story 9.48; or (one parent) an `experimental-advance-branches` pattern does not parse
 /// (Story 9.49 closing run).
 /// - `jj.change_not_found` — an id in any list is malformed, absent, or only-hidden.
+/// - `jj.revset_parse_error` — an entry of `revsets` does not parse (jj's hints in `hints`).
 /// - `jj.revset_resolution_error` — an id is an ambiguous change-id prefix or a divergent change (the CLI's hints
-/// in `hints`), or `revsets.short-prefixes` fails to resolve.
+/// in `hints`), or `revsets.short-prefixes` fails to resolve; or a symbol in `revsets` does not
+/// resolve — an unknown name, a conflicted ref, a divergent change id.
 /// - `jj.immutable` — (`-A`/`-B`) a commit to rebase is inside the repo's effective immutable
 /// set; the first offender's hex commit id in `context` (Story 9.48).
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no

@@ -871,8 +871,16 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
   /// The anchor (and a squash's destination) of [action], from the layout before it runs.
   ({String? anchor, String? destination}) _plan(GraphAction action) {
     switch (action) {
-      case GraphNew(:final List<String> parents, :final List<String> insertAfter, :final List<String> insertBefore):
-        return (anchor: <String>[...parents, ...insertAfter, ...insertBefore].firstOrNull, destination: null);
+      case GraphNew(
+        :final List<String> parents,
+        :final String? revsetTarget,
+        :final List<String> insertAfter,
+        :final List<String> insertBefore,
+      ):
+        return (
+          anchor: <String>[...parents, ?revsetTarget, ...insertAfter, ...insertBefore].firstOrNull,
+          destination: null,
+        );
       case GraphRebase(:final List<String> onto, :final List<String> insertAfter, :final List<String> insertBefore):
         return (anchor: <String>[...onto, ...insertAfter, ...insertBefore].firstOrNull, destination: null);
       case GraphDuplicate(:final List<String> onto):
@@ -917,8 +925,10 @@ class GraphViewModel extends ChangeNotifier implements UndoTimelineActions {
     final String? born = result.newChangeIds.firstOrNull;
     final String? selected = _selected;
     switch (action) {
-      case GraphNew(:final List<String> parents, :final List<String> insertAfter):
-        if (born != null && selected != null && (parents.contains(selected) || insertAfter.contains(selected))) {
+      case GraphNew(:final List<String> parents, :final String? revsetTarget, :final List<String> insertAfter):
+        if (born != null &&
+            selected != null &&
+            (parents.contains(selected) || selected == revsetTarget || insertAfter.contains(selected))) {
           _selected = born;
         }
       case GraphRevert():

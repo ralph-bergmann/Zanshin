@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
+use futures::TryStreamExt as _;
 use jj_lib::absorb::{absorb_hunks, split_hunks_to_trees, AbsorbSource};
 use jj_lib::commit::{conflict_label_for_commits, Commit};
 use jj_lib::git;
@@ -1234,6 +1235,52 @@ pub(crate) fn plan_new(
     Ok(NewLocation { parents, children })
 }
 
+/// The plan of `jj new <REVSETS>` (`cli_util.rs:1934-1948,3770-3855` @ v0.47.0): each revset
+/// parsed "In revset expression" and evaluated in argument order against `tx.base_repo()` with
+/// the call's `revsets.short-prefixes` context, the commit ids collected without duplicates, then
+/// [`compute_commit_location`] with them as the destination. Unlike a change id, a revset names a
+/// commit through jj-lib's symbol resolver: a bookmark on one commit of a divergent change
+/// resolves, a conflicted ref refuses.
+///
+/// # Errors
+///
+/// - [`MutateError::RevsetParseError`] — a revset does not parse.
+/// - [`MutateError::RevsetResolutionError`] — a symbol does not resolve (unknown name, conflicted
+///   ref, divergent change id), with jj's hints.
+/// - [`MutateError::InvalidInput`] — the union is empty: "No revisions found to use as parent".
+/// - [`MutateError::Config`] — the alias tables or `user.email` do not read.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+fn plan_new_on(
+    tx: &Transaction,
+    workspace: &Workspace,
+    ctx: &mut VerbContext,
+    revsets: &[String],
+) -> Result<NewLocation, MutateError> {
+    let base: &ReadonlyRepo = tx.base_repo();
+    let parse_config = crate::revset::revset_config(&ctx.config, &mut ctx.warnings).map_err(cfg)?;
+    let prefixes = ctx.template_startup.id_prefix_context();
+    let mut ids: Vec<jj_lib::backend::CommitId> = Vec::new();
+    for revset in revsets {
+        let expression = crate::revset::parse_diagnosed(
+            workspace,
+            &parse_config,
+            (revset, crate::revset::IN_REVSET_EXPRESSION),
+            &mut ctx.warnings,
+        )
+        .map_err(rev)?;
+        let set = crate::revset::evaluate_revset(base, &expression, Some(&prefixes)).map_err(rev)?;
+        let found: Vec<jj_lib::backend::CommitId> = pollster::block_on(set.stream().try_collect()).map_err(be)?;
+        for id in found {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    let (parents, children) =
+        compute_commit_location(base, &ctx.templates(workspace), Some(&ids), None, None, "new commit")?;
+    Ok(NewLocation { parents, children })
+}
+
 /// An empty list is a flag that was not given (`None` for [`resolve_ordered`]).
 pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
     (!ids.is_empty()).then_some(ids)
@@ -1243,8 +1290,9 @@ pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
 /// (`cli/src/commands/new.rs:160-291` @ v0.46.0), `-A`/`-B` included (Story 9.48).
 ///
 /// [`plan_new`] decides the parents and the children to rebase, with every refusal before the
-/// first write. The new commit sits on the merged tree of its parents (a merge commit for two
-/// or more). Each child is then rebased by the CLI's rule: every old parent that is one of the
+/// first write — or, when `revsets` is non-empty (the caller passes no change-id list then),
+/// [`plan_new_on`] resolves them as `jj new <REVSETS>` does. The new commit sits on the merged
+/// tree of its parents (a merge commit for two or more). Each child is then rebased by the CLI's rule: every old parent that is one of the
 /// new commit's parents is replaced by the new commit, the new commit is appended, and the list
 /// is deduplicated in order (`new.rs:235-252`) — so `-A A -B D` on `A-B-C-D` puts D on `[C, N]`.
 /// `rebase_descendants`, the `edit` of the new commit and — last — the bookmark advance follow.
@@ -1277,12 +1325,17 @@ pub(crate) fn new_change(
     parents: &[ChangeId],
     insert_after: &[ChangeId],
     insert_before: &[ChangeId],
+    revsets: &[String],
 ) -> Result<MutationResult, MutateError> {
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let location = plan_new(&tx, &ctx.templates(workspace), parents, insert_after, insert_before)?;
+    let location = if revsets.is_empty() {
+        plan_new(&tx, &ctx.templates(workspace), parents, insert_after, insert_before)?
+    } else {
+        plan_new_on(&tx, workspace, ctx, revsets)?
+    };
     let mut parent_commits = Vec::with_capacity(location.parents.len());
     for id in &location.parents {
         parent_commits.push(tx.repo().store().get_commit(id).map_err(be)?);

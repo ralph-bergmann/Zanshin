@@ -89,9 +89,15 @@ fn change_id_list_bytes(kind: fbs::RequestKind, ids: &[&str]) -> Vec<u8> {
     b.finished_data().to_vec()
 }
 
-/// Build a `NewChange`-tagged `ChangeIdList` with all three lists (Story 9.48): the positional
-/// `parents`, `insert_after` (`-A`) and `insert_before` (`-B`).
-fn new_change_request_bytes(parents: &[&str], insert_after: &[&str], insert_before: &[&str]) -> Vec<u8> {
+/// Build a `NewChange`-tagged `ChangeIdList` with all four lists (Story 9.48, Story 10.44
+/// closing run): the positional `parents`, `insert_after` (`-A`), `insert_before` (`-B`) and
+/// the positional `revsets`.
+fn new_change_request_bytes(
+    parents: &[&str],
+    insert_after: &[&str],
+    insert_before: &[&str],
+    revsets: &[&str],
+) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
     let mut list = |ids: &[&str]| {
         let offs: Vec<_> = ids.iter().map(|s| b.create_string(s)).collect();
@@ -100,6 +106,7 @@ fn new_change_request_bytes(parents: &[&str], insert_after: &[&str], insert_befo
     let change_ids = list(parents);
     let after = list(insert_after);
     let before = list(insert_before);
+    let revsets = list(revsets);
     let req = fbs::ChangeIdList::create(
         &mut b,
         &fbs::ChangeIdListArgs {
@@ -107,6 +114,7 @@ fn new_change_request_bytes(parents: &[&str], insert_after: &[&str], insert_befo
             change_ids: Some(change_ids),
             insert_after: Some(after),
             insert_before: Some(before),
+            revsets: Some(revsets),
         },
     );
     b.finish(req, None);
@@ -328,7 +336,7 @@ fn new_change_insert_after_puts_the_new_change_between_target_and_child() {
         .try_into()
         .expect("one Commit 3");
 
-    let req = new_change_request_bytes(&[], &[&target], &[]);
+    let req = new_change_request_bytes(&[], &[&target], &[], &[]);
     // SAFETY: handle is open; req is a live buffer for the call.
     let token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
     // SAFETY: token is the fresh, non-null token zanshin_new_change just returned.
@@ -363,7 +371,7 @@ fn new_change_insert_before_root_returns_jj_immutable() {
     let (handle, _) = open_handle(&fixture.path);
     let [root] = revset_ids(&fixture.path, "root()").try_into().expect("one root");
 
-    let req = new_change_request_bytes(&[], &[], &[&root]);
+    let req = new_change_request_bytes(&[], &[], &[&root], &[]);
     // SAFETY: handle is open; req is a live buffer for the call.
     let token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
     // SAFETY: token is the fresh, non-null token zanshin_new_change just returned.
@@ -377,6 +385,68 @@ fn new_change_insert_before_root_returns_jj_immutable() {
         Some("0".repeat(40).as_str()),
         "the root commit's full hex is in context"
     );
+    close_handle(handle);
+}
+
+#[test]
+fn new_change_on_a_bookmark_name_round_trips_to_a_child_of_its_commit() {
+    test_helpers::pin_test_env();
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let [target] = revset_ids(&fixture.path, "description(substring:\"Commit 3\")")
+        .try_into()
+        .expect("one Commit 3");
+    let commit = Repo::open(&fixture.path)
+        .expect("repo opens")
+        .get_change(&ChangeId(target.clone()))
+        .expect("Commit 3")
+        .commit_id;
+    test_helpers::set_local_bookmark(&fixture.path, "my topic", &[&commit.0]);
+    let (handle, _) = open_handle(&fixture.path);
+
+    let req = new_change_request_bytes(&[], &[], &[], &["'my topic'"]);
+    // SAFETY: handle is open; req is a live buffer for the call.
+    let token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is the fresh, non-null token zanshin_new_change just returned.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(
+        env.ok(),
+        "new <bookmark> must succeed, error={:?}/{:?}",
+        env.error().and_then(|e| e.code()),
+        env.error().and_then(|e| e.context())
+    );
+    let mr = env.data_as_mutation_result().expect("MutationResult payload");
+    let new_id = mr
+        .new_change_ids()
+        .expect("new_change_ids must be present")
+        .get(0)
+        .to_owned();
+    close_handle(handle);
+
+    assert_eq!(revset_ids(&fixture.path, &format!("{new_id}-")), [target]);
+}
+
+#[test]
+fn new_change_with_revsets_and_change_ids_returns_ffi_invalid_argument() {
+    test_helpers::pin_test_env();
+    // SAFETY: valid fixture path; well-formed handle lifetime within this test.
+    let (handle, wc_change_id) = unsafe { open_fixture_and_get_wc_change_id() };
+
+    for req in [
+        new_change_request_bytes(&[&wc_change_id], &[], &[], &["@"]),
+        new_change_request_bytes(&[], &[&wc_change_id], &[], &["@"]),
+        new_change_request_bytes(&[], &[], &[&wc_change_id], &["@"]),
+    ] {
+        // SAFETY: handle is open; req is a live buffer for the call.
+        let token = unsafe { zanshin_new_change(handle, req.as_ptr(), req.len()) };
+        // SAFETY: token is the fresh, non-null token zanshin_new_change just returned.
+        let bytes = unsafe { read_and_free(token) };
+        let env = parse_envelope(&bytes);
+
+        assert!(!env.ok(), "revsets with an id list must be refused");
+        assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_ARGUMENT));
+    }
     close_handle(handle);
 }
 

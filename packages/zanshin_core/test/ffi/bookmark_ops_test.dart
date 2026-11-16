@@ -171,6 +171,10 @@ void main() {
         () => zanshinNewChange(0, const [], insertBefore: ['qpv${nul}untsm']),
         throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'insertBefore')),
       );
+      expect(
+        () => zanshinNewChange(0, const [], revsets: ['qpv${nul}untsm']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revsets')),
+      );
     });
 
     test('zanshinBookmarkDelete rejects an interior NUL in a pattern', () {

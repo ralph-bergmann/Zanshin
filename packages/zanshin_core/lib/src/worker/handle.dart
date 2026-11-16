@@ -561,28 +561,43 @@ final class RepoHandle {
   ///   are rebased onto it.
   /// - both: the new change sits on [insertAfter]; [insertBefore] is rebased
   ///   onto it, keeping its other parents.
+  /// - [revsets] (Story 10.44 closing run): the CLI's `jj new <REVSETS>` with
+  ///   revset text — a bookmark, a tag, `name@remote` — resolved in order like
+  ///   the CLI's positional revisions; their commits are the parents, as for
+  ///   [parents]. A bookmark on one commit of a divergent change resolves to
+  ///   that commit; a conflicted ref refuses. Non-empty [revsets] must come with
+  ///   the three id lists empty, or the call is refused `ffi.invalid_argument`.
   ///
   /// `MutationResult.newChangeIds` holds the new change, which is also
   /// `workingCopyChangeId`.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
-  /// throws [ArgumentError] if a [parents] / [insertAfter] / [insertBefore]
-  /// entry contains an interior NUL (U+0000); throws [ZanshinFfiException] on FFI errors
-  /// (`ffi.invalid_handle`, `jj.invalid_input` — incl. the CLI's loop refusal
-  /// and, on a Git-backed repo, a merge with the root commit among its parents,
-  /// `jj.change_not_found`,
+  /// throws [ArgumentError] if a [parents] / [insertAfter] / [insertBefore] /
+  /// [revsets] entry contains an interior NUL (U+0000); throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `ffi.invalid_argument` — [revsets] with an id list,
+  /// `jj.invalid_input` — incl. the CLI's loop refusal,
+  /// revsets that name no commit and, on a Git-backed repo, a merge with the root commit among its parents,
+  /// `jj.change_not_found`, `jj.revset_parse_error` (a revset does not parse),
   /// `jj.revset_resolution_error` (an ambiguous change-id prefix, a divergent
-  /// change or a failing `revsets.short-prefixes` load), `jj.immutable`, `jj.config_error`,
+  /// change, a failing `revsets.short-prefixes` load, or a revset symbol that
+  /// does not resolve — an unknown name or a conflicted ref), `jj.immutable`, `jj.config_error`,
   /// `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<MutationResult> newChange(
     List<String> parents, {
     List<String> insertAfter = const [],
     List<String> insertBefore = const [],
+    List<String> revsets = const [],
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.newChange(_handleId, parents, insertAfter: insertAfter, insertBefore: insertBefore);
+    return _worker.newChange(
+      _handleId,
+      parents,
+      insertAfter: insertAfter,
+      insertBefore: insertBefore,
+      revsets: revsets,
+    );
   }
 
   /// Switch the working copy to [changeId] without creating a new commit

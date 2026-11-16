@@ -22,8 +22,9 @@ import 'warning.dart';
 // ── Request-buffer helpers ───────────────────────────────────────────────────
 
 /// Build a `ChangeIdList` `FlatBuffers` request buffer for [ids] — plus, for
-/// `zanshin_new_change` only, [insertAfter] / [insertBefore] (Story 9.48) — and
-/// hand it to [fn] through [withRequestBytes].
+/// `zanshin_new_change` only, [insertAfter] / [insertBefore] (Story 9.48) and
+/// [revsets] (Story 10.44 closing run) — and hand it to [fn] through
+/// [withRequestBytes].
 ///
 /// [kind] tags the buffer for ONE wrapper: this single table is read by both
 /// `zanshin_new_change` (as `parents`) and `zanshin_abandon` (as `change_ids`),
@@ -35,12 +36,14 @@ T _withChangeIdListBytes<T>(
   T Function(ffi.Pointer<ffi.Uint8>, int) fn, {
   List<String>? insertAfter,
   List<String>? insertBefore,
+  List<String>? revsets,
 }) => withRequestBytes(
   fbs.ChangeIdListObjectBuilder(
     kind: kind,
     changeIds: ids,
     insertAfter: insertAfter,
     insertBefore: insertBefore,
+    revsets: revsets,
   ).toBytes(),
   fn,
 );
@@ -67,23 +70,27 @@ Uint8List zanshinDescribe(int rawHandle, String changeId, String description) {
 
 /// Call `zanshin_new_change` with the raw `u64` handle, [parents] and the
 /// `jj new -A` / `-B` targets [insertAfter] / [insertBefore] (Story 9.48; empty =
-/// the flag not given), crossed as one `ChangeIdList` request buffer, and return
+/// the flag not given) or the positional [revsets] (Story 10.44 closing run;
+/// revset text, alone), crossed as one `ChangeIdList` request buffer, and return
 /// the FlatBuffers `Envelope` bytes.
 Uint8List zanshinNewChange(
   int rawHandle,
   List<String> parents, {
   List<String> insertAfter = const [],
   List<String> insertBefore = const [],
+  List<String> revsets = const [],
 }) {
   rejectInteriorNuls(parents, 'parents');
   rejectInteriorNuls(insertAfter, 'insertAfter');
   rejectInteriorNuls(insertBefore, 'insertBefore');
+  rejectInteriorNuls(revsets, 'revsets');
   return _withChangeIdListBytes(
     fbs.RequestKind.NewChange,
     parents,
     (ptr, len) => readToken(zanshin_new_change(rawHandle, ptr, len)),
     insertAfter: insertAfter,
     insertBefore: insertBefore,
+    revsets: revsets,
   );
 }
 

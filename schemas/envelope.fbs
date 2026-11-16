@@ -250,11 +250,17 @@ enum RequestKind : ubyte {
 /// `insert_after` / `insert_before` (Story 9.48) are read ONLY by `zanshin_new_change`: the
 /// CLI's `jj new -A` / `-B` targets. ABSENT or empty means the flag was not given;
 /// `zanshin_abandon` and `zanshin_parallelize` ignore both.
+///
+/// `revsets` (Story 10.44 closing run) is read ONLY by `zanshin_new_change`: the CLI's
+/// positional `jj new <REVSETS>` as revset text (a bookmark, a tag, `name@remote`), resolved
+/// through jj's symbol resolver. Non-empty `revsets` must come alone — with any of the three id
+/// lists the buffer is refused (`ffi.invalid_argument`).
 table ChangeIdList {
   kind: RequestKind;
   change_ids: [string];
   insert_after: [string];
   insert_before: [string];
+  revsets: [string];
 }
 
 /// Arguments of `zanshin_restore` (Story 9.3, FR-JJ-10a).

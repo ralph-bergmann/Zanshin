@@ -512,8 +512,9 @@ Six tables are shared: `BookmarkTrackRequest` by `zanshin_bookmark_track` and
 (Story 9.59), `WorkspaceNamesRequest` by `zanshin_workspace_forget` and
 `zanshin_workspace_remove`, `ChangeIdList` by three symbols (`zanshin_new_change`'s
 `parents`, `zanshin_abandon`'s `change_ids` and `zanshin_parallelize`'s revisions, Story
-9.16; its `insert_after` / `insert_before` lists — `jj new -A` / `-B`, Story 9.48 — are
-read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest` by two
+9.16; its `insert_after` / `insert_before` lists — `jj new -A` / `-B`, Story 9.48 — and its
+`revsets` list — `jj new <REVSETS>` as revset text, Story 10.44 closing run — are read only by
+`zanshin_new_change`, the other two ignore them) and `SquashRequest` by two
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments) and `MovementRequest` by two
 (`zanshin_move_working_copy` and `zanshin_movement_targets`, Story 9.10 — the targets call lists
@@ -558,7 +559,9 @@ The tag is per-**wrapper**, not per-table. For 49 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **three** kinds, `NewChange`,
 `Abandon` and `Parallelize` (Story 9.16), because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead. Only
-`NewChange` reads the table's `insert_after` / `insert_before` (Story 9.48).
+`NewChange` reads the table's `insert_after` / `insert_before` (Story 9.48) and `revsets`
+(Story 10.44 closing run); non-empty `revsets` together with any of the three id lists is refused
+`ffi.invalid_argument` while the buffer is read.
 `SquashRequest` is the one deliberate exception: both of its wrappers accept the
 single kind `Squash`, because a mis-routed buffer can only run or preview the SAME
 squash — never a different verb. Its `edited_description` (Story 9.54) is read by both:
@@ -660,7 +663,7 @@ or no `# Errors` block.
 | `zanshin_workspace_rename` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRenameRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.no_working_copy`, `jj.workspace_exists`, `jj.concurrent_working_copy`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.13 |
 | `zanshin_workspace_remove` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceNamesRequest` (`kind` `WorkspaceRemove`) | `WorkspaceRemoveResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.13 |
 | `zanshin_describe` | `(uint64_t handle, const char *change_id, const char *description)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.invalid_input`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
-| `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5, 9.48 |
+| `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5, 9.48, 10.44 |
 | `zanshin_edit` | `(uint64_t handle, const char *change_id)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_abandon` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_restore` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RestoreRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.3 |
@@ -2139,7 +2142,7 @@ among them.
 | Table | Fields |
 |-------|--------|
 | `RebaseRequest` | `kind = Rebase`; `branch` / `source` / `revisions` (`-b` / `-s` / `-r`, at most one given; none = `-b @`), `onto` / `insert_after` / `insert_before` (`-o` / `-A` / `-B`, at least one, `onto` excludes the others — both clap rules refuse `jj.invalid_input` before anything resolves), `skip_emptied`, `keep_divergent`, `simplify_parents`. ABSENT or EMPTY lists are the flag not given. |
-| `ChangeIdList` (`kind = Parallelize`) | `change_ids`: the revisions to parallelize; `insert_after` / `insert_before` ignored. |
+| `ChangeIdList` (`kind = Parallelize`) | `change_ids`: the revisions to parallelize; `insert_after` / `insert_before` / `revsets` ignored. |
 | `ArrangeRequest` | `kind = Arrange`; `revisions` (ABSENT or EMPTY = `revsets.arrange`, jj's default `reachable(@, mutable())`, its parse diagnostics warned "In revset expression"), `actions: [ArrangeAction]` — the TUI's keys replayed in order. |
 | `ArrangeAction` | `kind: ArrangeActionKind` (`Unspecified` = absent, refused `ffi.invalid_argument`; `SwapDown`: swap with the one parent in the set; `SwapUp`: with the one child in the set — either ignored otherwise, as the TUI ignores it; `Abandon`; `Keep`), `change_id` (required). |
 

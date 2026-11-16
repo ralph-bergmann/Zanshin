@@ -6038,6 +6038,11 @@ pub mod zanshin {
         /// `insert_after` / `insert_before` (Story 9.48) are read ONLY by `zanshin_new_change`: the
         /// CLI's `jj new -A` / `-B` targets. ABSENT or empty means the flag was not given;
         /// `zanshin_abandon` and `zanshin_parallelize` ignore both.
+        ///
+        /// `revsets` (Story 10.44 closing run) is read ONLY by `zanshin_new_change`: the CLI's
+        /// positional `jj new <REVSETS>` as revset text (a bookmark, a tag, `name@remote`), resolved
+        /// through jj's symbol resolver. Non-empty `revsets` must come alone — with any of the three id
+        /// lists the buffer is refused (`ffi.invalid_argument`).
         pub struct ChangeIdList<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -6057,6 +6062,7 @@ pub mod zanshin {
             pub const VT_CHANGE_IDS: ::flatbuffers::VOffsetT = 6;
             pub const VT_INSERT_AFTER: ::flatbuffers::VOffsetT = 8;
             pub const VT_INSERT_BEFORE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_REVSETS: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -6068,6 +6074,9 @@ pub mod zanshin {
                 args: &'args ChangeIdListArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<ChangeIdList<'bldr>> {
                 let mut builder = ChangeIdListBuilder::new(_fbb);
+                if let Some(x) = args.revsets {
+                    builder.add_revsets(x);
+                }
                 if let Some(x) = args.insert_before {
                     builder.add_insert_before(x);
                 }
@@ -6125,6 +6134,17 @@ pub mod zanshin {
                     >>(ChangeIdList::VT_INSERT_BEFORE, None)
                 }
             }
+            #[inline]
+            pub fn revsets(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ChangeIdList::VT_REVSETS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for ChangeIdList<'_> {
@@ -6138,6 +6158,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("change_ids", Self::VT_CHANGE_IDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_after", Self::VT_INSERT_AFTER, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_before", Self::VT_INSERT_BEFORE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revsets", Self::VT_REVSETS, false)?
      .finish();
                 Ok(())
             }
@@ -6150,6 +6171,8 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub insert_before:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub revsets:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for ChangeIdListArgs<'a> {
             #[inline]
@@ -6159,6 +6182,7 @@ pub mod zanshin {
                     change_ids: None,
                     insert_after: None,
                     insert_before: None,
+                    revsets: None,
                 }
             }
         }
@@ -6204,6 +6228,14 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(ChangeIdList::VT_INSERT_BEFORE, insert_before);
             }
             #[inline]
+            pub fn add_revsets(
+                &mut self,
+                revsets: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ChangeIdList::VT_REVSETS, revsets);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ChangeIdListBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 ChangeIdListBuilder {
@@ -6225,6 +6257,7 @@ pub mod zanshin {
                 ds.field("change_ids", &self.change_ids());
                 ds.field("insert_after", &self.insert_after());
                 ds.field("insert_before", &self.insert_before());
+                ds.field("revsets", &self.revsets());
                 ds.finish()
             }
         }

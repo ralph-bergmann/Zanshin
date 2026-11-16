@@ -663,6 +663,21 @@ void main() {
       },
     );
 
+    test('new on a ref name: its target change is pending, the anchor and what the selection follows', () {
+      fakeAsync((async) {
+        final GraphViewModel model = start(async, actions: actions)..select('b');
+        actions.born = <String>['n'];
+        source.hold = true;
+        run(async, model, const GraphNew(revsets: <String>['main'], revsetTarget: 'b'));
+        expect(model.anchorHint, 'b');
+        expect(model.selected, 'n');
+        source.held.single.complete(GraphLoad(keysLayout(<String>['n', 'a', 'b', 'c'], at: 'n')));
+        async.flushMicrotasks();
+        expect(model.outcome.value?.anchor, 'b');
+        model.dispose();
+      });
+    });
+
     test('new on a parent that is not selected: the selection stays, the new change is revealed covered', () {
       fakeAsync((async) {
         source.respond = (_) => keysLayout(<String>['n', 'a', 'b', 'c'], at: 'a');

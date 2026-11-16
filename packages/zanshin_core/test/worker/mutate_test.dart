@@ -145,10 +145,41 @@ void main() {
       await handle.close();
     });
 
+    test('newChange_revsets_lands_on_the_bookmarks_commit', () async {
+      // Story 10.44 closing run: `jj new topic`, the bookmark on A while B is @.
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final (String a, String _) = await describedPair(handle);
+      await handle.bookmarkCreate(['topic'], revision: a);
+
+      final MutationResult result = await handle.newChange(const [], revsets: ['topic']);
+
+      final String n = result.newChangeIds.single;
+      expect(result.workingCopyChangeId, n, reason: 'the new change is @');
+      expect((await handle.getChange(n)).parents, [a]);
+
+      await handle.close();
+    });
+
+    test('newChange_revsets_with_parents_surfaces_ffi_invalid_argument', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final String wc = (await handle.status()).workingCopyChangeId!;
+
+      await expectLater(
+        handle.newChange([wc], revsets: ['@']),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_argument')),
+      );
+
+      await handle.close();
+    });
+
     test('newChange_rejects_an_interior_nul_in_any_list', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final nul = String.fromCharCode(0);
 
+      expect(
+        () => handle.newChange(const [], revsets: ['qpv${nul}untsm']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revsets')),
+      );
       expect(
         () => handle.newChange(['qpv${nul}untsm']),
         throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'parents')),

@@ -435,15 +435,27 @@ class BookmarkListModel extends ChangeNotifier {
     null => null,
   };
 
-  /// The command [newHere] runs on [row], as its button and menu row show it: `jj new <target change id>`.
-  static String newCommand(BookmarkRow row) => GraphNew(parents: <String>[row.bookmark.target!]).command;
+  /// The command [newHere] runs on [row], as its button and menu row show it: `jj new <name>` or
+  /// `jj new <name>@<remote>`.
+  static String newCommand(BookmarkRow row) => _newAction(row, row.bookmark.target!).command;
 
-  /// A new change on [row]'s target through the graph's runner (the handle takes change ids only, so the target's id
-  /// rather than the ref's name); null without a target.
+  /// A new change on [row]'s ref through the graph's runner — jj resolves the name, as `jj new <name>` does, so a
+  /// divergent target works and a conflicted ref refuses; null without a target.
   Future<GraphActionResult>? newHere(BookmarkRow row) => switch (row.bookmark.target) {
-    final String target => graph.run(GraphNew(parents: <String>[target])),
+    final String target => graph.run(_newAction(row, target)),
     null => null,
   };
+
+  static GraphNew _newAction(BookmarkRow row, String target) => GraphNew(
+    revsets: <String>[
+      switch (row.remote) {
+        final String remote => remoteBookmarkSymbol(row.bookmark.name, remote),
+        null => revsetSymbol(row.bookmark.name),
+      },
+    ],
+    // The layout key: a divergent change's nodes are keyed by commit id, not by the change id.
+    revsetTarget: row.key ?? target,
+  );
 
   /// Delete… of [row] through [deletes]: at once without a tracked remote, else the delete sheet.
   void delete(BookmarkRow row) {

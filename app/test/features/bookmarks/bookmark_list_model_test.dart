@@ -176,6 +176,12 @@ void main() {
     expect(row.key, 'cdv1');
     rig.model.pick(row);
     expect(rig.graph.selected, 'cdv1');
+    // New runs on the name; the pending card, the anchor and the selection follow the layout key, not the change id.
+    await rig.model.newHere(row);
+    final action = rig.actions.ran.single as GraphNew;
+    expect(action.command, 'jj new dv');
+    expect(action.revsetTarget, 'cdv1');
+    expect(action.pendingKeys, <String>{'cdv1'});
   });
 
   test('a row without a target is not pickable and is dimmed', () async {
@@ -377,9 +383,15 @@ void main() {
         expect(row(remoteRow('new', 'origin', null)).trackAction?.command, 'jj bookmark untrack new@origin');
         expect(row(localRow('main', 'k1')).renamable, isTrue);
         expect(row(localRow('v1', 'k1'), kind: RefKind.tag).renamable, isFalse);
-        // The shown command is the one that runs: on the target's change id.
-        expect(BookmarkListModel.newCommand(row(localRow('my topic', 'k1'))), 'jj new k1');
-        expect(BookmarkListModel.newCommand(row(remoteRow('main', 'origin', 'k2'))), 'jj new k2');
+        // The shown command is the one that runs: on the ref's name, as jj resolves it.
+        expect(BookmarkListModel.newCommand(row(localRow('main', 'k1'))), 'jj new main');
+        expect(BookmarkListModel.newCommand(row(localRow('my topic', 'k1'))), 'jj new \'"my topic"\'');
+        expect(BookmarkListModel.newCommand(row(remoteRow('main', 'origin', 'k2'))), 'jj new main@origin');
+        expect(BookmarkListModel.newCommand(row(localRow('v1.0', 'k1'), kind: RefKind.tag)), 'jj new v1.0');
+        expect(
+          BookmarkListModel.newCommand(row(remoteRow('v1', 'origin', 'k1'), kind: RefKind.tag)),
+          'jj new v1@origin',
+        );
         // A tag row's track verbs are jj tag's.
         expect(
           row(remoteRow('v1', 'origin', 'k1'), kind: RefKind.tag).trackAction?.command,
@@ -392,20 +404,33 @@ void main() {
       },
     );
 
-    test('New runs on the target change; Delete… without a tracked remote deletes at once', () async {
-      final BookmarkRig rig = await _rig(<Bookmark>[
-        localRow('wip', 'k0'),
-        remoteRow('wip', 'origin', 'k0', tracked: false, synced: false),
-        remoteRow('wip', 'git', 'k0'),
-      ]);
-      await rig.model.newHere(_row(rig, 'wip'));
-      await rig.model.newHere(_row(rig, 'wip@origin'));
-      rig.model.delete(_row(rig, 'wip@origin'));
-      rig.model.delete(_row(rig, 'wip'));
-      await pumpEventQueue();
-      expect(rig.actions.ran.map((a) => a.command), <String>['jj new k0', 'jj new k0', 'jj bookmark delete wip']);
-      expect(rig.deletes.pending, isNull);
-    });
+    test(
+      'New runs on the ref name, its target the pending change; Delete… without a tracked remote deletes at once',
+      () async {
+        final BookmarkRig rig = await _rig(<Bookmark>[
+          localRow('wip', 'k0'),
+          remoteRow('wip', 'origin', 'k0', tracked: false, synced: false),
+          remoteRow('wip', 'git', 'k0'),
+        ]);
+        await rig.model.newHere(_row(rig, 'wip'));
+        await rig.model.newHere(_row(rig, 'wip@origin'));
+        rig.model.delete(_row(rig, 'wip@origin'));
+        rig.model.delete(_row(rig, 'wip'));
+        await pumpEventQueue();
+        expect(rig.actions.ran.map((a) => a.command), <String>[
+          'jj new wip',
+          'jj new wip@origin',
+          'jj bookmark delete wip',
+        ]);
+        final List<GraphNew> news = rig.actions.ran.whereType<GraphNew>().toList();
+        expect(news.map((a) => '${a.parents} ${a.revsets} ${a.revsetTarget}'), <String>[
+          '[] [wip] k0',
+          '[] [wip@origin] k0',
+        ]);
+        expect(news.first.pendingKeys, <String>{'k0'});
+        expect(rig.deletes.pending, isNull);
+      },
+    );
 
     test('a tag row maps jj tag list --all-remotes: a remote tag is a remote row without distances', () {
       final Bookmark local = tagRow(

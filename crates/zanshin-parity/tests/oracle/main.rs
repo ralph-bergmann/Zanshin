@@ -200,6 +200,10 @@ parity!(
     commit_path_dot_components,
     new_insert_after_two_children,
     new_insert_before,
+    new_on_bookmark,
+    new_on_unknown_name,
+    new_on_empty_revset,
+    new_on_duplicate_names,
     new_insert_before_empty_wc,
     new_insert_after_and_before,
     new_insert_after_immutable_child,
@@ -575,7 +579,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 499);
+    assert_eq!(SCENARIO_IDS.len(), 503);
 }
 
 #[test]
