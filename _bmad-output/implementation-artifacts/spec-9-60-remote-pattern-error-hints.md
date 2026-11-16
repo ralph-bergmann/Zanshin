@@ -24,6 +24,10 @@ deferred:
     location: >-
       crates/zanshin-jj/src/config.rs:338
     severity: medium
+    resolved: >-
+      2026-11-16 — fixed (spec-9-60-closing-check-the-config-file-hint, commit e1f7295c): a wrong-typed
+      value, a TOML parse failure, a failed migration and a non-table alias table carry the CLI's
+      "Check the config file" hint, and every carrier forwards it.
 ---
 
 <intent-contract>

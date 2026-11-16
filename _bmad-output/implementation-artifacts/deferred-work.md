@@ -3184,7 +3184,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in Story 9.60 (bmad-build-auto, 2026-11-16)
 
-- ~~**A config error that names its file carries no hint, while the CLI prints "Hint: Check the config file: <path>" for a wrong-typed value, a TOML parse failure and a failed migration.**~~ — RESOLVED 2026-11-16 (closing run of Story 9.60, see the note below). Medium.
+- ~~**A config error that names its file carries no hint, while the CLI prints "Hint: Check the config file: <path>" for a wrong-typed value, a TOML parse failure and a failed migration.**~~ — RESOLVED 2026-11-16 (spec-9-60-closing-check-the-config-file-hint, commit e1f7295c): the three faults plus a non-table alias table carry the hint, and every carrier forwards it. Medium.
   - CLI @ v0.47.0 `cli/src/command_error.rs:415-447` and `config_get_error_hint` (`:1000-1007`) add the hint when the error has a `source_path`; Zanshin's `value_error` / `file_error` (`crates/zanshin-jj/src/config.rs:338-351`) set no hints, and `migrate` (`:1066-1075`) puts "Check the config file: …" into the reason. Pre-existing; Story 9.60's non-goal "other config errors".
   - **Follow-up:** fill `ConfigError::Load.hints` from the error's `source_path` in `value_error`, `file_error` and `migrate` (moving migrate's line out of the reason), and check each carrier forwards it — the hints channel on `jj.config_error` exists since Story 9.60.
   - **2026-11-16:** RESOLVED in the closing run of Story 9.60 (spec-9-60-closing-check-the-config-file-hint, commit e1f7295c): the three plus the non-table alias table carry the hint; workspace load/creation faults stay hint-free as in the CLI; every carrier forwards it; oracle `hints::` witnesses.
