@@ -604,7 +604,7 @@ fn a_deprecated_user_key_warns_once_first_on_every_creation_path(tmp: &Path) {
     });
     set_env("JJ_USER", Some("Zanshin"));
     assert!(
-        matches!(&broken.result, Err(RepoError::Config { reason }) if reason.contains("user.name")),
+        matches!(&broken.result, Err(RepoError::Config { reason, .. }) if reason.contains("user.name")),
         "{:?}",
         broken.result
     );
@@ -672,16 +672,14 @@ fn a_refs_step_failure_reports_no_snapshot(tmp: &Path) {
     let outcome = convert_colocated(dir.path());
     set_env("JJ_CONFIG", Some(""));
 
-    let Err(RepoError::Config { reason }) = &outcome.result else {
+    let Err(RepoError::Config { reason, hints }) = &outcome.result else {
         panic!(
             "an unparseable auto-track-bookmarks fails the refs step: {:?}",
             outcome.result
         );
     };
-    assert!(
-        reason.contains("Invalid `remotes.origin.auto-track-bookmarks`"),
-        "{reason}"
-    );
+    assert_eq!(*reason, crate::glob_paren_error("auto-track-bookmarks"));
+    assert_eq!(hints, &[crate::REVSET_SYNTAX_HINT], "Story 9.60: the CLI's hint");
     assert!(outcome.precondition.is_none(), "the snapshot never started");
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
     assert_left_jj(&outcome.left_behind, dir.path());
@@ -700,7 +698,7 @@ fn a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp: &Path) 
     let outcome = convert_colocated(dir.path());
     set_env("JJ_CONFIG", Some(""));
 
-    let Err(RepoError::Config { reason }) = &outcome.result else {
+    let Err(RepoError::Config { reason, .. }) = &outcome.result else {
         panic!("a wrong-typed size knob fails the snapshot step: {:?}", outcome.result);
     };
     assert!(reason.contains("snapshot.max-new-file-size"), "{reason}");
@@ -727,7 +725,7 @@ fn a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp: &Path) 
     let outcome = convert_colocated(dir.path());
     set_env("JJ_CONFIG", Some(""));
 
-    let Err(RepoError::Config { reason }) = &outcome.result else {
+    let Err(RepoError::Config { reason, .. }) = &outcome.result else {
         panic!(
             "a bad immutable_heads() alias fails the start-up environment: {:?}",
             outcome.result
@@ -757,7 +755,7 @@ fn a_bad_immutable_heads_alias_fails_a_new_colocated_init_after_its_jj(tmp: &Pat
     });
     set_env("JJ_CONFIG", Some(""));
 
-    let Err(RepoError::Config { reason }) = &outcome.result else {
+    let Err(RepoError::Config { reason, .. }) = &outcome.result else {
         panic!("{:?}", outcome.result);
     };
     assert!(reason.starts_with(IMMUTABLE_HEADS_INVALID), "{reason}");
@@ -814,7 +812,7 @@ fn an_unresolvable_immutable_heads_alias_refuses_the_import_at_its_head_finish(t
     let outcome = convert_import(src.path(), &dst);
     set_env("JJ_CONFIG", Some(""));
 
-    let Err(RepoError::Config { reason }) = &outcome.result else {
+    let Err(RepoError::Config { reason, .. }) = &outcome.result else {
         panic!(
             "an unresolvable immutable_heads() refuses the head finish: {:?}",
             outcome.result
@@ -891,7 +889,7 @@ fn clone_with_an_unresolvable_immutable_heads_alias(
 /// The clone's refusal for [`clone_with_an_unresolvable_immutable_heads_alias`]: the CLI's config
 /// error naming the symbol, nothing left behind and no warning.
 fn assert_clone_refused_by_the_alias(outcome: &CreationOutcome) {
-    let Err(RepoError::Config { reason }) = &outcome.result else {
+    let Err(RepoError::Config { reason, .. }) = &outcome.result else {
         panic!(
             "an unresolvable immutable_heads() refuses the clone's first finish: {:?}",
             outcome.result
@@ -948,7 +946,7 @@ fn a_wrong_typed_snapshot_knob_fails_inside_the_import_snapshot(tmp: &Path) {
     let outcome = convert_import(src.path(), &dst);
     set_env("JJ_CONFIG", Some(""));
 
-    let Err(RepoError::Config { reason }) = &outcome.result else {
+    let Err(RepoError::Config { reason, .. }) = &outcome.result else {
         panic!("a wrong-typed size knob fails the snapshot step: {:?}", outcome.result);
     };
     assert!(reason.contains("snapshot.max-new-file-size"), "{reason}");

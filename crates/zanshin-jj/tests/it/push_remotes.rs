@@ -159,7 +159,7 @@ fn a_malformed_git_push_setting_refuses_before_the_backend_check() {
     set_git_push(&root, "1");
     let err = push(&mut repo, &zanshin_jj::GitPushArgs::default()).expect_err("malformed");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("git.push")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("git.push")),
         "{err:?}"
     );
 }

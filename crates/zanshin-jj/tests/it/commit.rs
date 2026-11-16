@@ -539,7 +539,7 @@ fn a_bad_advance_pattern_or_value_is_refused() {
     let mut fx = base_with("[experimental-advance-branches]\nenabled-branches = \"*\"\n");
     let err = assert_refused_without_an_operation(&mut fx, &options(&[], &["first"]));
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("enabled-branches")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("enabled-branches")),
         "{err:?}"
     );
 
@@ -696,7 +696,7 @@ fn new_on_one_parent_refuses_a_bad_advance_pattern_or_value() {
     set_repo_config(&mut fx, "[experimental-advance-branches]\nenabled-branches = \"*\"\n");
     let err = assert_new_refused_without_an_operation(&mut fx, std::slice::from_ref(&c));
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("enabled-branches")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("enabled-branches")),
         "{err:?}"
     );
 

@@ -419,7 +419,7 @@ fn a_wrong_typed_knob_fails_before_the_head_import_like_the_cli() {
     let err = repo.snapshot().expect_err("the snapshot config refuses the knob");
 
     assert!(
-        matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.max-new-file-size")),
+        matches!(&err, PreconditionError::Config { reason, .. } if reason.contains("snapshot.max-new-file-size")),
         "{err:?}"
     );
     assert!(new_descriptions(&root, before).is_empty(), "nothing written");
@@ -454,7 +454,7 @@ fn a_wrong_typed_knob_is_refused_only_once_the_held_lock_is_free() {
 
     assert!(started.elapsed() >= hold, "the verb waited for the lock");
     assert!(
-        matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.max-new-file-size")),
+        matches!(&err, PreconditionError::Config { reason, .. } if reason.contains("snapshot.max-new-file-size")),
         "{err:?}"
     );
     releaser.join().expect("releaser");
@@ -493,7 +493,7 @@ fn a_wrong_typed_auto_track_fails_before_the_head_import_like_the_cli() {
     let err = repo.snapshot().expect_err("the snapshot config refuses the knob");
 
     assert!(
-        matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.auto-track")),
+        matches!(&err, PreconditionError::Config { reason, .. } if reason.contains("snapshot.auto-track")),
         "{err:?}"
     );
     assert!(new_descriptions(&root, before).is_empty(), "nothing written");
@@ -529,7 +529,7 @@ fn a_non_table_fileset_aliases_is_refused_before_the_lock() {
         .expect("the start-up refusal must not wait for the lock");
 
     assert!(
-        matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("fileset-aliases")),
+        matches!(&result, Err(PreconditionError::Config { reason, .. }) if reason.contains("fileset-aliases")),
         "{result:?}"
     );
     drop(held);
@@ -566,7 +566,7 @@ fn a_bad_immutable_heads_alias_is_refused_before_the_lock() {
     assert!(
         matches!(
             &result,
-            Err(PreconditionError::Config { reason })
+            Err(PreconditionError::Config { reason, .. })
                 if reason.starts_with("Invalid `revset-aliases.immutable_heads()`: ")
                     && reason.contains("bogus_function")
         ),
@@ -598,10 +598,11 @@ fn an_invalid_import_option_fails_before_the_head_import_like_the_cli() {
         .expect_err("the snapshot config refuses the malformed option");
 
     assert!(
-        matches!(&err, PreconditionError::Config { reason }
-            if reason.contains("Invalid `remotes.origin.auto-track-bookmarks`")),
+        matches!(&err, PreconditionError::Config { reason, hints }
+            if *reason == crate::glob_paren_error("auto-track-bookmarks") && hints == &[crate::REVSET_SYNTAX_HINT]),
         "{err:?}"
     );
+    assert_eq!(err.hints(), [crate::REVSET_SYNTAX_HINT], "Story 9.60: the CLI's hint");
     assert!(new_descriptions(&root, before).is_empty(), "nothing written");
     let report = repo.take_precondition().expect("partial report");
     assert!(!report.git_head_imported);
@@ -656,7 +657,7 @@ fn a_wrong_typed_git_write_change_id_header_is_a_config_error() {
     let err = repo.snapshot().expect_err("a wrong-typed key refuses");
 
     assert!(
-        matches!(&err, PreconditionError::Config { reason } if reason.contains("git.write-change-id-header")),
+        matches!(&err, PreconditionError::Config { reason, .. } if reason.contains("git.write-change-id-header")),
         "{err:?}"
     );
 }

@@ -294,6 +294,16 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         zanshin: |dir| clone(&clone_options(dir, "src")),
         user_config: Some(UNRESOLVABLE_IMMUTABLE),
     },
+    // Story 9.60: a `fetch-tags` preset that does not parse refuses the clone before `add git
+    // remote origin`; the clean-up removes the destination on both sides (text and hint: `hints.rs`).
+    CreationScenario {
+        id: "clone_bad_fetch_tags_pattern",
+        prep: SOURCE,
+        target: "dest",
+        cli: &["git", "clone", "src", "dest"],
+        zanshin: |dir| clone(&clone_options(dir, "src")),
+        user_config: Some("[remotes.origin]\nfetch-tags = \"bogus:x\"\n"),
+    },
     // Story 9.41: a `["git init"]` scope's `git.colocate = false` reaches `jj git init`'s
     // start-up stack — the CLI names its command before that resolution — so no `.git/`.
     CreationScenario {
@@ -1625,6 +1635,19 @@ pub fn fetch_scenarios() -> Vec<Scenario> {
         push(
             "fetch_nothing_new",
             PUSHED,
+            |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
+            |_| strings(&["git", "fetch"]),
+        ),
+        // Story 9.60: `remotes.origin.fetch-bookmarks = "glob:("` does not parse — a config refusal
+        // that writes nothing (its text and hint: `hints.rs`).
+        push(
+            "fetch_bad_remote_pattern",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["git", "push", "-b", "b-mark"]),
+                Step::Jj(&["config", "set", "--repo", "remotes.origin.fetch-bookmarks", "glob:("]),
+            ],
             |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
             |_| strings(&["git", "fetch"]),
         ),

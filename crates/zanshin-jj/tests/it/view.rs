@@ -309,7 +309,7 @@ fn tags_sort_by_the_config_keys() {
     set_keys("\"name\"");
     let err = repo.list_tags().expect_err("not an array");
     assert!(
-        matches!(&err, ViewError::Config(zanshin_jj::ConfigError::Load { reason })
+        matches!(&err, ViewError::Config(zanshin_jj::ConfigError::Load { reason, .. })
             if reason.contains("ui.tag-list-sort-keys")),
         "{err:?}"
     );

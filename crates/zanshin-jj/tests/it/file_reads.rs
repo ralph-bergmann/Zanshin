@@ -473,7 +473,7 @@ fn file_show_reports_a_malformed_conflict_marker_style_as_a_config_error() {
         .expect_err("an unknown marker style is refused");
 
     assert!(
-        matches!(&err, FileError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("conflict-marker-style")),
+        matches!(&err, FileError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. }) if reason.contains("conflict-marker-style")),
         "unexpected error: {err:?}"
     );
 }

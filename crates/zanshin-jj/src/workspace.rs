@@ -239,7 +239,10 @@ mod tests {
             from_view(crate::ViewError::Precondition(crate::PreconditionError::Backend("p".to_owned()))),
             WorkspaceError::Precondition(crate::PreconditionError::Backend(reason)) if reason == "p"
         ));
-        let config = crate::ConfigError::Load { reason: "c".to_owned() };
+        let config = crate::ConfigError::Load {
+            reason: "c".to_owned(),
+            hints: Vec::new(),
+        };
         assert!(matches!(
             from_view(crate::ViewError::Config(config)),
             WorkspaceError::Backend(reason) if reason.contains('c')

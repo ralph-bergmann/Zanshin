@@ -227,6 +227,7 @@ pub(crate) fn auto_tracking_matcher(
     let expression =
         fileset::parse(&mut FilesetDiagnostics::new(), &pattern, &context).map_err(|e| MutateError::Config {
             reason: format!("Invalid `snapshot.auto-track`: {}", flatten_chain(&e)),
+            hints: Vec::new(),
         })?;
     Ok(expression.to_matcher())
 }

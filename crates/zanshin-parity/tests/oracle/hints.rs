@@ -150,12 +150,21 @@ fn next_not_found_hint_renders_the_working_copy_parent_summary() {
 /// `Hint: ` line) and its `Hint: ` lines without the label.
 #[track_caller]
 fn cli_error(args: &[&str], root: &Path) -> (String, Vec<String>) {
+    cli_error_labeled("Error: ", args, root)
+}
+
+/// The CLI's refusal of `args` under `label` (`Error: ` or `Config error: `): its text without
+/// the label (every line before the first `Hint: ` line) and its `Hint: ` lines without the label.
+/// A config error's closing "For help, see …" line is no hint and no error line.
+#[track_caller]
+fn cli_error_labeled(label: &str, args: &[&str], root: &Path) -> (String, Vec<String>) {
     let run = jj(root, args);
     assert!(!run.success, "the CLI refuses {args:?}");
     let lines: Vec<&str> = run
         .stderr
         .lines()
-        .skip_while(|line| !line.starts_with("Error: "))
+        .skip_while(|line| !line.starts_with(label))
+        .take_while(|line| !line.starts_with("For help, see "))
         .collect();
     let error = lines
         .iter()
@@ -164,8 +173,8 @@ fn cli_error(args: &[&str], root: &Path) -> (String, Vec<String>) {
         .collect::<Vec<_>>()
         .join("\n");
     let error = error
-        .strip_prefix("Error: ")
-        .unwrap_or_else(|| panic!("no Error line in:\n{}", run.stderr));
+        .strip_prefix(label)
+        .unwrap_or_else(|| panic!("no {label:?} line in:\n{}", run.stderr));
     let hints = lines
         .iter()
         .filter_map(|line| line.strip_prefix("Hint: "))
@@ -181,6 +190,145 @@ fn refusal<T: std::fmt::Debug>(result: Result<T, zanshin_jj::MutateError>) -> (S
     let reason = err.to_string();
     let reason = reason.strip_prefix("invalid input: ").expect("an InvalidInput refusal");
     (reason.to_owned(), err.hints())
+}
+
+/// A refusal's `jj.config_error` context and hints, from its Display `text`: the reason without
+/// the error's own `config error: ` label, which no carrier puts on the wire.
+#[track_caller]
+fn config_refusal(text: &str, hints: Vec<String>) -> (String, Vec<String>) {
+    let reason = text.strip_prefix("config error: ").expect("a Config refusal");
+    (reason.to_owned(), hints)
+}
+
+/// `remotes.origin.<field> = <value>` in the repo config, set through the CLI.
+fn remote_pattern(root: &Path, field: &str, value: &str) {
+    let key = format!("remotes.origin.{field}");
+    jj(root, &["config", "set", "--repo", &key, value]).ok();
+}
+
+/// A bare `origin` beside a BASE repo, with `b-mark` pushed.
+fn pushed_repo() -> (tempfile::TempDir, std::path::PathBuf) {
+    fresh_repo(&["git", "init"], &[BASE, crate::git_scenarios::PUSHED])
+}
+
+/// Story 9.60: a `remotes.origin.fetch-bookmarks` syntax error refuses the fetch with the CLI's
+/// `Config error:` text — the first line and the parse error's `Caused by:` caret diagram — and
+/// its revsets-syntax hint, verbatim (that neither writes anything: `fetch_bad_remote_pattern`).
+#[test]
+fn bad_fetch_bookmarks_pattern_refuses_with_the_cli_config_error_and_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = pushed_repo();
+    remote_pattern(&root, "fetch-bookmarks", "glob:(");
+    let cli = cli_error_labeled("Config error: ", &["git", "fetch"], &root);
+    let mut repo = Repo::open(&root).expect("open");
+    let err = repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_| {}, None)
+        .expect_err("the pattern does not parse");
+    assert_eq!(config_refusal(&err.to_string(), err.hints()), cli);
+    assert!(
+        cli.0
+            .starts_with("Invalid `remotes.origin.fetch-bookmarks`: Syntax error\nCaused by:  --> 1:7\n"),
+        "{}",
+        cli.0
+    );
+    assert_eq!(cli.1.len(), 1, "{:?}", cli.1);
+}
+
+/// The same for a string-pattern kind error in `fetch-tags`: the numbered `Caused by:` list and the
+/// "Try prefixing" hint.
+#[test]
+fn bad_fetch_tags_kind_refuses_with_the_cli_config_error_and_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = pushed_repo();
+    remote_pattern(&root, "fetch-tags", "bogus:x");
+    let cli = cli_error_labeled("Config error: ", &["git", "fetch"], &root);
+    let mut repo = Repo::open(&root).expect("open");
+    let err = repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_| {}, None)
+        .expect_err("the pattern does not parse");
+    assert_eq!(config_refusal(&err.to_string(), err.hints()), cli);
+    assert!(
+        cli.0
+            .starts_with("Invalid `remotes.origin.fetch-tags`: Invalid string pattern\nCaused by:\n1: "),
+        "{}",
+        cli.0
+    );
+    assert!(
+        cli.1
+            .first()
+            .is_some_and(|h| h.starts_with("Try prefixing with one of ")),
+        "{:?}",
+        cli.1
+    );
+}
+
+/// A colocated repo's start-up import reads `auto-track-bookmarks` before any verb: `jj git import`
+/// and Zanshin's (through the pre-verb snapshot) refuse with the same text and hint.
+#[test]
+fn bad_auto_track_pattern_refuses_the_colocated_import_with_the_cli_config_error_and_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(&["git", "init", "--colocate"], &[BASE]);
+    remote_pattern(&root, "auto-track-bookmarks", "a b");
+    let cli = cli_error_labeled("Config error: ", &["git", "import"], &root);
+    let mut repo = Repo::open(&root).expect("open");
+    let err = repo.git_import().expect_err("the pattern does not parse");
+    assert!(
+        matches!(
+            err,
+            zanshin_jj::MutateError::Precondition(zanshin_jj::PreconditionError::Config { .. })
+        ),
+        "{err:?}"
+    );
+    assert_eq!(config_refusal(&err.to_string(), err.hints()), cli);
+    assert!(
+        cli.0
+            .starts_with("Invalid `remotes.origin.auto-track-bookmarks`: Syntax error\n"),
+        "{}",
+        cli.0
+    );
+    assert_eq!(cli.1.len(), 1, "{:?}", cli.1);
+}
+
+/// A clone's `fetch-tags` preset from the user config refuses with the same text and hint on both
+/// sides. The user config changes the process environment, so this runs in a process of its own.
+#[test]
+fn bad_clone_fetch_tags_preset_refuses_with_the_cli_config_error_and_hint() {
+    test_helpers::own_process!("bad_clone_fetch_tags_preset_refuses_with_the_cli_config_error_and_hint");
+    test_helpers::pin_test_env();
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let root = dir.path().canonicalize().expect("canonical temp dir");
+    let user = root.join("user.toml");
+    std::fs::write(&user, "[remotes.origin]\nfetch-tags = \"bogus:x\"\n").expect("user config");
+    // SAFETY: this test runs alone in a process of its own (`own_process!`), on one thread.
+    unsafe { std::env::set_var("JJ_CONFIG", &user) };
+    git(&root, &["init", "-q", "-b", "main", "src"]);
+    std::fs::write(root.join("src/a.txt"), "a\n").expect("write");
+    git(&root, &["-C", "src", "add", "."]);
+    git(&root, &["-C", "src", "commit", "-q", "-m", "A"]);
+
+    let cli = cli_error_labeled("Config error: ", &["git", "clone", "src", "cli"], &root);
+    let outcome = zanshin_jj::Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: root.join("src").to_str().expect("UTF-8 temp dir").to_owned(),
+            destination: root.join("zanshin"),
+            ..Default::default()
+        },
+        &|_| {},
+        None,
+    );
+    let err = outcome.result.expect_err("the preset does not parse");
+    assert_eq!(config_refusal(&err.to_string(), err.hints()), cli);
+    assert!(
+        cli.0
+            .starts_with("Invalid `remotes.origin.fetch-tags`: Invalid string pattern\n"),
+        "{}",
+        cli.0
+    );
+    assert_eq!(cli.1.len(), 1, "{:?}", cli.1);
+    assert!(
+        !root.join("cli").exists() && !root.join("zanshin").exists(),
+        "both remove the destination"
+    );
 }
 
 /// Story 9.59 closing run: a name pattern that does not parse refuses with the CLI's error text —

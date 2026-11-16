@@ -650,7 +650,7 @@ pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiError
                 message.unwrap_or_default()
             ),
         ),
-        P::Config { reason } => (JJ_CONFIG_ERROR, reason),
+        P::Config { reason, .. } => (JJ_CONFIG_ERROR, reason),
         P::ConcurrentWorkingCopy => {
             return FfiErrorObj {
                 code: JJ_CONCURRENT_WORKING_COPY.to_owned(),
@@ -1659,6 +1659,24 @@ mod tests {
             .expect("FlatBuffers Verifier must pass for a well-formed Envelope buffer")
     }
 
+    /// Story 9.60: a pre-verb snapshot's config fault keeps its `remotes.<name>.*` parse hint on
+    /// the wire, beside its reason as `context`.
+    #[test]
+    fn map_precondition_err_config_carries_its_hints() {
+        let e = map_precondition_err(zanshin_jj::PreconditionError::Config {
+            reason: "Invalid `remotes.origin.auto-track-bookmarks`: k".to_owned(),
+            hints: vec!["h".to_owned()],
+        });
+        assert_eq!(
+            (e.code.as_str(), e.context.as_deref(), e.hints.as_slice()),
+            (
+                JJ_CONFIG_ERROR,
+                Some("Invalid `remotes.origin.auto-track-bookmarks`: k"),
+                ["h".to_owned()].as_slice()
+            )
+        );
+    }
+
     #[test]
     fn ok_repo_handle_produces_repo_handle_envelope() {
         let buf = ok_repo_handle(0xdead_beef_cafe_1234, 7, &[], &CallReport::default());
@@ -2247,7 +2265,10 @@ mod tests {
             edit: outcome(S::Available, None),
             describe: outcome(
                 S::Refused,
-                Some(zanshin_jj::MutateError::Config { reason: "c".to_owned() }),
+                Some(zanshin_jj::MutateError::Config {
+                    reason: "c".to_owned(),
+                    hints: Vec::new(),
+                }),
             ),
             squash_into_parent: zanshin_jj::ActionOutcome {
                 combined_description_needed: true,

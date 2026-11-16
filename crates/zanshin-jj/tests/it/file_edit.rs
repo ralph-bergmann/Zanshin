@@ -248,7 +248,7 @@ fn an_invalid_conflict_marker_style_is_a_config_error() {
     // The pre-verb start-up reads the key first (the CLI's command environment), as for
     // `file_show`.
     assert!(
-        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("conflict-marker-style")),
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. }) if reason.contains("conflict-marker-style")),
         "{err:?}"
     );
     assert_eq!(head(&fx.root).op_id().hex(), before);

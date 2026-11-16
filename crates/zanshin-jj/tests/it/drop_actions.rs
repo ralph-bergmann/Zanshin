@@ -1500,14 +1500,14 @@ fn a_broken_commit_summary_refuses_the_immutable_rewrite_as_config() {
     let b = fx.b.clone();
     let actions = fx.repo.change_actions(&b).expect("change_actions");
     assert!(
-        matches!(&actions.describe.refusal, Some(MutateError::Config { reason }) if reason.starts_with("Failed to parse template: ")),
+        matches!(&actions.describe.refusal, Some(MutateError::Config { reason, .. }) if reason.starts_with("Failed to parse template: ")),
         "{:?}",
         actions.describe
     );
     let before = head_op(&fx.root);
     let err = fx.repo.describe(b, "described\n").expect_err("refused");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.starts_with("Failed to parse template: Syntax error")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.starts_with("Failed to parse template: Syntax error")),
         "{err:?}"
     );
     assert_eq!(head_op(&fx.root), before, "no operation");

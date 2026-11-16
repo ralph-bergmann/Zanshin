@@ -402,7 +402,7 @@ fn op_show_reports_unparseable_show_changes_in_texts() {
     .expect("set the repo config");
     let err = repo.op_show("@", None).expect_err("config text");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.starts_with("Invalid `revsets.op-diff-changes-in`: ")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.starts_with("Invalid `revsets.op-diff-changes-in`: ")),
         "{err:?}"
     );
 }

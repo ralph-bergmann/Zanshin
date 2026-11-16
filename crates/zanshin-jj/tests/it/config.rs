@@ -181,14 +181,14 @@ fn a_wrong_typed_config_value_is_a_config_error_naming_the_key() {
     let repo = Repo::open(&fx.path).unwrap();
 
     write_repo_config(&fx.path, "[ui]\nlog-synthetic-elided-nodes = \"yes\"\n");
-    let ConfigError::Load { reason } = repo.log_defaults().expect_err("a wrong-typed bool must hard-error");
+    let ConfigError::Load { reason, .. } = repo.log_defaults().expect_err("a wrong-typed bool must hard-error");
     assert!(
         reason.contains("ui.log-synthetic-elided-nodes"),
         "the context must name the key, got: {reason}"
     );
 
     write_repo_config(&fx.path, "[revsets]\nlog = 42\n");
-    let ConfigError::Load { reason } = repo.log_defaults().expect_err("a wrong-typed string must hard-error");
+    let ConfigError::Load { reason, .. } = repo.log_defaults().expect_err("a wrong-typed string must hard-error");
     assert!(
         reason.contains("revsets.log"),
         "the context must name the key, got: {reason}"
@@ -197,7 +197,7 @@ fn a_wrong_typed_config_value_is_a_config_error_naming_the_key() {
     // `short-prefixes` is read through `.optional()`, which converts only NotFound to
     // `None` and RE-RAISES a type error — so the optional read must not swallow this.
     write_repo_config(&fx.path, "[revsets]\nshort-prefixes = 42\n");
-    let ConfigError::Load { reason } = repo
+    let ConfigError::Load { reason, .. } = repo
         .log_defaults()
         .expect_err("a wrong-typed short-prefixes must hard-error, not fall back to revsets.log");
     assert!(
@@ -214,7 +214,7 @@ fn a_malformed_config_file_is_a_config_error_naming_the_file() {
     let repo = Repo::open(&fx.path).unwrap();
 
     write_repo_config(&fx.path, "not = = toml");
-    let ConfigError::Load { reason } = repo.log_defaults().expect_err("malformed TOML must hard-error");
+    let ConfigError::Load { reason, .. } = repo.log_defaults().expect_err("malformed TOML must hard-error");
     assert!(
         reason.contains("config.toml"),
         "the context must name the file, got: {reason}"
@@ -231,7 +231,7 @@ fn a_bad_config_id_is_a_config_error_naming_the_file() {
     let repo = Repo::open(&fx.path).unwrap();
 
     std::fs::write(fx.path.join(".jj").join("repo").join("config-id"), "not-twenty-hex").unwrap();
-    let ConfigError::Load { reason } = repo.log_defaults().expect_err("a bad config-id must hard-error");
+    let ConfigError::Load { reason, .. } = repo.log_defaults().expect_err("a bad config-id must hard-error");
     assert!(
         reason.contains("config-id"),
         "the context must name the file, got: {reason}"
@@ -247,7 +247,7 @@ fn a_bad_workspace_config_id_is_a_config_error_naming_the_file() {
     let repo = Repo::open(&fx.path).unwrap();
 
     std::fs::write(fx.path.join(".jj").join("workspace-config-id"), "not-twenty-hex").unwrap();
-    let ConfigError::Load { reason } = repo
+    let ConfigError::Load { reason, .. } = repo
         .log_defaults()
         .expect_err("a bad workspace-config-id must hard-error");
     assert!(

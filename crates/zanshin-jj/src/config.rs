@@ -294,6 +294,9 @@ pub enum ConfigError {
     Load {
         /// Human-readable failure, naming the file or the config key.
         reason: String,
+        /// The jj CLI's hint lines for this fault, verbatim and in the CLI's order — only a
+        /// `remotes.<name>.*` pattern that does not parse carries one; empty otherwise.
+        hints: Vec<String>,
     },
 }
 
@@ -335,12 +338,16 @@ fn describe(err: &(dyn std::error::Error + 'static)) -> String {
 fn file_error(path: &Path, err: &ConfigLoadError) -> ConfigError {
     ConfigError::Load {
         reason: format!("{}: {}", path.display(), describe(err)),
+        hints: Vec::new(),
     }
 }
 
 /// A lookup failure. `ConfigGetError`'s Display already names the config key.
 pub(crate) fn value_error(err: &ConfigGetError) -> ConfigError {
-    ConfigError::Load { reason: describe(err) }
+    ConfigError::Load {
+        reason: describe(err),
+        hints: Vec::new(),
+    }
 }
 
 /// Process-level inputs of the layer stack, snapshotted once per [`load`].
@@ -498,10 +505,12 @@ fn secure_config_path(
                 "{}: invalid config ID (expected {CONFIG_ID_HEX_LEN} ASCII hex characters)",
                 id_path.display()
             ),
+            hints: Vec::new(),
         }),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Some(dir.join(legacy_file_name))),
         Err(e) => Err(ConfigError::Load {
             reason: format!("{}: {e}", id_path.display()),
+            hints: Vec::new(),
         }),
     }
 }
@@ -821,6 +830,7 @@ impl SecureLayer {
             .maybe_load_config(rng, root)
             .map_err(|e| ConfigError::Load {
                 reason: format!("Failed to determine the secure config for a repo: {}", describe(&e)),
+                hints: Vec::new(),
             })?;
         let new_id = loaded
             .config_file
@@ -924,8 +934,10 @@ pub(crate) fn load_raw(
     for layer in CLI_DEFAULTS.iter() {
         config.add_layer(Arc::clone(layer));
     }
-    let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML)
-        .map_err(|e| ConfigError::Load { reason: describe(&e) })?;
+    let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML).map_err(|e| ConfigError::Load {
+        reason: describe(&e),
+        hints: Vec::new(),
+    })?;
     config.add_layer(builtin);
 
     add_path_layers(
@@ -1056,7 +1068,10 @@ fn migrate(config: &mut StackedConfig) -> Result<Deprecations, ConfigError> {
             Some(path) => format!("{}\nCheck the config file: {}", describe(&e), path.display()),
             None => describe(&e),
         };
-        ConfigError::Load { reason }
+        ConfigError::Load {
+            reason,
+            hints: Vec::new(),
+        }
     })
 }
 
@@ -1600,7 +1615,7 @@ pub(crate) fn diff_color_words(config: &StackedConfig) -> Result<ColorWordsOptio
 /// jj-lib `config/misc.toml` defaults, so an unset key reads fine.
 ///
 /// `remote_auto_track_bookmarks` is the CLI's `parse_remote_auto_track_bookmarks_map`
-/// (`cli/src/revset_util.rs:425-438,504-517` @ v0.46.0): one string-expression matcher per
+/// (`cli/src/revset_util.rs:382-397,463-488` @ v0.47.0): one string-expression matcher per
 /// `remotes.<name>.auto-track-bookmarks` (Story 9.26), so every import site — fetch, import,
 /// clone, convert and the pre-verb snapshot — auto-tracks exactly what the user's CLI does.
 ///
@@ -1648,7 +1663,7 @@ fn remote_auto_track_bookmarks(
 }
 
 /// The CLI's `parse_remote_auto_track_bookmarks_map_for_new_bookmarks`
-/// (`cli/src/revset_util.rs:444-476` @ v0.46.0), the matchers `jj bookmark create` auto-tracks
+/// (`cli/src/revset_util.rs:399-435` @ v0.47.0), the matchers `jj bookmark create` auto-tracks
 /// with: per remote, the UNION of `remotes.<name>.auto-track-bookmarks` and
 /// `remotes.<name>.auto-track-created-bookmarks` (either alone suffices; a remote with neither
 /// has no entry).
@@ -1707,18 +1722,28 @@ pub(crate) fn every_remote_settings(
         .collect()
 }
 
-/// The CLI's `parse_remote_string_expression` (`cli/src/revset_util.rs:504-528` @ v0.46.0):
-/// one `remotes.<remote>.<field>` value parsed as a string expression, refusing with the CLI's
-/// ``Invalid `remotes.<remote>.<field>`: <kind>``. Its diagnostics sink is dropped — jj-lib 0.46
-/// emits none for string patterns (as `bookmark_ops::union_expression` documents).
-fn parse_remote_string_expression(
+/// The CLI's `parse_remote_string_expression` (`cli/src/revset_util.rs:463-488` @ v0.47.0):
+/// one `remotes.<remote>.<field>` value parsed as a string expression, refusing as the CLI's
+/// `config_error_with_message` prints it — ``Invalid `remotes.<remote>.<field>`: <kind>`` plus
+/// the parse error's own `Caused by:` lines, its pest caret diagram included — with
+/// `revset_parse_error_hint`'s line as the hint. Its diagnostics sink is dropped — jj-lib emits
+/// none for string patterns (as `bookmark_ops::union_expression` documents). `pub(crate)` for
+/// clone's fetch presets, which the CLI parses with the same function.
+pub(crate) fn parse_remote_string_expression(
     remote: &jj_lib::ref_name::RemoteName,
     text: &str,
     field: &str,
 ) -> Result<jj_lib::str_util::StringExpression, ConfigError> {
     jj_lib::revset::parse_string_expression(&mut jj_lib::revset::RevsetDiagnostics::new(), text).map_err(|e| {
+        let mut lines = vec![format!(
+            "Invalid `remotes.{}.{field}`: {}",
+            remote.as_symbol(),
+            e.kind()
+        )];
+        lines.extend(crate::warning::caused_by(Some(&e)));
         ConfigError::Load {
-            reason: format!("Invalid `remotes.{}.{field}`: {}", remote.as_symbol(), e.kind()),
+            reason: lines.join("\n"),
+            hints: crate::revset::parse_hint(&e).into_iter().collect(),
         }
     })
 }
@@ -2036,7 +2061,7 @@ pub(crate) enum FetchField {
 }
 
 /// The CLI's `parse_remote_fetch_bookmarks` / `parse_remote_fetch_tags`
-/// (`cli/src/revset_util.rs:478-502` @ v0.46.0) over [`remote_settings`] (Story 9.30): `remote`'s
+/// (`cli/src/revset_util.rs:437-461` @ v0.47.0) over [`remote_settings`] (Story 9.30): `remote`'s
 /// `fetch-bookmarks` or `fetch-tags` parsed as a string expression, `None` when it is unset.
 ///
 /// Returns a `jj_lib` type, which is why it is `pub(crate)` (FR-JJ-16).
@@ -2186,7 +2211,10 @@ pub(crate) fn snapshot_auto_track(config: &StackedConfig) -> Result<String, Conf
 /// [`jj_lib::secure_config::SecureConfigError`] via the uncreatable-root test) cover the
 /// same lines the unreachable ones would.
 fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
-    ConfigError::Load { reason: describe(&err) }
+    ConfigError::Load {
+        reason: describe(&err),
+        hints: Vec::new(),
+    }
 }
 
 /// Loads the config file at `path` for editing — `ConfigFile::load_or_empty`: an absent file is
@@ -2814,7 +2842,7 @@ mod tests {
             super::ui_tag_list_sort_keys(&stack_with("ui.tag-list-sort-keys = [\"committer-date-\"]")).expect("user"),
             [K::CommitterDateDesc]
         );
-        let super::ConfigError::Load { reason } =
+        let super::ConfigError::Load { reason, .. } =
             super::ui_tag_list_sort_keys(&stack_with("ui.tag-list-sort-keys = [\"bogus\"]")).expect_err("refused");
         assert!(reason.contains("ui.tag-list-sort-keys"), "{reason}");
 
@@ -2839,7 +2867,7 @@ mod tests {
             } else {
                 super::revsets_bookmark_advance_from
             };
-            let super::ConfigError::Load { reason } = reader(&wrong).expect_err("not a string");
+            let super::ConfigError::Load { reason, .. } = reader(&wrong).expect_err("not a string");
             assert!(reason.contains(key), "{reason}");
         }
     }
@@ -2855,7 +2883,7 @@ mod tests {
             ("ui.bookmark-list-sort-keys = [1]", "Expected sort key as a string"),
             ("ui.bookmark-list-sort-keys = [\"bogus\"]", "invalid variant: bogus"),
         ] {
-            let super::ConfigError::Load { reason } =
+            let super::ConfigError::Load { reason, .. } =
                 super::ui_bookmark_list_sort_keys(&stack_with(toml)).expect_err("refused");
             assert!(reason.contains("ui.bookmark-list-sort-keys"), "{reason}");
             assert!(reason.contains(message), "{reason}");
@@ -2887,10 +2915,10 @@ mod tests {
     #[test]
     fn wrong_typed_snapshot_knobs_refuse_naming_the_key() {
         let size = stack_with("snapshot.max-new-file-size = \"lots\"");
-        let super::ConfigError::Load { reason } = snapshot_max_new_file_size(&size).expect_err("not a size");
+        let super::ConfigError::Load { reason, .. } = snapshot_max_new_file_size(&size).expect_err("not a size");
         assert!(reason.contains("snapshot.max-new-file-size"), "{reason}");
         let track = stack_with("snapshot.auto-track = 1");
-        let super::ConfigError::Load { reason } = snapshot_auto_track(&track).expect_err("not a string");
+        let super::ConfigError::Load { reason, .. } = snapshot_auto_track(&track).expect_err("not a string");
         assert!(reason.contains("snapshot.auto-track"), "{reason}");
     }
 
@@ -2903,7 +2931,7 @@ mod tests {
         let off = stack_with("split.legacy-bookmark-behavior = false");
         assert!(!split_legacy_bookmark_behavior(&off).expect("user bool"));
         let wrong = stack_with("split.legacy-bookmark-behavior = \"yes\"");
-        let super::ConfigError::Load { reason } = split_legacy_bookmark_behavior(&wrong).expect_err("not a bool");
+        let super::ConfigError::Load { reason, .. } = split_legacy_bookmark_behavior(&wrong).expect_err("not a bool");
         assert!(reason.contains("split.legacy-bookmark-behavior"), "{reason}");
     }
 
@@ -2915,7 +2943,7 @@ mod tests {
         assert!(!ui_movement_edit(&config).expect("jj-cli's default bool"));
         assert!(ui_movement_edit(&stack_with("ui.movement.edit = true")).expect("user bool"));
         let wrong = stack_with("ui.movement.edit = \"yes\"");
-        let super::ConfigError::Load { reason } = ui_movement_edit(&wrong).expect_err("not a bool");
+        let super::ConfigError::Load { reason, .. } = ui_movement_edit(&wrong).expect_err("not a bool");
         assert!(reason.contains("ui.movement.edit"), "{reason}");
     }
 
@@ -2934,13 +2962,13 @@ mod tests {
             (vec!["*".to_owned()], vec!["main".to_owned()])
         );
         let wrong = stack_with("experimental-advance-branches.enabled-branches = \"*\"");
-        let super::ConfigError::Load { reason } = super::advance_branches(&wrong).expect_err("not a list");
+        let super::ConfigError::Load { reason, .. } = super::advance_branches(&wrong).expect_err("not a list");
         assert!(
             reason.contains("experimental-advance-branches.enabled-branches"),
             "{reason}"
         );
         let wrong = stack_with("experimental-advance-branches.disabled-branches = 1");
-        let super::ConfigError::Load { reason } = super::advance_branches(&wrong).expect_err("not a list");
+        let super::ConfigError::Load { reason, .. } = super::advance_branches(&wrong).expect_err("not a list");
         assert!(
             reason.contains("experimental-advance-branches.disabled-branches"),
             "{reason}"
@@ -4468,15 +4496,45 @@ fetch-bookmarks = \"main\"
             .is_none());
 
         let broken = stack_with("[remotes.origin]\nfetch-bookmarks = \"glob:(\"\n");
-        let result = remote_fetch_expression(&broken, origin, FetchField::Bookmarks);
-        assert!(
-            matches!(&result, Err(super::ConfigError::Load { reason })
-                if reason.starts_with("Invalid `remotes.origin.fetch-bookmarks`: ")),
-            "{result:?}"
+        let super::ConfigError::Load { reason, hints } =
+            remote_fetch_expression(&broken, origin, FetchField::Bookmarks).expect_err("a syntax error");
+        assert_eq!(
+            reason,
+            "Invalid `remotes.origin.fetch-bookmarks`: Syntax error\nCaused by:  --> 1:7\n  |\n1 | glob:(\n  |       \
+             ^---\n  |\n  = expected <expression>"
+        );
+        assert_eq!(
+            hints,
+            [
+                "See https://docs.jj-vcs.dev/latest/revsets/ or use `jj help -k revsets` for revsets syntax and how \
+                 to quote symbols."
+            ]
         );
         assert!(
             remote_fetch_expression(&broken, origin, FetchField::Tags).is_ok(),
             "only the field asked for is parsed"
+        );
+    }
+
+    /// A string-pattern kind error: the CLI's numbered `Caused by:` list (the pest diagram, then the
+    /// unknown kind) and its "Try prefixing" hint.
+    #[test]
+    fn remote_pattern_with_an_unknown_kind_refuses_with_the_cli_text_and_hint() {
+        use super::{remote_fetch_expression, FetchField};
+        use jj_lib::ref_name::RemoteName;
+
+        let broken = stack_with("[remotes.origin]\nfetch-tags = \"bogus:x\"\n");
+        let super::ConfigError::Load { reason, hints } =
+            remote_fetch_expression(&broken, RemoteName::new("origin"), FetchField::Tags).expect_err("an unknown kind");
+        assert_eq!(
+            reason,
+            "Invalid `remotes.origin.fetch-tags`: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n1 | bogus:x\n  \
+             | ^-----^\n  |\n  = Invalid string pattern\n2: Invalid string pattern kind `bogus:`"
+        );
+        assert_eq!(
+            hints,
+            ["Try prefixing with one of `exact:`, `glob:`, `regex:`, `substring:`, or one of these with `-i` suffix \
+              added (e.g. `glob-i:`) for case-insensitive matching"]
         );
     }
 
@@ -4531,13 +4589,18 @@ fetch-bookmarks = \"main\"
 
     #[test]
     fn new_bookmark_matchers_refuse_a_broken_field_with_the_cli_text() {
+        const SYNTAX_HINT: &str =
+            "See https://docs.jj-vcs.dev/latest/revsets/ or use `jj help -k revsets` for revsets \
+                                   syntax and how to quote symbols.";
         let created = stack_with("[remotes.origin]\nauto-track-created-bookmarks = \"(\"\n");
-        let result = super::remote_auto_track_bookmarks_for_new_bookmarks(&created);
-        assert!(
-            matches!(&result, Err(crate::ConfigError::Load { reason })
-                if reason.starts_with("Invalid `remotes.origin.auto-track-created-bookmarks`: ")),
-            "a broken auto-track-created-bookmarks refuses: {result:?}"
+        let crate::ConfigError::Load { reason, hints } =
+            super::remote_auto_track_bookmarks_for_new_bookmarks(&created).expect_err("a broken field refuses");
+        assert_eq!(
+            reason,
+            "Invalid `remotes.origin.auto-track-created-bookmarks`: Syntax error\nCaused by:  --> 1:2\n  |\n1 | (\n  \
+             |  ^---\n  |\n  = expected <expression>"
         );
+        assert_eq!(hints, [SYNTAX_HINT]);
         assert!(
             git_import_options(&created).is_ok(),
             "the import options never read auto-track-created-bookmarks"
@@ -4545,8 +4608,8 @@ fetch-bookmarks = \"main\"
         let plain = stack_with("[remotes.origin]\nauto-track-bookmarks = \"(\"\n");
         let result = super::remote_auto_track_bookmarks_for_new_bookmarks(&plain);
         assert!(
-            matches!(&result, Err(crate::ConfigError::Load { reason })
-                if reason.starts_with("Invalid `remotes.origin.auto-track-bookmarks`: ")),
+            matches!(&result, Err(crate::ConfigError::Load { reason, hints })
+                if reason.starts_with("Invalid `remotes.origin.auto-track-bookmarks`: ") && hints == &[SYNTAX_HINT]),
             "a broken auto-track-bookmarks refuses: {result:?}"
         );
         let entry = stack_with("[remotes]\norigin = 1\n");
@@ -4605,7 +4668,7 @@ fetch-bookmarks = \"main\"
         broken.add_layer(layer(ConfigSource::User, "fix.tools.t.line-range-arg = 1\n"));
         let err = super::migrate(&mut broken).expect_err("a non-string refuses");
         assert!(
-            matches!(&err, crate::ConfigError::Load { reason }
+            matches!(&err, crate::ConfigError::Load { reason, .. }
                 if reason.starts_with("Migration failed: Invalid type or value for fix.tools.t.line-range-arg")),
             "{err:?}"
         );
@@ -4615,7 +4678,7 @@ fetch-bookmarks = \"main\"
         from_file.add_layer(file_layer);
         let err = super::migrate(&mut from_file).expect_err("refuses");
         assert!(
-            matches!(&err, crate::ConfigError::Load { reason } if reason.ends_with("\nCheck the config file: /x/config.toml")),
+            matches!(&err, crate::ConfigError::Load { reason, .. } if reason.ends_with("\nCheck the config file: /x/config.toml")),
             "{err:?}"
         );
 

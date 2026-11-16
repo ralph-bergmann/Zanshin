@@ -198,6 +198,8 @@ pub enum MutateError {
     Config {
         /// Human-readable reason, naming the offending file or alias.
         reason: String,
+        /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint; empty otherwise.
+        hints: Vec<String>,
     },
     /// [`crate::Repo::undo`]'s target is the op-store root operation — there is no parent
     /// operation to restore to: the CLI's `Cannot undo root operation`. Since the undo stack
@@ -589,7 +591,8 @@ impl MutateError {
             | Self::PushRefRefused { hints, .. }
             | Self::PushCommitRejected { hints, .. }
             | Self::RevsetParseError { hints, .. }
-            | Self::RevsetResolutionError { hints, .. } => hints.clone(),
+            | Self::RevsetResolutionError { hints, .. }
+            | Self::Config { hints, .. } => hints.clone(),
             Self::BookmarkTrackedRemoteExists { name } => vec![tracked_remote_bookmarks_hint(name)],
             Self::PathsNotIgnored { .. } => vec![PATHS_NOT_IGNORED_HINT.to_owned()],
             Self::UndoCrossWorkspace { .. } => vec![UNDO_CROSS_WORKSPACE_HINT.to_owned()],
@@ -619,7 +622,19 @@ pub(crate) fn be<E: std::fmt::Display>(e: E) -> MutateError {
 /// [`crate::op_support`] can classify the immutable expression's own failures without
 /// them landing in the unclassified [`MutateError::Backend`] bucket.
 pub(crate) fn cfg<E: std::fmt::Display>(e: E) -> MutateError {
-    MutateError::Config { reason: e.to_string() }
+    MutateError::Config {
+        reason: e.to_string(),
+        hints: Vec::new(),
+    }
+}
+
+/// A config fault whose reason is already the CLI's `Config error: ` text, kept as is with its
+/// hints — unlike [`cfg`], which prepends the error's own `config error: ` label.
+impl From<crate::ConfigError> for MutateError {
+    fn from(e: crate::ConfigError) -> Self {
+        let crate::ConfigError::Load { reason, hints } = e;
+        Self::Config { reason, hints }
+    }
 }
 
 /// Converts a read-side [`crate::RevsetError`] to the matching [`MutateError`] variant,
@@ -2252,9 +2267,25 @@ mod tests {
                 reason: String::new(),
                 hints: carried.clone(),
             },
+            MutateError::Config {
+                reason: String::new(),
+                hints: carried.clone(),
+            },
         ] {
             assert_eq!(e.hints(), carried, "{e:?}");
         }
+        // A config fault converts with its reason as is (no second `config error: ` label) and its
+        // hints; `cfg` renders any error's Display, hint-less.
+        let from = MutateError::from(crate::ConfigError::Load {
+            reason: "Invalid `remotes.o.fetch-tags`: k".to_owned(),
+            hints: carried.clone(),
+        });
+        assert!(
+            matches!(&from, MutateError::Config { reason, hints }
+                if reason == "Invalid `remotes.o.fetch-tags`: k" && *hints == carried),
+            "{from:?}"
+        );
+        assert!(matches!(super::cfg("x"), MutateError::Config { reason, hints } if reason == "x" && hints.is_empty()));
         assert_eq!(
             MutateError::invalid_hinted("r", "h").hints(),
             ["h"],
@@ -2378,8 +2409,8 @@ mod tests {
             MutateError::RevsetResolutionError { reason, hints } if reason == "r" && hints.is_empty()
         ));
         assert!(matches!(
-            rev(RevsetError::Config(ConfigError::Load { reason: "c".to_owned() })),
-            MutateError::Config { reason } if reason.contains('c')
+            rev(RevsetError::Config(ConfigError::Load { reason: "c".to_owned(), hints: Vec::new() })),
+            MutateError::Config { reason, .. } if reason.contains('c')
         ));
         assert!(matches!(
             rev(RevsetError::JjLibError("b".to_owned())),

@@ -120,7 +120,7 @@ fn effective_object_hash(config: &StackedConfig, flag: Option<ObjectHash>) -> Re
 /// `other`.
 fn env_error(e: crate::PreconditionError, other: impl FnOnce(String) -> RepoError) -> RepoError {
     match e {
-        crate::PreconditionError::Config { reason } => RepoError::Config { reason },
+        crate::PreconditionError::Config { reason, hints } => RepoError::Config { reason, hints },
         e => other(e.to_string()),
     }
 }
@@ -539,14 +539,8 @@ fn clone_into_workspace(
     // The fetch expressions (`clone.rs:231-246`): the flags, else the remote's presets, else all.
     let remote_settings = config::remote_settings(&config, plan.remote.as_str())?;
     let preset = |text: Option<&String>, field: &str| -> Result<Option<StringExpression>, RepoError> {
-        text.map(|text| {
-            jj_lib::revset::parse_string_expression(&mut jj_lib::revset::RevsetDiagnostics::new(), text).map_err(|e| {
-                RepoError::Config {
-                    reason: format!("Invalid `remotes.{}.{field}`: {}", plan.remote.as_symbol(), e.kind()),
-                }
-            })
-        })
-        .transpose()
+        text.map(|text| config::parse_remote_string_expression(&plan.remote, text, field).map_err(RepoError::from))
+            .transpose()
     };
     let bookmark = match &plan.bookmarks {
         Some(expr) => expr.clone(),
@@ -618,7 +612,7 @@ fn finish(cloned: &mut Cloned, mut tx: Transaction, description: &str, sink: &mu
 /// clone.
 fn finish_error(e: MutateError) -> RepoError {
     match e {
-        MutateError::Config { reason } => RepoError::Config { reason },
+        MutateError::Config { reason, hints } => RepoError::Config { reason, hints },
         other => clone_failed(other.to_string()),
     }
 }
@@ -917,8 +911,8 @@ mod tests {
     #[test]
     fn clone_finish_failures_map_onto_the_repo_error_taxonomy() {
         assert!(matches!(
-            finish_error(MutateError::Config { reason: "alias".to_owned() }),
-            RepoError::Config { reason } if reason == "alias"
+            finish_error(MutateError::Config { reason: "alias".to_owned(), hints: vec!["h".to_owned()] }),
+            RepoError::Config { reason, hints } if reason == "alias" && hints == ["h"]
         ));
         assert!(matches!(
             finish_error(MutateError::Backend("b".to_owned())),

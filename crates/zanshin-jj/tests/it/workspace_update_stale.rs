@@ -347,7 +347,7 @@ fn a_failed_recovery_reports_its_code_and_a_report() {
     assert!(
         matches!(
             &err,
-            MutateError::Precondition(PreconditionError::Config { reason })
+            MutateError::Precondition(PreconditionError::Config { reason, .. })
                 if reason.contains("snapshot.max-new-file-size")
         ),
         "{err:?}"
@@ -383,7 +383,7 @@ fn a_recovery_failing_after_its_reset_reports_that_it_wrote() {
     assert!(
         matches!(
             &err,
-            MutateError::Precondition(PreconditionError::Config { reason }) if reason.contains("missing")
+            MutateError::Precondition(PreconditionError::Config { reason, .. }) if reason.contains("missing")
         ),
         "{err:?}"
     );

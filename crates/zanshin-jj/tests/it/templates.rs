@@ -66,7 +66,7 @@ impl Fx {
         let before = self.head_op();
         let err = verb(&mut self.repo).expect_err("refused");
         assert!(
-            matches!(&err, MutateError::Config { reason: r } if r.lines().next() == Some(reason)),
+            matches!(&err, MutateError::Config { reason: r, .. } if r.lines().next() == Some(reason)),
             "{err:?}"
         );
         assert_eq!(self.head_op(), before, "a refusal writes no operation");
@@ -393,7 +393,7 @@ fn a_broken_trailers_template_refuses_workspace_add_before_its_transaction() {
         .workspace_add("../ws2", None, &[], &["W".to_owned()], None, SparseInheritance::Copy)
         .expect_err("refused");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.starts_with("Failed to parse template: Syntax error\n")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.starts_with("Failed to parse template: Syntax error\n")),
         "{err:?}"
     );
     assert_eq!(fx.head_op().1, "add workspace 'ws2'");
@@ -452,7 +452,7 @@ impl Fx {
         let at = self.c.clone();
         let err = self.repo.abandon(&[at]).expect_err("refused");
         assert!(
-            matches!(&err, MutateError::Precondition(PreconditionError::Config { reason }) if check(reason)),
+            matches!(&err, MutateError::Precondition(PreconditionError::Config { reason, .. }) if check(reason)),
             "{err:?}"
         );
         assert_eq!(self.head_op(), before, "a refusal writes no operation");

@@ -453,7 +453,7 @@ fn colocation_follows_the_flags_and_git_colocate() {
     let mut repo = Repo::open(&fx.root).expect("open");
     let err = add(&mut repo, "../ws2").expect_err("wrong type");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("git.colocate")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("git.colocate")),
         "{err:?}"
     );
     assert!(

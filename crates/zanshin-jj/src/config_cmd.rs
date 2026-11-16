@@ -356,7 +356,7 @@ impl ConfigCmdError {
 
 impl From<crate::ConfigError> for ConfigCmdError {
     fn from(e: crate::ConfigError) -> Self {
-        let crate::ConfigError::Load { reason } = e;
+        let crate::ConfigError::Load { reason, .. } = e;
         Self::Config { reason }
     }
 }

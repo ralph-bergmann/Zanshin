@@ -237,7 +237,7 @@ fn a_non_bool_ui_movement_edit_is_a_config_error_naming_the_key() {
     reconfigure(&mut fx, "[ui.movement]\nedit = \"yes\"\n");
     let err = refused(&mut fx, |repo| repo.move_working_copy(&prev()));
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("ui.movement.edit")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("ui.movement.edit")),
         "{err:?}"
     );
     // The CLI reads the key before it looks at `--edit`, so `--edit` is refused too.

@@ -1038,20 +1038,20 @@ mod tests {
     fn get_tools_config_refuses_as_the_cli_does() {
         assert!(matches!(
             refusal(""),
-            MutateError::Config { reason } if reason == "No `fix.tools` are configured"
+            MutateError::Config { reason, .. } if reason == "No `fix.tools` are configured"
         ));
         assert!(matches!(
             refusal("fix.tools.a = { command = ['x'], patterns = ['all()'], enabled = false }"),
-            MutateError::Config { reason } if reason == "At least one entry of `fix.tools` must be enabled."
+            MutateError::Config { reason, .. } if reason == "At least one entry of `fix.tools` must be enabled."
         ));
         assert!(matches!(
             refusal("fix.tools.a = { command = ['x'], patterns = ['all()'], run-tool-if-zero-line-ranges = true }"),
-            MutateError::Config { reason }
+            MutateError::Config { reason, .. }
                 if reason == "run-tool-if-zero-line-ranges can only be set when line-range-args is set"
         ));
         assert!(matches!(
             refusal("fix.tools.a = { command = ['x'] }"),
-            MutateError::Config { reason } if reason.contains("fix.tools.a")
+            MutateError::Config { reason, .. } if reason.contains("fix.tools.a")
         ));
         let (enabled, _) = tools(
             "fix.tools.a = { command = ['x'], patterns = ['all()'] }\n\
@@ -1136,7 +1136,7 @@ mod tests {
         for bad in ["'soon'", "-1", "1.5", "true", "'5h'"] {
             let toml = format!("fix.tools.a = {{ command = ['x'], patterns = ['all()'], timeout = {bad} }}");
             assert!(
-                matches!(refusal(&toml), MutateError::Config { reason } if reason.contains("fix.tools.a")),
+                matches!(refusal(&toml), MutateError::Config { reason, .. } if reason.contains("fix.tools.a")),
                 "{bad}"
             );
         }

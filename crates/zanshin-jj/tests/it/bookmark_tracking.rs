@@ -534,7 +534,12 @@ fn set_refuses_a_broken_auto_track_pattern_after_the_backwards_check() {
         .repo
         .bookmark_set(&names(&["b-mark"]), Some(&c), false)
         .expect_err("broken pattern");
-    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
+    assert!(
+        matches!(&err, MutateError::Config { reason, hints }
+            if reason.starts_with("Invalid `remotes.origin.auto-track-created-bookmarks`: Syntax error\nCaused by:")
+                && hints == &[crate::REVSET_SYNTAX_HINT]),
+        "{err:?}"
+    );
     assert_refused(&fx, &before);
     assert_eq!(fx.normal("b-mark"), Some(hex(&fx.root, &b)));
 

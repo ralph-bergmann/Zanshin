@@ -612,7 +612,7 @@ fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
 
     assert!(
         // jj-lib 0.47 reads the key at the import's options, no longer at the backend load.
-        matches!(&err, MutateError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("abandon-unreachable-commits")),
         "expected Config naming the key, got {err:?}"
     );
     // Every verb refuses while the stack is broken, so it is repaired before the read-back.

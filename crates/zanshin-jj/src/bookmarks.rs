@@ -766,7 +766,10 @@ mod tests {
             BookmarkError::RevsetResolutionError { reason, hints } if reason == "r" && hints == ["h"]
         ));
         assert!(matches!(
-            rev(R::Config(crate::ConfigError::Load { reason: r() })),
+            rev(R::Config(crate::ConfigError::Load {
+                reason: r(),
+                hints: Vec::new()
+            })),
             BookmarkError::Config(_)
         ));
         assert!(matches!(

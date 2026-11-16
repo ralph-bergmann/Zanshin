@@ -848,6 +848,44 @@ fn a_failing_fetch_keeps_the_identity_warning_of_the_finished_add_remote() {
     );
 }
 
+/// Story 9.60: a `remotes.origin.fetch-tags` preset that does not parse refuses the clone with the
+/// CLI's `Config error:` text — the first line and the numbered `Caused by:` list — and its hint
+/// (`clone.rs:231-246` @ v0.47.0); the clean-up removes the destination the clone created.
+#[test]
+fn a_bad_fetch_tags_preset_refuses_with_the_cli_text_and_hint() {
+    with_user_config(
+        "clone_init::a_bad_fetch_tags_preset_refuses_with_the_cli_text_and_hint",
+        "[remotes.origin]\nfetch-tags = \"bogus:x\"\n",
+        || {
+            let src = TempDir::new().unwrap();
+            source_repo(src.path());
+            let parent = TempDir::new().unwrap();
+            let dst = parent.path().join("dst");
+            let outcome = clone(&CloneOptions {
+                source: file_url(src.path()),
+                destination: dst.clone(),
+                ..Default::default()
+            });
+            let err = outcome.result.expect_err("the preset does not parse");
+            assert!(
+                matches!(&err, RepoError::Config { reason, .. } if reason == concat!(
+                    "Invalid `remotes.origin.fetch-tags`: Invalid string pattern\nCaused by:\n1:  --> 1:1\n  |\n",
+                    "1 | bogus:x\n  | ^-----^\n  |\n  = Invalid string pattern\n2: Invalid string pattern kind `bogus:`"
+                )),
+                "{err:?}"
+            );
+            assert_eq!(
+                err.hints(),
+                [
+                    "Try prefixing with one of `exact:`, `glob:`, `regex:`, `substring:`, or one of these with `-i` \
+                     suffix added (e.g. `glob-i:`) for case-insensitive matching"
+                ]
+            );
+            assert!(!dst.exists(), "the destination the clone created is removed");
+        },
+    );
+}
+
 /// The native backend is unchanged and refuses the Git-only flags.
 #[test]
 fn the_native_backend_refuses_git_flags() {

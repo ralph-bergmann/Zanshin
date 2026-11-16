@@ -497,6 +497,8 @@ fn a_git_refspec_jj_ignores_warns_and_the_fetch_goes_on() {
     assert_eq!(fx.remote_bookmark("main", "origin"), Some(origin.head("main")));
 }
 
+/// Story 9.60: the CLI's whole `Config error:` text and its hint, once — no second `config error: `
+/// label in front.
 #[test]
 fn a_malformed_remote_fetch_setting_is_a_config_error() {
     let dir = TempDir::new().unwrap();
@@ -506,7 +508,26 @@ fn a_malformed_remote_fetch_setting_is_a_config_error() {
     let (before, _) = fx.head_op();
     let err = fx.fetch(&GitFetchArgs::default()).expect_err("malformed");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("Invalid `remotes.origin.fetch-bookmarks`: ")),
+        matches!(&err, MutateError::Config { reason, hints }
+            if *reason == crate::glob_paren_error("fetch-bookmarks") && hints == &[crate::REVSET_SYNTAX_HINT]),
+        "{err:?}"
+    );
+    assert_eq!(fx.head_op().0, before);
+}
+
+/// The fetch's import options (`remotes.origin.auto-track-bookmarks`, read after the fetch
+/// expressions) refuse with the same text and hint, and write nothing.
+#[test]
+fn a_malformed_auto_track_setting_refuses_the_fetch_with_the_cli_text() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+    fx.set("remotes.origin.auto-track-bookmarks", "'glob:('");
+    let (before, _) = fx.head_op();
+    let err = fx.fetch(&GitFetchArgs::default()).expect_err("malformed");
+    assert!(
+        matches!(&err, MutateError::Config { reason, hints }
+            if *reason == crate::glob_paren_error("auto-track-bookmarks") && hints == &[crate::REVSET_SYNTAX_HINT]),
         "{err:?}"
     );
     assert_eq!(fx.head_op().0, before);
@@ -521,7 +542,7 @@ fn a_malformed_git_fetch_setting_is_a_config_error() {
     let (before, _) = fx.head_op();
     let err = fx.fetch(&GitFetchArgs::default()).expect_err("malformed");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("git.fetch")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("git.fetch")),
         "{err:?}"
     );
     assert_eq!(fx.head_op().0, before);
@@ -719,8 +740,17 @@ fn tracked_refuses_a_malformed_remote_entry() {
             refs: FetchRefs::Tracked,
         })
         .expect_err("malformed entry");
-    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
     assert_eq!(fx.head_op().0, before);
+    // The poll refuses the same fault with the same reason, neither with a second label in front.
+    let poll = fx.repo.remote_changes("origin", None).expect_err("malformed entry");
+    assert!(
+        matches!(
+            (&err, &poll),
+            (MutateError::Config { reason: fetch, .. }, MutateError::Config { reason: polled, .. })
+                if fetch == polled && !fetch.starts_with("config error: ")
+        ),
+        "{err:?} / {poll:?}"
+    );
 }
 
 /// The poll's tag filter: with `remotes.origin.fetch-tags = "v*"`, a new `v2` is reported and a
@@ -749,7 +779,8 @@ fn the_poll_refuses_what_the_fetch_refuses() {
     fx.set("remotes.origin.fetch-bookmarks", "'glob:('");
     let err = fx.repo.remote_changes("origin", None).expect_err("malformed");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("Invalid `remotes.origin.fetch-bookmarks`: ")),
+        matches!(&err, MutateError::Config { reason, hints }
+            if *reason == crate::glob_paren_error("fetch-bookmarks") && hints == &[crate::REVSET_SYNTAX_HINT]),
         "{err:?}"
     );
 
@@ -950,7 +981,7 @@ fn a_malformed_git_fetch_setting_is_read_only_without_remotes() {
 
     let err = fx.repo.git_fetch_remotes().expect_err("malformed");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("git.fetch")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("git.fetch")),
         "{err:?}"
     );
 }
@@ -975,7 +1006,7 @@ fn a_malformed_git_fetch_setting_refuses_before_the_backend_check() {
         .git_fetch(&GitFetchArgs::default(), &|_: ProgressEvent| {}, None)
         .expect_err("malformed");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("git.fetch")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("git.fetch")),
         "{err:?}"
     );
 }

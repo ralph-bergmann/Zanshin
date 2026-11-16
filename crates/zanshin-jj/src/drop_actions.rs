@@ -259,7 +259,10 @@ fn view_err(e: CommitViewError) -> MutateError {
         CommitViewError::RevsetResolutionError { reason, hints } => {
             MutateError::RevsetResolutionError { reason, hints }
         }
-        CommitViewError::Config { reason } => MutateError::Config { reason },
+        CommitViewError::Config { reason } => MutateError::Config {
+            reason,
+            hints: Vec::new(),
+        },
         CommitViewError::Backend(reason) => MutateError::Backend(reason),
     }
 }
@@ -800,7 +803,10 @@ mod tests {
                 commit_id: "c".to_owned(),
                 hints: Vec::new(),
             },
-            MutateError::Config { reason: "c".to_owned() },
+            MutateError::Config {
+                reason: "c".to_owned(),
+                hints: Vec::new(),
+            },
         ] {
             let text = format!("{refusal:?}");
             let refused = outcome(Err(refusal)).expect("a refusal is a row");
@@ -915,7 +921,10 @@ mod tests {
             ),
             (
                 CommitViewError::Config { reason: r() },
-                MutateError::Config { reason: r() },
+                MutateError::Config {
+                    reason: r(),
+                    hints: Vec::new(),
+                },
             ),
             (CommitViewError::Backend(r()), MutateError::Backend(r())),
         ];

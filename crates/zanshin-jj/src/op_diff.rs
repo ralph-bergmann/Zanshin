@@ -169,6 +169,7 @@ pub(crate) fn parse_changes_in(
         if is_config {
             MutateError::Config {
                 reason: format!("Invalid `{CHANGES_IN_KEY}`: {reason}"),
+                hints: Vec::new(),
             }
         } else {
             MutateError::RevsetParseError {

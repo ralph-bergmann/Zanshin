@@ -877,7 +877,7 @@ fn an_empty_push_bookmark_name_refuses() {
         })
         .expect_err("refused");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason == "Empty bookmark name generated"),
+        matches!(&err, MutateError::Config { reason, .. } if reason == "Empty bookmark name generated"),
         "{err:?}"
     );
     assert_eq!(w.head_op(), before);
@@ -1128,7 +1128,7 @@ fn an_unresolvable_immutable_alias_at_the_commit_check_keeps_jj_libs_text() {
     fs::write(&path, text).expect("write the repo config");
     w.reopen();
     let err = w.push(&GitPushArgs::default()).expect_err("the commit check refuses");
-    let MutateError::Config { reason } = &err else {
+    let MutateError::Config { reason, .. } = &err else {
         panic!("{err:?}");
     };
     assert!(reason.contains("nonexistent_symbol_xyz"), "{reason}");
@@ -1394,7 +1394,7 @@ fn a_broken_commit_summary_template_refuses_the_push() {
             })
             .expect_err("the summary template does not parse");
         assert!(
-            matches!(&err, MutateError::Config { reason } if reason.starts_with("Failed to parse template: ")),
+            matches!(&err, MutateError::Config { reason, .. } if reason.starts_with("Failed to parse template: ")),
             "dry run {dry_run}: {err:?}"
         );
         assert_eq!(w.head_op(), before, "dry run {dry_run}: nothing written");

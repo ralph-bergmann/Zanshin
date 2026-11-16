@@ -428,6 +428,40 @@ fn sample_workspace_entry() -> zanshin_jj::WorkspaceEntry {
     }
 }
 
+/// The config error and its three `jj.config_error` carriers (Story 4.9; hints since Story 9.60):
+/// each conversion keeps the reason and the CLI's hint lines, and `hints()` returns them.
+#[test]
+fn config_error_carriers_keep_their_hints() {
+    let load = || zanshin_jj::ConfigError::Load {
+        reason: "r".to_owned(),
+        hints: vec!["h".to_owned()],
+    };
+    // The variant `zanshin-ffi::map_topology_err` matches on — pin its shape.
+    _ = zanshin_jj::RevsetError::Config(load());
+    // The carriers' public fields.
+    _ = zanshin_jj::RepoError::Config {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
+    _ = zanshin_jj::MutateError::Config {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
+    _ = zanshin_jj::PreconditionError::Config {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
+    let repo = zanshin_jj::RepoError::from(load());
+    assert!(matches!(&repo, zanshin_jj::RepoError::Config { reason, .. } if reason == "r"));
+    assert_eq!(repo.hints(), ["h"]);
+    let mutate = zanshin_jj::MutateError::from(load());
+    assert!(matches!(&mutate, zanshin_jj::MutateError::Config { reason, .. } if reason == "r"));
+    assert_eq!(mutate.hints(), ["h"]);
+    let precondition = zanshin_jj::PreconditionError::from(load());
+    assert!(matches!(&precondition, zanshin_jj::PreconditionError::Config { reason, .. } if reason == "r"));
+    assert_eq!(precondition.hints(), ["h"]);
+}
+
 #[test]
 fn api_surface_resolves() {
     // fn-pointer: compiles only if the signature matches exactly.
@@ -444,7 +478,6 @@ fn api_surface_resolves() {
 
     // Error variants — each is Backend(String) / JjLibError(String): no jj_lib type.
     _ = zanshin_jj::RepoError::Backend(String::new());
-    _ = zanshin_jj::RepoError::Config { reason: String::new() };
     _ = zanshin_jj::StatusError::Backend(String::new());
     _ = zanshin_jj::ChangeError::Backend(String::new());
     _ = zanshin_jj::ChangeError::RevsetResolutionError {
@@ -468,8 +501,6 @@ fn api_surface_resolves() {
             &zanshin_jj::ProgressFn,
             Option<&zanshin_jj::cancel::CancelGuard>,
         ) -> Result<zanshin_jj::GitFetchOutcome, zanshin_jj::MutateError>;
-    // Story 4.9: the variant `zanshin-ffi::map_topology_err` matches on — pin its shape.
-    _ = zanshin_jj::RevsetError::Config(zanshin_jj::ConfigError::Load { reason: String::new() });
 
     // Trivially-constructible tuple-struct wrappers.
     _ = zanshin_jj::ChangeId(String::new());
@@ -513,8 +544,8 @@ fn api_surface_resolves() {
     // `Cargo.lock` inline in `src/version.rs`.
     let _: &'static str = zanshin_jj::JJ_LIB_VERSION;
 
-    // config (Story 4.9): the four effective log defaults + the config error.
-    _ = zanshin_jj::ConfigError::Load { reason: String::new() };
+    // config (Story 4.9): the four effective log defaults; the config error's carriers are pinned
+    // in `config_error_carriers_keep_their_hints`.
     _ = zanshin_jj::LogDefaults {
         log: String::new(),
         log_graph_prioritize: String::new(),
@@ -556,7 +587,6 @@ fn api_surface_resolves() {
         commit_id: String::new(),
         hints: Vec::new(),
     };
-    _ = zanshin_jj::MutateError::Config { reason: String::new() };
 
     // view + eval_revset (Story 9.2): 4 new types, all `Backend(String)`/plain — no jj_lib type.
     // The three `View` listings are `fn`-pointer-pinned; `Repo::eval_revset` is a method generic
@@ -1018,7 +1048,11 @@ fn tag_verbs_surface_resolves() {
             &[String],
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
     assert_eq!(
-        zanshin_jj::ViewError::Config(zanshin_jj::ConfigError::Load { reason: "k".into() }).to_string(),
+        zanshin_jj::ViewError::Config(zanshin_jj::ConfigError::Load {
+            reason: "k".into(),
+            hints: Vec::new()
+        })
+        .to_string(),
         "config error: k"
     );
 }
@@ -1091,7 +1125,10 @@ fn bookmark_move_and_list_surface_resolves() {
             reason: "r".to_owned(),
             hints: Vec::new(),
         },
-        zanshin_jj::BookmarkError::Config(zanshin_jj::ConfigError::Load { reason: "c".to_owned() }),
+        zanshin_jj::BookmarkError::Config(zanshin_jj::ConfigError::Load {
+            reason: "c".to_owned(),
+            hints: Vec::new(),
+        }),
     ];
     let shown: Vec<String> = errors.iter().map(ToString::to_string).collect();
     assert_eq!(
@@ -1100,7 +1137,11 @@ fn bookmark_move_and_list_surface_resolves() {
             "invalid input: i",
             "invalid revset: p",
             "cannot resolve revset: r",
-            &zanshin_jj::ConfigError::Load { reason: "c".to_owned() }.to_string(),
+            &zanshin_jj::ConfigError::Load {
+                reason: "c".to_owned(),
+                hints: Vec::new()
+            }
+            .to_string(),
         ]
     );
 }
@@ -2252,7 +2293,10 @@ fn snapshot_precondition_surface_resolves() {
         stale.to_string(),
         "stale working copy (sibling_operation): working copy at operation a, repo at b"
     );
-    let config = || zanshin_jj::PreconditionError::Config { reason: "k".to_owned() };
+    let config = || zanshin_jj::PreconditionError::Config {
+        reason: "k".to_owned(),
+        hints: Vec::new(),
+    };
     assert_eq!(config().to_string(), "config error: k");
     assert_eq!(
         zanshin_jj::PreconditionError::Backend("b".to_owned()).to_string(),
@@ -2402,7 +2446,11 @@ fn story_9_28_surface_resolves() {
         assert_eq!(err.to_string(), text);
     }
     assert_eq!(
-        E::from(zanshin_jj::ConfigError::Load { reason: "c".into() }).to_string(),
+        E::from(zanshin_jj::ConfigError::Load {
+            reason: "c".into(),
+            hints: Vec::new()
+        })
+        .to_string(),
         "config error: c"
     );
 }
@@ -3007,7 +3055,10 @@ fn graph_search_surface_resolves() {
     };
     _ = zanshin_jj::RevsetSearchError::InvalidInput(String::new());
     _ = zanshin_jj::RevsetSearchError::OperationNotFound(String::new());
-    _ = zanshin_jj::RevsetSearchError::Config(zanshin_jj::ConfigError::Load { reason: String::new() });
+    _ = zanshin_jj::RevsetSearchError::Config(zanshin_jj::ConfigError::Load {
+        reason: String::new(),
+        hints: Vec::new(),
+    });
     _ = zanshin_jj::RevsetSearchError::Backend(String::new());
     _ = zanshin_jj::RevsetSearchError::Revset(zanshin_jj::RevsetError::JjLibError(String::new()));
     _ = zanshin_jj::Repo::revset_counts

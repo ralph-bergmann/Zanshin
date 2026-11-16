@@ -127,7 +127,7 @@ fn map_repo_err_code(e: RepoError) -> FfiErrorObj {
         },
         // Story 9.27: the effective config stack the workspace is opened/created with could
         // not be read — the same `jj.config_error` every read verb already reports.
-        RepoError::Config { reason } => FfiErrorObj {
+        RepoError::Config { reason, .. } => FfiErrorObj {
             report: None,
             hints: Vec::new(),
             code: JJ_CONFIG_ERROR.to_owned(),
@@ -177,7 +177,7 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, Some(id)),
         MutateError::InvalidInput { reason, .. } => (JJ_INVALID_INPUT, Some(reason)),
         MutateError::Immutable { commit_id, .. } => (JJ_IMMUTABLE, Some(commit_id)),
-        MutateError::Config { reason } => (JJ_CONFIG_ERROR, Some(reason)),
+        MutateError::Config { reason, .. } => (JJ_CONFIG_ERROR, Some(reason)),
         MutateError::NothingToUndo => (JJ_NOTHING_TO_UNDO, None),
         MutateError::UndoCrossWorkspace { operation, workspace } => {
             (JJ_UNDO_CROSS_WORKSPACE, Some(format!("{operation}\n{workspace}")))
@@ -2068,9 +2068,24 @@ mod tests {
     fn map_repo_err_config_maps_to_jj_config_error() {
         let e = map_repo_err(RepoError::Config {
             reason: "/cfg/config.toml: invalid TOML".to_owned(),
+            hints: Vec::new(),
         });
         assert_eq!(e.code, JJ_CONFIG_ERROR);
         assert_eq!(e.context.unwrap(), "/cfg/config.toml: invalid TOML");
+        assert!(e.hints.is_empty(), "a plain config fault has no hint");
+        // Story 9.60: a `remotes.<name>.*` pattern's parse hint rides along.
+        let e = map_repo_err(RepoError::Config {
+            reason: "Invalid `remotes.origin.fetch-tags`: k".to_owned(),
+            hints: vec!["h".to_owned()],
+        });
+        assert_eq!(
+            (e.code.as_str(), e.context.as_deref(), e.hints.as_slice()),
+            (
+                JJ_CONFIG_ERROR,
+                Some("Invalid `remotes.origin.fetch-tags`: k"),
+                ["h".to_owned()].as_slice()
+            )
+        );
     }
 
     #[test]
@@ -2177,12 +2192,33 @@ mod tests {
     fn map_mutate_err_config_maps_to_jj_config_error() {
         let e = map_mutate_err(MutateError::Config {
             reason: "config.toml: invalid TOML".to_owned(),
+            hints: Vec::new(),
         });
         assert_eq!(
             e.code, JJ_CONFIG_ERROR,
             "a bad immutable_heads() alias is the SAME fault the read side reports"
         );
         assert_eq!(e.context.unwrap(), "config.toml: invalid TOML");
+        assert!(e.hints.is_empty(), "a plain config fault has no hint");
+        // Story 9.60: a `remotes.<name>.*` pattern's parse hint rides along, and so does a wrapped
+        // precondition's.
+        let carried = vec!["h".to_owned()];
+        for e in [
+            MutateError::Config {
+                reason: "r".to_owned(),
+                hints: carried.clone(),
+            },
+            MutateError::Precondition(zanshin_jj::PreconditionError::Config {
+                reason: "r".to_owned(),
+                hints: carried.clone(),
+            }),
+        ] {
+            let e = map_mutate_err(e);
+            assert_eq!(
+                (e.code.as_str(), e.context.as_deref(), &e.hints),
+                (JJ_CONFIG_ERROR, Some("r"), &carried)
+            );
+        }
     }
 
     #[test]

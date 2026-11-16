@@ -92,6 +92,7 @@ pub(crate) fn resolve_immutable(
     // (`cli_util.rs:1156-1159` @ v0.46.0) — never disambiguated against an arbitrary repo.
     resolve_expression(repo, expr, None).map_err(|e| MutateError::Config {
         reason: format!("Invalid `revset-aliases.immutable_heads()`: {e}"),
+        hints: Vec::new(),
     })
 }
 
@@ -1401,7 +1402,7 @@ mod tests {
         )
         .expect_err("Commit 1 has a child, so the set is resolved");
         assert!(
-            matches!(&err, MutateError::Config { reason } if reason.starts_with("Invalid `revset-aliases.immutable_heads()`: ")),
+            matches!(&err, MutateError::Config { reason, .. } if reason.starts_with("Invalid `revset-aliases.immutable_heads()`: ")),
             "unexpected error: {err:?}"
         );
     }

@@ -675,7 +675,7 @@ fn show_reports_a_malformed_repo_config_as_a_config_error() {
         .show(None, None)
         .expect_err("a non-table revset-aliases is refused");
     assert!(
-        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("revset-aliases")),
+        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. }) if reason.contains("revset-aliases")),
         "unexpected error: {err:?}"
     );
     // Every verb refuses while the stack is broken, so it is repaired before the read-back.
@@ -862,7 +862,7 @@ fn evolog_reports_a_malformed_repo_config_as_a_config_error() {
         .evolog(None, None)
         .expect_err("a non-table revset-aliases is refused");
     assert!(
-        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason }) if reason.contains("revset-aliases")),
+        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. }) if reason.contains("revset-aliases")),
         "unexpected error: {err:?}"
     );
     // Every verb refuses while the stack is broken, so it is repaired before the read-back.
@@ -1456,7 +1456,7 @@ fn interdiff_refuses_when_short_prefixes_does_not_resolve() {
         .interdiff(Some(chg(&good)), None, &[])
         .expect_err("the set does not parse");
     assert!(
-        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason })
+        matches!(&err, CommitViewError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. })
             if reason.starts_with("Invalid `revsets.short-prefixes`: ")),
         "{err:?}"
     );

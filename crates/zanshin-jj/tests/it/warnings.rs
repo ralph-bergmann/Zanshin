@@ -621,7 +621,7 @@ fn a_revset_alias_warning_precedes_a_wrong_typed_knob() {
     assert!(
         matches!(
             &err,
-            zanshin_jj::StatusError::Precondition(PreconditionError::Config { reason })
+            zanshin_jj::StatusError::Precondition(PreconditionError::Config { reason, .. })
                 if reason.contains("snapshot.max-new-file-size")
         ),
         "{err:?}"

@@ -826,7 +826,7 @@ fn a_wrong_typed_size_knob_is_a_config_error_for_both_verbs() {
         repo.file_untrack(&strings(&["a.txt"])).expect_err("bad size"),
     ] {
         assert!(
-            matches!(&err, MutateError::Precondition(PreconditionError::Config { reason })
+            matches!(&err, MutateError::Precondition(PreconditionError::Config { reason, .. })
                 if reason.contains("snapshot.max-new-file-size")),
             "{err:?}"
         );
@@ -842,7 +842,7 @@ fn an_unparseable_auto_track_fileset_is_a_config_error() {
     let err = repo.file_untrack(&strings(&["a.txt"])).expect_err("bad fileset");
 
     assert!(
-        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason })
+        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason, .. })
             if reason.contains("snapshot.auto-track")),
         "{err:?}"
     );
@@ -890,7 +890,7 @@ fn a_non_table_fileset_aliases_is_a_config_error() {
     let err = repo.file_untrack(&strings(&["a.txt"])).expect_err("bad aliases table");
 
     assert!(
-        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason })
+        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason, .. })
             if reason.contains("fileset-aliases")),
         "{err:?}"
     );

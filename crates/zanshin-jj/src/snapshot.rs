@@ -203,6 +203,8 @@ pub enum PreconditionError {
     Config {
         /// Human-readable failure, naming the file or the config key.
         reason: String,
+        /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint; empty otherwise.
+        hints: Vec<String>,
     },
     /// The stale-working-copy recovery found the working copy's recorded tree differing from
     /// the stale `@`'s — another writer is at work (Story 9.23): the CLI's "Concurrent working
@@ -244,7 +246,8 @@ impl PreconditionError {
     }
 
     /// The jj CLI's hint lines for this refusal, verbatim and in the CLI's order (Story 9.56):
-    /// a stale working copy's remedy (`cli/src/cli_util.rs:3046-3074` @ v0.46.0); none otherwise.
+    /// a stale working copy's remedy (`cli/src/cli_util.rs:3046-3074` @ v0.46.0) and a
+    /// `remotes.<name>.*` pattern's parse hint; none otherwise.
     #[must_use]
     pub fn hints(&self) -> Vec<String> {
         const SEE: &str = "See https://docs.jj-vcs.dev/latest/working-copy/#stale-working-copy for more information.";
@@ -261,7 +264,8 @@ impl PreconditionError {
                 }
                 StaleCause::OperationNotFound => format!("Run `jj workspace update-stale` to recover.\n{SEE}"),
             }],
-            Self::Config { .. } | Self::ConcurrentWorkingCopy | Self::Backend(_) => Vec::new(),
+            Self::Config { hints, .. } => hints.clone(),
+            Self::ConcurrentWorkingCopy | Self::Backend(_) => Vec::new(),
         }
     }
 }
@@ -274,7 +278,7 @@ fn short_op_id(hex: &str) -> &str {
 impl From<MutateError> for PreconditionError {
     fn from(e: MutateError) -> Self {
         match e {
-            MutateError::Config { reason } => Self::Config { reason },
+            MutateError::Config { reason, hints } => Self::Config { reason, hints },
             MutateError::ConcurrentWorkingCopy => Self::ConcurrentWorkingCopy,
             MutateError::Precondition(inner) => inner,
             MutateError::Backend(reason) => Self::Backend(reason),
@@ -285,8 +289,8 @@ impl From<MutateError> for PreconditionError {
 
 impl From<crate::ConfigError> for PreconditionError {
     fn from(e: crate::ConfigError) -> Self {
-        let crate::ConfigError::Load { reason } = e;
-        Self::Config { reason }
+        let crate::ConfigError::Load { reason, hints } = e;
+        Self::Config { reason, hints }
     }
 }
 
@@ -1003,8 +1007,16 @@ mod tests {
         );
         assert!(stale(StaleCause::OperationNotFound).hints()[0]
             .starts_with("Run `jj workspace update-stale` to recover.\nSee "));
+        let config = PreconditionError::Config {
+            reason: String::new(),
+            hints: vec!["h".to_owned()],
+        };
+        assert_eq!(config.hints(), ["h"], "a config fault carries its own hints");
         for e in [
-            PreconditionError::Config { reason: String::new() },
+            PreconditionError::Config {
+                reason: String::new(),
+                hints: Vec::new(),
+            },
             PreconditionError::ConcurrentWorkingCopy,
             PreconditionError::Backend(String::new()),
         ] {
@@ -1034,7 +1046,10 @@ mod tests {
             Some("Could not read working copy's operation.")
         );
         for e in [
-            PreconditionError::Config { reason: String::new() },
+            PreconditionError::Config {
+                reason: String::new(),
+                hints: Vec::new(),
+            },
             PreconditionError::ConcurrentWorkingCopy,
             PreconditionError::Backend(String::new()),
         ] {
@@ -1092,8 +1107,8 @@ mod tests {
     #[test]
     fn mutate_errors_map_onto_the_precondition_taxonomy() {
         assert!(matches!(
-            PreconditionError::from(MutateError::Config { reason: "k".to_owned() }),
-            PreconditionError::Config { reason } if reason == "k"
+            PreconditionError::from(MutateError::Config { reason: "k".to_owned(), hints: vec!["h".to_owned()] }),
+            PreconditionError::Config { reason, hints } if reason == "k" && hints == ["h"]
         ));
         assert!(matches!(
             PreconditionError::from(MutateError::Backend("b".to_owned())),
@@ -1112,8 +1127,8 @@ mod tests {
             PreconditionError::Backend(reason) if reason == "not a git repository"
         ));
         assert!(matches!(
-            PreconditionError::from(crate::ConfigError::Load { reason: "c".to_owned() }),
-            PreconditionError::Config { reason } if reason == "c"
+            PreconditionError::from(crate::ConfigError::Load { reason: "c".to_owned(), hints: vec!["h".to_owned()] }),
+            PreconditionError::Config { reason, hints } if reason == "c" && hints == ["h"]
         ));
     }
 
@@ -1174,7 +1189,7 @@ mod tests {
         drop(lock);
 
         assert!(
-            matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("missing")),
+            matches!(&result, Err(PreconditionError::Config { reason, .. }) if reason.contains("missing")),
             "{:?}",
             result.err()
         );

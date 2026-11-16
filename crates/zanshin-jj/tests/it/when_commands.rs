@@ -340,7 +340,7 @@ fn a_wrong_typed_scoped_value_refuses_only_its_verb() {
     let at = wc(&repo);
     let err = repo.describe(at, "x").expect_err("describe refuses");
     assert!(
-        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason }) if reason.contains("user.name")),
+        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason, .. }) if reason.contains("user.name")),
         "got {err:?}"
     );
     repo.status().expect("status runs");
@@ -361,7 +361,7 @@ fn a_wrong_typed_scoped_value_refuses_only_its_verb() {
     .result
     .expect_err("init refuses");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
+        matches!(&err, RepoError::Config { reason, .. } if reason.contains("user.name")),
         "got {err:?}"
     );
     repo.status().expect("an open repo's verbs still run");
@@ -438,7 +438,7 @@ fn the_conversions_resolve_for_git_init() {
         ] {
             let err = err.unwrap_or_else(|| panic!("{verb} refuses"));
             assert_eq!(
-                matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
+                matches!(&err, RepoError::Config { reason, .. } if reason.contains("user.name")),
                 scoped,
                 "`{verb}` under a `{command}` scope: {err:?}"
             );
@@ -509,7 +509,7 @@ fn a_split_scope_reaches_select_tree_for_split_only() {
         .select_tree(&select(Some(SelectTreeVerb::Split)))
         .expect_err("the split scope faults split's start-up");
     assert!(
-        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason }) if reason.contains("immutable_heads()")),
+        matches!(&err, MutateError::Precondition(PreconditionError::Config { reason, .. }) if reason.contains("immutable_heads()")),
         "{err:?}"
     );
     repo.select_tree(&select(None)).expect("no verb: no command, no scope");
@@ -608,7 +608,7 @@ fn a_faulting_describe_scope_refuses_the_describe_row_not_the_query() {
 
     assert_eq!(card.describe.status, ActionStatus::Refused);
     assert!(
-        matches!(&card.describe.refusal, Some(MutateError::Precondition(PreconditionError::Config { reason })) if reason.contains("immutable_heads()")),
+        matches!(&card.describe.refusal, Some(MutateError::Precondition(PreconditionError::Config { reason, .. })) if reason.contains("immutable_heads()")),
         "{:?}",
         card.describe
     );

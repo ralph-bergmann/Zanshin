@@ -19,6 +19,20 @@ pub(crate) fn all_remotes() -> zanshin_jj::BookmarkListOptions {
     }
 }
 
+/// The CLI's revset-syntax hint, the one `Hint: ` line a `remotes.<name>.*` syntax error prints
+/// (Story 9.60).
+pub(crate) const REVSET_SYNTAX_HINT: &str =
+    "See https://docs.jj-vcs.dev/latest/revsets/ or use `jj help -k revsets` for revsets syntax and how to quote symbols.";
+
+/// The CLI's `Config error:` text, without the label, for `remotes.origin.<field> = "glob:("`
+/// (Story 9.60): the first line, then the parse error's `Caused by:` caret diagram.
+pub(crate) fn glob_paren_error(field: &str) -> String {
+    format!(
+        "Invalid `remotes.origin.{field}`: Syntax error\nCaused by:  --> 1:7\n  |\n1 | glob:(\n  |       ^---\n  |\n  = \
+         expected <expression>"
+    )
+}
+
 mod api_stability;
 mod arg_refusals;
 mod bookmark_move;

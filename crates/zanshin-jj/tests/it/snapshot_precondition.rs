@@ -327,7 +327,7 @@ fn a_wrong_typed_knob_is_a_config_fault_naming_the_key() {
     let err = repo.status().expect_err("a wrong-typed knob refuses");
 
     assert!(
-        matches!(&err, StatusError::Precondition(PreconditionError::Config { reason })
+        matches!(&err, StatusError::Precondition(PreconditionError::Config { reason, .. })
             if reason.contains("snapshot.max-new-file-size")),
         "{err:?}"
     );
@@ -352,7 +352,7 @@ fn a_wrong_typed_auto_update_stale_only_matters_on_a_stale_working_copy() {
     let err = repo.status().expect_err("stale");
 
     assert!(
-        matches!(&err, StatusError::Precondition(PreconditionError::Config { reason })
+        matches!(&err, StatusError::Precondition(PreconditionError::Config { reason, .. })
             if reason.contains("snapshot.auto-update-stale")),
         "{err:?}"
     );
@@ -373,8 +373,8 @@ fn an_invalid_auto_track_bookmarks_expression_refuses_only_the_import() {
         .expect_err("an unparseable matcher refuses the import");
 
     assert!(
-        matches!(&err, zanshin_jj::MutateError::Config { reason }
-            if reason.contains("Invalid `remotes.origin.auto-track-bookmarks`")),
+        matches!(&err, zanshin_jj::MutateError::Config { reason, hints }
+            if *reason == crate::glob_paren_error("auto-track-bookmarks") && hints == &[crate::REVSET_SYNTAX_HINT]),
         "{err:?}"
     );
 }
@@ -534,7 +534,7 @@ fn a_wrong_typed_knob_wins_over_a_stale_working_copy() {
     let err = repo.snapshot().expect_err("the knob refuses first");
 
     assert!(
-        matches!(&err, PreconditionError::Config { reason } if reason.contains("snapshot.max-new-file-size")),
+        matches!(&err, PreconditionError::Config { reason, .. } if reason.contains("snapshot.max-new-file-size")),
         "{err:?}"
     );
     assert_eq!(raw_ops(&fx.root).len(), before, "no operation");

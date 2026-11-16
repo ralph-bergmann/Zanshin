@@ -298,7 +298,7 @@ fn git_import_with_a_non_boolean_config_value_refuses_as_config() {
     // jj-lib 0.47 reads the key at the import (`GitImportOptions`), no longer at the backend load:
     // the import refuses, the open does not.
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("abandon-unreachable-commits")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
     );
     Repo::open(tmp.path()).expect("the load no longer reads the key");
@@ -519,7 +519,7 @@ fn git_import_with_a_non_boolean_record_synthetic_predecessors_refuses_as_config
     let err = repo.git_import().expect_err("a wrong-typed value must refuse");
 
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("record-synthetic-predecessors")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("record-synthetic-predecessors")),
         "unexpected error: {err:?}"
     );
     write_repo_config(tmp.path(), "");

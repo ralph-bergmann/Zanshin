@@ -256,7 +256,7 @@ fn a_malformed_repo_config_makes_describe_fail_with_config_not_backend() {
         .expect_err("a malformed config must not be silently ignored");
 
     // The pre-verb snapshot reads the stack first (Story 9.26), so it is the one that refuses.
-    let MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) = &err else {
+    let MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. }) = &err else {
         panic!("expected Config, got {err:?}");
     };
     assert!(
@@ -291,7 +291,7 @@ fn an_unresolvable_immutable_heads_alias_is_a_config_error() {
         .expect_err("an unresolvable alias must not be silently ignored");
     // Story 9.58: the CLI's text — "Invalid `revset-aliases.immutable_heads()`" and jj-lib's
     // error, which still names the symbol.
-    let MutateError::Config { reason } = &err else {
+    let MutateError::Config { reason, .. } = &err else {
         panic!("unexpected error: {err:?}");
     };
     assert!(
@@ -317,7 +317,7 @@ fn an_unparseable_immutable_heads_alias_is_a_config_error() {
         .describe(ChangeId(layout.commit3_change_id), "nope")
         .expect_err("a guard that cannot determine what is protected must refuse");
     // The CLI's start-up text (`cli_util.rs:1106-1117` @ v0.46.0), naming the offending text.
-    let MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) = &err else {
+    let MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. }) = &err else {
         panic!("expected Config, got {err:?}");
     };
     assert!(

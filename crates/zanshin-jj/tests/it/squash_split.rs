@@ -884,5 +884,5 @@ fn split_refusals_write_nothing() {
 fn split_refuses_a_wrong_typed_legacy_bookmark_behavior() {
     let mut fx = base_with("[split]\nlegacy-bookmark-behavior = \"yes\"\n");
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.split(&split_c(&["c.txt"], None)).map(drop));
-    assert!(matches!(&err, MutateError::Config { reason } if reason.contains("split.legacy-bookmark-behavior")));
+    assert!(matches!(&err, MutateError::Config { reason, .. } if reason.contains("split.legacy-bookmark-behavior")));
 }

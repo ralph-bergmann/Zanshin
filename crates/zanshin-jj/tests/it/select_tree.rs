@@ -728,7 +728,7 @@ fn an_unknown_marker_style_refuses_as_a_config_error() {
         })
         .expect_err("refused");
     assert!(
-        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason })
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. })
             if reason.contains("ui.conflict-marker-style")),
         "{err:?}"
     );

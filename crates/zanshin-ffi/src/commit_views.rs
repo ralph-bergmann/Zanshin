@@ -571,6 +571,7 @@ mod tests {
             (
                 map_commit_view_err(CommitViewError::Precondition(zanshin_jj::PreconditionError::Config {
                     reason: "snapshot.auto-track".to_owned(),
+                    hints: Vec::new(),
                 })),
                 JJ_CONFIG_ERROR,
                 "snapshot.auto-track",

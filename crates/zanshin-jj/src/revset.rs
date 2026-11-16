@@ -1086,6 +1086,7 @@ where
                         path.display(),
                         item.type_name()
                     ),
+                    hints: Vec::new(),
                 });
             }
         };
@@ -1205,6 +1206,7 @@ pub(crate) fn immutable_heads_expression(
             "Invalid `revset-aliases.immutable_heads()`: {}",
             crate::template::parse_reason(e)
         ),
+        hints: Vec::new(),
     })?;
     sink.record_load(
         Load::ImmutableHeads,
@@ -1244,7 +1246,7 @@ mod tests {
     }
 
     fn reason<T>(result: Result<T, ConfigError>) -> String {
-        let ConfigError::Load { reason } = result.err().expect("expected a config error");
+        let ConfigError::Load { reason, .. } = result.err().expect("expected a config error");
         reason
     }
 

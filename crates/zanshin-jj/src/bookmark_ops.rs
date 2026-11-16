@@ -340,7 +340,7 @@ pub(crate) fn create(
         if pollster::block_on(target.is_discardable(tx.repo().index())).map_err(mutate::be)? {
             sink.push(WarningKind::BookmarkTargetEmpty, "Target revision is empty.");
         }
-        let auto_track = auto_track.map_err(mutate::cfg)?;
+        let auto_track = auto_track.map_err(MutateError::from)?;
         // The CLI reads "has a view" and "already on the remote" off the view BEFORE any write
         // (`create.rs:93` @ v0.47.0, `readonly_repo`), which is also the view the guards read.
         let base = tx.base_repo().clone();
@@ -996,7 +996,7 @@ pub(crate) fn set(
         id = target_id.hex(),
     );
     let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, sink| {
-        let auto_track = auto_track.map_err(mutate::cfg)?;
+        let auto_track = auto_track.map_err(MutateError::from)?;
         let base = tx.base_repo().clone();
         for name in &ref_names {
             tx.repo_mut()

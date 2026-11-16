@@ -722,7 +722,8 @@ mod tests {
         ));
         assert!(matches!(
             rev(RevsetError::Config(ConfigError::Load {
-                reason: "not a table".to_owned()
+                reason: "not a table".to_owned(),
+                hints: Vec::new(),
             })),
             CommitViewError::Config { reason } if reason.contains("not a table")
         ));

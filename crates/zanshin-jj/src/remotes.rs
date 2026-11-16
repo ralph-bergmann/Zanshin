@@ -348,7 +348,7 @@ pub(crate) fn remote_fetch_refs(
     let bookmark = if let Some(expression) = bookmarks {
         expression.clone()
     } else if let Some(expression) =
-        crate::config::remote_fetch_expression(config, remote, FetchField::Bookmarks).map_err(mutate::cfg)?
+        crate::config::remote_fetch_expression(config, remote, FetchField::Bookmarks).map_err(MutateError::from)?
     {
         expression
     } else {
@@ -360,7 +360,7 @@ pub(crate) fn remote_fetch_refs(
     let tag = if let Some(expression) = tags {
         expression.clone()
     } else if let Some(expression) =
-        crate::config::remote_fetch_expression(config, remote, FetchField::Tags).map_err(mutate::cfg)?
+        crate::config::remote_fetch_expression(config, remote, FetchField::Tags).map_err(MutateError::from)?
     {
         expression
     } else {
@@ -525,7 +525,7 @@ pub(crate) fn git_fetch(
     // WHY read and discard: the CLI's `tx.settings().remote_settings()?` (`fetch.rs:174`) reads
     // every `remotes.<name>` entry right after the transaction starts, so a malformed one refuses
     // whatever `args` select — `--tracked` included.
-    crate::config::every_remote_settings(&ctx.config).map_err(mutate::cfg)?;
+    crate::config::every_remote_settings(&ctx.config).map_err(MutateError::from)?;
     let (common_bookmarks, common_tags) = specific_expressions(&args.refs)?;
     // A pattern that cannot become a refspec is refused by that remote's `fetch` (jj-lib 0.47
     // expands there), after the remotes before it fetched — as in the CLI.
@@ -551,7 +551,7 @@ pub(crate) fn git_fetch(
         }
     }
 
-    let import_options = crate::config::git_import_options(&ctx.config).map_err(mutate::cfg)?;
+    let import_options = crate::config::git_import_options(&ctx.config).map_err(MutateError::from)?;
     let subprocess_options = crate::environment::git_subprocess_options(settings, cancel).map_err(mutate::be)?;
     // WHY: `GitFetch::new`'s error type IS `UnexpectedGitBackendError` (jj-lib 0.46.0) —
     // `get_git_backend` is its only fallible step — so the blanket `map_err` swallows nothing

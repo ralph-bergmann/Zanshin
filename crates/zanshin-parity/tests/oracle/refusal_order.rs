@@ -122,7 +122,7 @@ fn assert_same_class(
         assert_eq!(op_heads(&root), before, "the CLI writes nothing for {args:?}");
 
         let err = zanshin(&mut repo, &ids, args).expect_err("Zanshin refuses");
-        let MutateError::Config { reason } = &err else {
+        let MutateError::Config { reason, .. } = &err else {
             panic!("Zanshin {args:?}: {err:?}");
         };
         assert_eq!(&class_of(reason), expected, "Zanshin {args:?}");

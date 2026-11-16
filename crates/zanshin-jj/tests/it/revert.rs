@@ -163,7 +163,7 @@ fn templates_revert_description_describes_the_reverses() {
         })
     });
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.starts_with("Failed to parse template: ")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.starts_with("Failed to parse template: ")),
         "{err:?}"
     );
 }
@@ -182,7 +182,7 @@ pub(crate) fn assert_config_class(err: &MutateError, template: bool, context: &s
         "Invalid `revset-aliases.immutable_heads()`: "
     };
     assert!(
-        matches!(err, MutateError::Config { reason } if reason.starts_with(prefix)),
+        matches!(err, MutateError::Config { reason, .. } if reason.starts_with(prefix)),
         "{context}: {err:?}"
     );
 }

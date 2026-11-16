@@ -162,7 +162,7 @@ fn an_unparseable_short_prefixes_refuses_with_a_config_error() {
 
     let err = resolve_revset(&repo, "tip").unwrap_err();
     assert!(
-        matches!(&err, RevsetError::Config(ConfigError::Load { reason })
+        matches!(&err, RevsetError::Config(ConfigError::Load { reason, .. })
             if reason.starts_with("Invalid `revsets.short-prefixes`: ") && reason.contains("bogus_function")),
         "{err:?}"
     );

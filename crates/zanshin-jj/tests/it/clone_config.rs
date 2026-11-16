@@ -130,7 +130,7 @@ fn clone_reads_abandon_unreachable_commits_from_the_user_config_layer() {
     .result;
     // Since Story 9.27 the clone runs WITH this stack, so jj-lib's git backend already reads the
     // key while creating the workspace; either way a clone config fault has one code: `Config`.
-    let Err(RepoError::Config { reason }) = result else {
+    let Err(RepoError::Config { reason, .. }) = result else {
         panic!("a non-boolean value must fail the clone as Config, got: {result:?}");
     };
     assert!(

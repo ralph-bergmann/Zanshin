@@ -325,7 +325,7 @@ pub(crate) fn git_import(workspace: &mut Workspace, ctx: &mut VerbContext) -> Re
             mutation: colocated_no_op(workspace)?,
         });
     }
-    let import_options = crate::config::git_import_options(&ctx.config).map_err(mutate::cfg)?;
+    let import_options = crate::config::git_import_options(&ctx.config).map_err(MutateError::from)?;
     // The descendants `import_refs` leaves to rebase are rebased by the shared finish, which
     // resolves the immutable set only when the import changed something — a no-op import says
     // "Nothing changed." without resolving it, as the CLI's `tx.finish` (Story 9.56).

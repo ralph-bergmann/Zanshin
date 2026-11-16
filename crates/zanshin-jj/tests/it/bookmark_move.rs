@@ -654,14 +654,14 @@ fn advance_with_a_wrong_typed_revset_key_is_a_config_refusal() {
     fx.reopen();
     let err = fx.repo.bookmark_advance(&[], None).expect_err("not a string");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("revsets.bookmark-advance-from")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("revsets.bookmark-advance-from")),
         "{err:?}"
     );
     set_repo_config(&fx.root, "revsets.bookmark-advance-to", "1");
     fx.reopen();
     let err = fx.repo.bookmark_advance(&[], None).expect_err("not a string");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("revsets.bookmark-advance-to")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("revsets.bookmark-advance-to")),
         "{err:?}"
     );
 }

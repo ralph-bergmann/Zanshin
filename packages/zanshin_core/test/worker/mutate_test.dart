@@ -17,6 +17,7 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/config.dart' show ConfigScope, ConfigScopeTarget;
 import 'package:zanshin_core/src/ffi/fetch.dart' show NamedFetchRemotes;
 import 'package:zanshin_core/src/ffi/mutate.dart';
 import 'package:zanshin_core/src/ffi/status.dart' show WorkingCopyStatus;
@@ -300,6 +301,46 @@ void main() {
                 'warnings',
                 contains((ZanshinWarningCode.fetchRemotesUnmatched, 'No matching remotes for names: nonexistent')),
               ),
+        ),
+      );
+
+      await handle.close();
+    });
+
+    // Story 9.60: a `remotes.origin.fetch-bookmarks` value that does not parse
+    // refuses before any git subprocess, with the CLI's `Config error:` text in
+    // `context` (the first line and the parse error's `Caused by:` caret
+    // diagram) and its revsets-syntax hint in `hints`.
+    test('gitFetch_bad_remote_pattern_surfaces_jj_config_error_with_the_cli_hint', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
+      await handle.gitRemoteAdd(name: 'origin', url: '${tempDir.path}/origin.git');
+      await worker.configSet(
+        const ConfigScopeTarget(ConfigScope.repo),
+        'remotes.origin.fetch-bookmarks',
+        'glob:(',
+        workspaceRoot: tempDir.path,
+      );
+      const syntaxHint =
+          'See https://docs.jj-vcs.dev/latest/revsets/ or use `jj help -k revsets` for revsets syntax and '
+          'how to quote symbols.';
+
+      await expectLater(
+        handle.gitFetch().result,
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.config_error')
+              .having(
+                (e) => e.context,
+                'context',
+                'Invalid `remotes.origin.fetch-bookmarks`: Syntax error\n'
+                    'Caused by:  --> 1:7\n'
+                    '  |\n'
+                    '1 | glob:(\n'
+                    '  |       ^---\n'
+                    '  |\n'
+                    '  = expected <expression>',
+              )
+              .having((e) => e.hints, 'hints', [syntaxHint]),
         ),
       );
 

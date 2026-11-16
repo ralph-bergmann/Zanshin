@@ -99,7 +99,7 @@ fn read_tag_track_request(
 fn map_view_err(e: ViewError) -> FfiErrorObj {
     let (code, reason) = match e {
         ViewError::Precondition(e) => return map_precondition_err(e),
-        ViewError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason),
+        ViewError::Config(ConfigError::Load { reason, .. }) => (JJ_CONFIG_ERROR, reason),
         ViewError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
@@ -397,7 +397,10 @@ mod tests {
 
     #[test]
     fn map_view_err_maps_config_and_backend() {
-        let config = map_view_err(ViewError::Config(ConfigError::Load { reason: "c".into() }));
+        let config = map_view_err(ViewError::Config(ConfigError::Load {
+            reason: "c".into(),
+            hints: Vec::new(),
+        }));
         assert_eq!(
             (config.code.as_str(), config.context.as_deref()),
             (JJ_CONFIG_ERROR, Some("c"))

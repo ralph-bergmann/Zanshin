@@ -123,6 +123,7 @@ pub(crate) fn load_short_prefixes(
         .map(Some)
         .map_err(|e| ConfigError::Load {
             reason: format!("Invalid `revsets.short-prefixes`: {}", parse_reason(e)),
+            hints: Vec::new(),
         })
 }
 
@@ -260,6 +261,7 @@ impl<'c> Templates<'c> {
             lines.extend(warning::error_chain_lines(&e));
             MutateError::Config {
                 reason: lines.join("\n"),
+                hints: Vec::new(),
             }
         })?;
         sink.extend(warning::parse_diagnostics(
@@ -482,6 +484,7 @@ pub(crate) fn add_trailers_with(
 fn rendered_trailers(renderer: &TemplateRenderer<'_, Commit>, commit: &Commit) -> Result<Vec<Trailer>, MutateError> {
     let lines = String::from_utf8(renderer.format_plain_text(commit)).map_err(|_| MutateError::Config {
         reason: "Trailers should be valid utf-8".to_owned(),
+        hints: Vec::new(),
     })?;
     parse_trailers(&lines).map_err(cfg)
 }
@@ -490,10 +493,12 @@ fn rendered_trailers(renderer: &TemplateRenderer<'_, Commit>, commit: &Commit) -
 fn push_bookmark_name(renderer: &TemplateRenderer<'_, Commit>, commit: &Commit) -> Result<String, MutateError> {
     let name = String::from_utf8(renderer.format_plain_text(commit)).map_err(|_| MutateError::Config {
         reason: "Invalid character in bookmark name".to_owned(),
+        hints: Vec::new(),
     })?;
     if name.is_empty() {
         return Err(MutateError::Config {
             reason: "Empty bookmark name generated".to_owned(),
+            hints: Vec::new(),
         });
     }
     Ok(name)
@@ -595,7 +600,7 @@ mod tests {
 
     fn config_reason(result: Result<impl std::fmt::Debug, MutateError>) -> String {
         match result {
-            Err(MutateError::Config { reason }) => reason,
+            Err(MutateError::Config { reason, .. }) => reason,
             other => panic!("expected a config error, got {other:?}"),
         }
     }
@@ -916,7 +921,7 @@ mod tests {
             first.map(|e| (e.is_some(), second.expect("same text").is_some()))
         };
         let reason = |result: Result<(bool, bool), crate::ConfigError>| {
-            let crate::ConfigError::Load { reason } = result.expect_err("refused");
+            let crate::ConfigError::Load { reason, .. } = result.expect_err("refused");
             reason
         };
 

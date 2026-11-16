@@ -294,7 +294,7 @@ fn a_broken_tools_config_is_refused_before_anything() {
     ] {
         let err = config_refusal(config);
         assert!(
-            matches!(&err, MutateError::Config { reason: r } if r == reason),
+            matches!(&err, MutateError::Config { reason: r, .. } if r == reason),
             "{config}: {err:?}"
         );
     }
@@ -586,7 +586,7 @@ fn a_malformed_timeout_is_refused_naming_the_tool() {
     let before = head_op(&fx.root);
     let err = fx.repo.fix(&FixOptions::default(), None).expect_err("refused");
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.contains("fix.tools.upper")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.contains("fix.tools.upper")),
         "{err:?}"
     );
     assert_eq!(head_op(&fx.root), before);

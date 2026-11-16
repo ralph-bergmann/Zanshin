@@ -42,7 +42,7 @@ pub(crate) fn map_topology_err(e: RevsetError) -> FfiErrorObj {
         RevsetError::ParseError { reason, detail } => (JJ_REVSET_PARSE_ERROR, reason, Some(*detail)),
         RevsetError::ResolutionError { reason, detail } => (JJ_REVSET_RESOLUTION_ERROR, reason, Some(*detail)),
         RevsetError::JjLibError(reason) => (JJ_JJ_LIB_ERROR, reason, None),
-        RevsetError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason, None),
+        RevsetError::Config(ConfigError::Load { reason, .. }) => (JJ_CONFIG_ERROR, reason, None),
         RevsetError::DanglingEdge { target } => (GRAPH_DANGLING_EDGE, target, None),
     };
     FfiErrorObj {
@@ -993,6 +993,7 @@ mod tests {
             (
                 RevsetError::Config(ConfigError::Load {
                     reason: "/r/.jj/repo/config.toml: bad TOML".to_owned(),
+                    hints: Vec::new(),
                 }),
                 JJ_CONFIG_ERROR,
                 "/r/.jj/repo/config.toml: bad TOML",

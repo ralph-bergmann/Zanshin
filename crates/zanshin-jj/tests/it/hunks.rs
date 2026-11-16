@@ -706,7 +706,7 @@ fn a_malformed_color_words_key_is_a_config_error() {
                 })
                 .expect_err("refused");
             assert!(
-                matches!(&err, MutateError::Config { reason } if reason.contains(name)),
+                matches!(&err, MutateError::Config { reason, .. } if reason.contains(name)),
                 "{name}: {err:?}"
             );
         }

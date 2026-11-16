@@ -247,7 +247,7 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
     ];
     for (verb, result) in results {
         assert!(
-            matches!(&result, Err(MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason })) if reason.contains("broken-verbs.toml")),
+            matches!(&result, Err(MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. })) if reason.contains("broken-verbs.toml")),
             "{verb} must refuse in the pre-verb snapshot (Story 9.26), got: {result:?}"
         );
     }
@@ -478,20 +478,20 @@ fn scopes_and_faults(tmp: &Path, other: &FixtureHandle, mut other_repo: Repo) {
         .new_change(&wc, &[], &[])
         .expect_err("a broken stack must refuse");
     assert!(
-        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason })
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. })
             if reason.contains("broken.toml")),
         "unexpected error: {err:?}"
     );
     let err = Repo::open(&other.path).expect_err("invalid TOML must refuse the open");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("broken.toml")),
+        matches!(&err, RepoError::Config { reason, .. } if reason.contains("broken.toml")),
         "unexpected error: {err:?}"
     );
 
     set_jj_config(&config_file(tmp, "wrong-type.toml", "[user]\nname = 1\n"));
     let err = Repo::open(&other.path).expect_err("a wrong-typed user.name must refuse the open");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
+        matches!(&err, RepoError::Config { reason, .. } if reason.contains("user.name")),
         "unexpected error: {err:?}"
     );
 }
@@ -522,7 +522,7 @@ fn git_repo_with_a_commit(path: &Path) {
 }
 
 fn is_user_name_fault(err: &RepoError) -> bool {
-    matches!(err, RepoError::Config { reason } if reason.contains("user.name"))
+    matches!(err, RepoError::Config { reason, .. } if reason.contains("user.name"))
 }
 
 /// The CLI checks the user-level stack at START-UP, before the command touches any path
@@ -716,7 +716,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     .result
     .expect_err("init must refuse a broken stack");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
+        matches!(&err, RepoError::Config { reason, .. } if reason.contains("user.name")),
         "unexpected error: {err:?}"
     );
     assert!(!fresh.join(".jj").exists(), "a refused init writes nothing");
@@ -741,7 +741,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     .result
     .expect_err("a wrong-typed git key must refuse");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("write-change-id-header")),
+        matches!(&err, RepoError::Config { reason, .. } if reason.contains("write-change-id-header")),
         "unexpected error: {err:?}"
     );
     // Story 9.20 (deferral I3): jj-lib's own creation removes the `.jj` it started — the CLI's
@@ -760,7 +760,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         ..Default::default()
     });
     assert!(
-        matches!(&outcome.result, Err(RepoError::Config { reason }) if reason.contains("write-change-id-header")),
+        matches!(&outcome.result, Err(RepoError::Config { reason, .. }) if reason.contains("write-change-id-header")),
         "unexpected result: {:?}",
         outcome.result
     );
@@ -777,7 +777,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     let outcome = convert_colocated(git_repo.path());
     let err = outcome.result.expect_err("a wrong-typed git key must refuse");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("write-change-id-header")),
+        matches!(&err, RepoError::Config { reason, .. } if reason.contains("write-change-id-header")),
         "unexpected error: {err:?}"
     );
     // Story 9.57: the git backend's own read fails inside `init_external_git`, whose jj-lib
@@ -793,7 +793,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         .result
         .expect_err("a wrong-typed git key must refuse the import");
     assert!(
-        matches!(&err, RepoError::Config { reason } if reason.contains("write-change-id-header")),
+        matches!(&err, RepoError::Config { reason, .. } if reason.contains("write-change-id-header")),
         "unexpected error: {err:?}"
     );
     // Story 9.57: the destination the call created stays, as the CLI's `create_or_reuse_dir`

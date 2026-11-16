@@ -181,7 +181,7 @@ fn templates_duplicate_description_describes_the_duplicates() {
         })
     });
     assert!(
-        matches!(&err, MutateError::Config { reason } if reason.starts_with("Failed to parse template: ")),
+        matches!(&err, MutateError::Config { reason, .. } if reason.starts_with("Failed to parse template: ")),
         "{err:?}"
     );
 }

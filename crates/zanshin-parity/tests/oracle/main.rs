@@ -425,6 +425,7 @@ parity!(
     fetch_git_fetch_config,
     fetch_remote_fetch_bookmarks,
     fetch_nothing_new,
+    fetch_bad_remote_pattern,
     convert_colocated_default,
     convert_import_default,
     convert_import_invalid_source,
@@ -560,6 +561,7 @@ parity!(
     convert_import_refs_step_config_fault,
     convert_colocated_refs_step_config_fault,
     clone_unresolvable_immutable,
+    clone_bad_fetch_tags_pattern,
     init_when_commands_no_colocate,
     init_when_commands_other_command,
     describe_when_commands_trailers,
@@ -579,7 +581,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 503);
+    assert_eq!(SCENARIO_IDS.len(), 505);
 }
 
 #[test]

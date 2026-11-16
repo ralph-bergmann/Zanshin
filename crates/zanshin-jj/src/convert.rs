@@ -511,7 +511,7 @@ fn maybe_snapshot(
 /// fails the conversion.
 fn precondition_error(e: crate::PreconditionError) -> RepoError {
     match e {
-        crate::PreconditionError::Config { reason } => RepoError::Config { reason },
+        crate::PreconditionError::Config { reason, hints } => RepoError::Config { reason, hints },
         other => RepoError::ConvertFailed {
             reason: other.to_string(),
         },
@@ -770,7 +770,7 @@ fn import_head_into_destination(
 /// error, everything else fails the conversion.
 fn finish_error(e: MutateError) -> RepoError {
     match e {
-        MutateError::Config { reason } => RepoError::Config { reason },
+        MutateError::Config { reason, hints } => RepoError::Config { reason, hints },
         other => convert_failed(other),
     }
 }
@@ -847,8 +847,8 @@ mod tests {
     #[test]
     fn precondition_failures_map_onto_the_repo_error_taxonomy() {
         assert!(matches!(
-            precondition_error(crate::PreconditionError::Config { reason: "k".to_owned() }),
-            RepoError::Config { reason } if reason == "k"
+            precondition_error(crate::PreconditionError::Config { reason: "k".to_owned(), hints: vec!["h".to_owned()] }),
+            RepoError::Config { reason, hints } if reason == "k" && hints == ["h"]
         ));
         assert!(matches!(
             precondition_error(crate::PreconditionError::Backend("b".to_owned())),
@@ -866,8 +866,8 @@ mod tests {
     #[test]
     fn head_import_finish_failures_map_onto_the_repo_error_taxonomy() {
         assert!(matches!(
-            finish_error(MutateError::Config { reason: "alias".to_owned() }),
-            RepoError::Config { reason } if reason == "alias"
+            finish_error(MutateError::Config { reason: "alias".to_owned(), hints: vec!["h".to_owned()] }),
+            RepoError::Config { reason, hints } if reason == "alias" && hints == ["h"]
         ));
         assert!(matches!(
             finish_error(MutateError::Backend("b".to_owned())),
@@ -926,7 +926,7 @@ mod tests {
         assert!(
             matches!(
                 &result,
-                Err(RepoError::Config { reason })
+                Err(RepoError::Config { reason, .. })
                     if reason.starts_with("Invalid `revset-aliases.immutable_heads()`: ")
                         && reason.contains("bogus_function")
             ),

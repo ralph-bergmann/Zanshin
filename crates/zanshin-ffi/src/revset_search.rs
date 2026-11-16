@@ -36,7 +36,7 @@ fn map_search_err(e: RevsetSearchError) -> FfiErrorObj {
     let (code, context) = match e {
         RevsetSearchError::InvalidInput(reason) => (JJ_INVALID_INPUT, reason),
         e @ RevsetSearchError::OperationNotFound(_) => (JJ_OPERATION_NOT_FOUND, e.to_string()),
-        RevsetSearchError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason),
+        RevsetSearchError::Config(ConfigError::Load { reason, .. }) => (JJ_CONFIG_ERROR, reason),
         RevsetSearchError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
         RevsetSearchError::Revset(e) => return map_topology_err(e),
     };
@@ -442,7 +442,10 @@ mod tests {
                 r#"No operation ID matching "ab""#,
             ),
             (
-                RevsetSearchError::Config(ConfigError::Load { reason: "c".to_owned() }),
+                RevsetSearchError::Config(ConfigError::Load {
+                    reason: "c".to_owned(),
+                    hints: Vec::new(),
+                }),
                 JJ_CONFIG_ERROR,
                 "c",
             ),
@@ -468,7 +471,10 @@ mod tests {
     #[test]
     fn a_warned_fault_carries_its_warnings_and_keeps_the_revset_detail() {
         let config = map_warned_err(Warned {
-            value: RevsetSearchError::Config(ConfigError::Load { reason: "c".to_owned() }),
+            value: RevsetSearchError::Config(ConfigError::Load {
+                reason: "c".to_owned(),
+                hints: Vec::new(),
+            }),
             warnings: vec![warning()],
         });
         assert_eq!(config.code, JJ_CONFIG_ERROR);

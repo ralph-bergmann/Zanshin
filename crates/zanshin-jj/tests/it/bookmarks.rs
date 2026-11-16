@@ -988,7 +988,7 @@ fn list_sorts_by_the_argument_or_the_config() {
         .list_bookmarks(&BookmarkListOptions::default())
         .expect_err("not an array");
     assert!(
-        matches!(&err, BookmarkError::Config(zanshin_jj::ConfigError::Load { reason })
+        matches!(&err, BookmarkError::Config(zanshin_jj::ConfigError::Load { reason, .. })
             if reason.contains("Expected an array of sort keys as strings")),
         "{err:?}"
     );

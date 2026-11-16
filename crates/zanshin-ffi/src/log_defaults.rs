@@ -20,7 +20,7 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
 fn map_config_err(e: ConfigError) -> FfiErrorObj {
     match e {
-        ConfigError::Load { reason } => FfiErrorObj {
+        ConfigError::Load { reason, .. } => FfiErrorObj {
             report: None,
             hints: Vec::new(),
             code: JJ_CONFIG_ERROR.to_owned(),
@@ -142,6 +142,7 @@ mod tests {
     fn map_config_err_load_maps_to_jj_config_error() {
         let obj = map_config_err(ConfigError::Load {
             reason: "/r/.jj/repo/config.toml: bad TOML".to_owned(),
+            hints: Vec::new(),
         });
         assert_eq!(obj.code, JJ_CONFIG_ERROR);
         assert_eq!(obj.context.as_deref(), Some("/r/.jj/repo/config.toml: bad TOML"));

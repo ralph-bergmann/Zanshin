@@ -862,8 +862,9 @@ fn create_refuses_a_broken_auto_track_pattern_without_writing_an_operation() {
     let err = repo.bookmark_create(&["feature".to_owned()], None).unwrap_err();
 
     assert!(
-        matches!(&err, MutateError::Config { reason }
-            if reason.contains("Invalid `remotes.origin.auto-track-created-bookmarks`: ")),
+        matches!(&err, MutateError::Config { reason, hints }
+            if reason.starts_with("Invalid `remotes.origin.auto-track-created-bookmarks`: Syntax error\nCaused by:  --> 1:2\n")
+                && hints == &[crate::REVSET_SYNTAX_HINT]),
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op(&mut repo).0, before, "a refusal writes no operation");
