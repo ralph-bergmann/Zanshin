@@ -93,7 +93,8 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 
 ## Cross-Story Dependencies
 
-- Done: every story through 10.45 except 10.27 (backlog) and 10.18 (declined). Open: 10.27, 10.46 and 10.47.
+- Done: every story through 10.46 except 10.27 (backlog) and 10.18 (declined). Open: 10.27 and 10.47.
+- 10.46: the name rules live in `graph_ref_name.dart`; `GraphNameRequest.refName` (false only for Move to…); "Move existing here…" asks a `GraphMoveRequest` and shows `GraphMoveSheet` (rows from the popover's read, `graphBookmarkMoveCheck` over `dropActions`).
 - 10.45: tags are `GraphLayout.tagsOf` (not a kind on `GraphRef`; `refsOf` stays bookmarks); the tag popover opens on a click like the bookmark popover; the card menu has no ••• and ends with Create bookmark here… / Create tag here… (no shown command; the name sheet shows it). "Move existing here…" for tags is a free-text name sheet (`jj tag set … --allow-move`) until 10.46's picker.
 - 10.44 → 10.45 → 10.46, and 10.44 → 10.47. 10.44's delete dialog serves the card bookmark popover (10.15) and 10.45's tag popover; 10.46's name field and move picker serve 10.45's "Create tag here…" and tag popover. All four need backend 9.59 (done). 10.44's delete note points at the Push sheet's offer to push deletions (11.22). Open design questions with defaults: tree order (folders first) in 10.44; `@` inside names (allowed, only `@{` and a lone `@` refused) in 10.46.
 - 10.27 builds on 10.10's drag engine, 10.24–10.26, 10.23, and backend 9.15, 9.31 (diff source) and 9.50.
