@@ -276,10 +276,10 @@ fn be<E: std::fmt::Display>(e: E) -> FileError {
     FileError::Backend(e.to_string())
 }
 
-/// Converts a config-stack failure to [`FileError::Config`], keeping its hints.
+/// Converts a config-stack failure to [`FileError::Config`], keeping its bare reason (no
+/// `config error: ` label) and its hints.
 fn cfg(e: crate::ConfigError) -> FileError {
-    let reason = e.to_string();
-    let crate::ConfigError::Load { hints, .. } = e;
+    let crate::ConfigError::Load { reason, hints } = e;
     FileError::Config { reason, hints }
 }
 
@@ -870,6 +870,19 @@ mod tests {
             &[],
         );
         assert!(matches!(result, Err(FileError::Backend(_))), "{result:?}");
+    }
+
+    /// A config fault keeps its bare reason (no `config error: ` label) and its hints.
+    #[test]
+    fn a_config_fault_keeps_its_bare_reason_and_hints() {
+        let converted = super::cfg(crate::ConfigError::Load {
+            reason: "k".to_owned(),
+            hints: vec!["h".to_owned()],
+        });
+        assert!(
+            matches!(&converted, FileError::Config { reason, hints } if reason == "k" && *hints == ["h"]),
+            "{converted:?}"
+        );
     }
 
     /// `file_show`'s own read of `ui.conflict-marker-style` refuses a wrong value as a config

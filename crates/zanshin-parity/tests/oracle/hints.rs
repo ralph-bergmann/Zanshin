@@ -6,7 +6,9 @@
 //! through Zanshin and through the pinned `jj` on the SAME repo (a refusal writes no operation, so
 //! both see one state) and compares Zanshin's hint with the CLI's `Hint: ` stderr line verbatim.
 //! The name-pattern witnesses (Story 9.59 closing run) compare the whole error text too. The
-//! config-file witnesses (Story 9.60 closing run) compare the "Check the config file" hint only.
+//! config-file witnesses (Story 9.60 closing run) compare the "Check the config file" hint; the
+//! wrong-typed snapshot knob's witness compares the whole text too. The push commit-check witness
+//! compares an unresolvable `immutable_heads()`'s whole resolution error and its hints.
 
 use std::ops::ControlFlow;
 use std::path::Path;
@@ -130,6 +132,31 @@ fn rejected_commit_hint_renders_a_custom_summary() {
 fn rejected_commit_hint_renders_the_refs_of_a_bookmarked_commit() {
     let hint = assert_rejected_commit_hint(&[BASE, UNDESCRIBED_AT_WITH_REMOTE, BOOKMARKED_AT]);
     assert!(hint.contains(" here | "), "{hint}");
+}
+
+/// An `immutable_heads()` that does not resolve refuses `jj git push` at its commit check, which
+/// every push builds per remote: the CLI's bare `.resolve()?` gives its `Error:` text and its
+/// "Did you mean" hint (`b-mar` is next to `b-mark`), and Zanshin's resolution error the same.
+#[test]
+fn unresolvable_immutable_heads_at_the_push_commit_check_refuses_with_the_cli_error_and_hints() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = pushed_repo();
+    jj(
+        &root,
+        &["config", "set", "--repo", "revset-aliases.'immutable_heads()'", "b-mar"],
+    )
+    .ok();
+    let cli = cli_error(&["git", "push"], &root);
+    let mut repo = Repo::open(&root).expect("open");
+    let err = repo
+        .git_push(&GitPushArgs::default(), &|_| {}, None)
+        .expect_err("immutable_heads() does not resolve");
+    assert!(
+        matches!(&err, zanshin_jj::MutateError::RevsetResolutionError { reason, hints }
+            if (reason, hints) == (&cli.0, &cli.1)),
+        "{err:?} vs {cli:?}"
+    );
+    assert!(!cli.1.is_empty(), "{cli:?}");
 }
 
 /// Story 9.10: `jj next` with nothing after `@` refuses with one hint per start commit — here
@@ -527,7 +554,8 @@ fn check_file_hint(path: &str) -> Vec<String> {
     vec![format!("Check the config file: {path}")]
 }
 
-/// A wrong-typed snapshot knob: `jj status` and Zanshin's snapshot refuse with the same hint.
+/// A wrong-typed snapshot knob: `jj status` and Zanshin's snapshot refuse with the same text —
+/// the CLI's `Config error:` text without its label, no second label in the context — and hint.
 #[test]
 fn wrong_typed_snapshot_key_carries_the_cli_check_the_config_file_hint() {
     test_helpers::pin_test_env();
@@ -537,14 +565,14 @@ fn wrong_typed_snapshot_key_carries_the_cli_check_the_config_file_hint() {
         &["config", "set", "--repo", "snapshot.max-new-file-size", "true"],
     )
     .ok();
-    let (_, cli) = cli_error_labeled("Config error: ", &["status"], &root);
+    let cli = cli_error_labeled("Config error: ", &["status"], &root);
     let err = Repo::open(&root)
         .expect("open")
         .snapshot()
         .expect_err("the key has the wrong type");
     assert!(matches!(err, zanshin_jj::PreconditionError::Config { .. }), "{err:?}");
-    assert_eq!(err.hints(), cli);
-    assert_eq!(cli, check_file_hint(&path));
+    assert_eq!(config_refusal(&err.to_string(), err.hints()), cli);
+    assert_eq!(cli.1, check_file_hint(&path));
 }
 
 /// A repo-level file that is not TOML: `jj status` and `Repo::open` refuse with the same hint.

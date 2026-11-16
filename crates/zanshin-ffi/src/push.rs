@@ -342,11 +342,12 @@ pub fn ok_git_push_result(outcome: &GitPushOutcome, report: &CallReport) -> Vec<
 ///   taken; the name in `context`.
 /// - `jj.push_ref_refused` / `jj.push_commit_rejected` — an explicitly named ref is refused, or
 ///   would push a commit that is not ready (a real push); the CLI's text in `context`.
-/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a revision does not parse or resolve.
-/// - `jj.config_error` — a key the push reads is malformed, or `immutable_heads()` does not
-///   resolve; or (`--change`, Story 9.51) `templates.git_push_bookmark` does not parse or renders a
-///   name that is not UTF-8 or is empty — the CLI's text ("Failed to parse template: …", "Invalid
-///   character in bookmark name", "Empty bookmark name generated") in `context`.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a revision does not parse or resolve,
+///   or `immutable_heads()` does not resolve at the commit check (with the CLI's hints).
+/// - `jj.config_error` — a key the push reads is malformed; or (`--change`, Story 9.51)
+///   `templates.git_push_bookmark` does not parse or renders a name that is not UTF-8 or is empty —
+///   the CLI's text ("Failed to parse template: …", "Invalid character in bookmark name", "Empty
+///   bookmark name generated") in `context`.
 /// - `jj.not_a_git_repo` — the workspace has no git backend.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.

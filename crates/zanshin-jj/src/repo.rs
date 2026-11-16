@@ -2020,9 +2020,10 @@ impl Repo {
     /// - [`crate::MutateError::PushRefRefused`] / [`crate::MutateError::PushCommitRejected`] — an
     ///   explicitly named ref is refused, or would push a commit that is not ready (a real push).
     /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`] — a
-    ///   revision does not parse or resolve (a `--named` one to exactly one commit).
-    /// - [`crate::MutateError::Config`] — a key the push reads is malformed, or `immutable_heads()`
-    ///   does not resolve; or (`--change`, Story 9.51) `templates.git_push_bookmark` does not parse
+    ///   revision does not parse or resolve (a `--named` one to exactly one commit), or
+    ///   `immutable_heads()` does not resolve at the commit check (with the CLI's hints).
+    /// - [`crate::MutateError::Config`] — a key the push reads is malformed; or (`--change`, Story
+    ///   9.51) `templates.git_push_bookmark` does not parse
     ///   (`Failed to parse template: …`) or renders a name that is not UTF-8 (`Invalid character in
     ///   bookmark name`) or is empty (`Empty bookmark name generated`).
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend.

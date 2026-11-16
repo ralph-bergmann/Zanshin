@@ -358,15 +358,19 @@ fn file_error(path: &Path, err: &ConfigLoadError) -> ConfigError {
     }
 }
 
-/// A lookup failure. `ConfigGetError`'s Display already names the config key; a wrong-typed
-/// value from a file carries the CLI's hint naming that file.
+/// A lookup failure as the CLI's `Config error:` text without the label: `ConfigGetError`'s
+/// Display (it names the config key), then its sources as `Caused by:` lines
+/// (`print_error_sources`). A wrong-typed value from a file carries the CLI's hint naming that
+/// file.
 pub(crate) fn value_error(err: &ConfigGetError) -> ConfigError {
     let source_path = match err {
         ConfigGetError::Type { source_path, .. } => source_path.as_deref(),
         ConfigGetError::NotFound { .. } => None,
     };
+    let mut lines = vec![err.to_string()];
+    lines.extend(crate::warning::caused_by(std::error::Error::source(err)));
     ConfigError::Load {
-        reason: describe(err),
+        reason: lines.join("\n"),
         hints: check_file_hint(source_path),
     }
 }
@@ -659,9 +663,10 @@ const OP_USERNAME: &str = "operation.username";
 
 /// Builds one environment layer from `(name, value)` pairs, skipping the absent values.
 ///
-/// `set_value` only fails when a middle node of `name` is a non-table, which a fresh layer
-/// holding only these distinct dotted keys cannot contain — so the `?` below never fires. It
-/// goes through [`write_error`] for the reason given there.
+/// `set_value` only fails when a middle node of `name` is not a table or the target is a
+/// non-inline table. In a fresh layer where none of these fixed keys is a prefix of another,
+/// neither can happen — so the `?` below never fires. It goes through [`write_error`] for the
+/// reason given there.
 fn env_layer(
     source: ConfigSource,
     entries: Vec<(&'static str, Option<ConfigValue>)>,
@@ -2231,15 +2236,21 @@ pub(crate) fn snapshot_auto_track(config: &StackedConfig) -> Result<String, Conf
 /// A repo-config write failure, or one that cannot happen, rendered via its `source()` chain.
 ///
 /// One generic function rather than a closure per call site. Three of the instantiations are
-/// unreachable by construction — `set_value`/`delete_value` only fail when the target is a
-/// non-inline TABLE, which the two remote writers have already ruled out with `as_str()`,
-/// `getrandom::fill` only fails when the OS RNG is unavailable, and the builtin layer parse
-/// in [`load_raw`] only fails if the compiled-in `BUILTIN_CONFIG_TOML` is malformed (pinned
-/// by `builtin_config_layer_is_valid_toml`) — so a per-call-site closure would add lines no
-/// test can execute. Sharing one body means the reachable instantiations
-/// ([`jj_lib::config::ConfigFileSaveError`] via the unwritable-file tests,
-/// [`jj_lib::secure_config::SecureConfigError`] via the uncreatable-root test) cover the same
-/// lines the unreachable ones would.
+/// unreachable through the public API:
+/// - `set_value` fails when a middle node of the name is not a table or the target is a
+///   non-inline table, `delete_value` on the latter. The remote writers write `trunk()` only
+///   after [`trunk_symbol`] found it as a string, so its parents are tables; [`write_repo_presets`]
+///   writes into a new repo's freshly created file, where the CLI `.expect`s "initial repo config
+///   shouldn't have invalid values" (it would panic, Zanshin refuses); [`env_layer`] builds a
+///   fresh layer of distinct keys.
+/// - `getrandom::fill` only fails when the OS RNG is unavailable.
+/// - The builtin layer parse in [`load_raw`] only fails if the compiled-in `BUILTIN_CONFIG_TOML`
+///   is malformed (pinned by `builtin_config_layer_is_valid_toml`).
+///
+/// So a per-call-site closure would add lines no test can execute. Sharing one body means the
+/// reachable instantiations ([`jj_lib::config::ConfigFileSaveError`] via the unwritable-file
+/// tests, [`jj_lib::secure_config::SecureConfigError`] via the uncreatable-root test) cover the
+/// same lines the unreachable ones would.
 fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
     ConfigError::Load {
         reason: describe(&err),
@@ -2421,7 +2432,10 @@ fn join_string_expressions(exprs: &[String]) -> String {
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — the loader failed, or the file could not be written back.
+/// - [`ConfigError::Load`] — the loader failed, the file could not be written back, or a
+///   preset's parent (`remotes.<name>`, `revset-aliases`) is not a table; the node is named and
+///   nothing is saved. The last is not reachable through the public API: the file is a new repo's
+///   fresh file.
 pub(crate) fn write_repo_presets(
     file: impl FnOnce() -> Result<Option<ConfigFile>, ConfigError>,
     presets: RepoPresets<'_>,
@@ -2589,7 +2603,7 @@ mod tests {
         platform_config_dir, remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path,
         set_trunk_alias, settings_from, snapshot_auto_track, snapshot_max_new_file_size,
         split_legacy_bookmark_behavior, stamp, system_config_paths, ui_movement_edit, user_config_paths, user_email,
-        ConfigEnv, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML, CLI_DEFAULTS,
+        write_repo_presets, ConfigEnv, RepoPresets, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML, CLI_DEFAULTS,
     };
     use crate::cli_command::NO_COMMAND;
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
@@ -3725,6 +3739,12 @@ mod tests {
             ["Check the config file: /r/config.toml"]
         );
         assert!(hints(super::value_error(&wrong_type(None))).is_empty());
+        // The reason is the CLI's text: the key, then the cause on a `Caused by:` line.
+        let super::ConfigError::Load { reason, .. } = super::value_error(&wrong_type(None));
+        assert_eq!(
+            reason,
+            "Invalid type or value for snapshot.auto-track\nCaused by: invalid type"
+        );
         let not_found = ConfigGetError::NotFound { name: "x".to_owned() };
         assert!(hints(super::value_error(&not_found)).is_empty());
 
@@ -4233,6 +4253,36 @@ fetch-bookmarks = \"main\"
 'trunk()' = \"master@upstream\"
 ",
             "only the alias value may change"
+        );
+    }
+
+    /// A preset under a `remotes.<name>` that is not a table cannot be set (jj-lib's
+    /// `WouldOverwriteValue`): the writer refuses naming the node, without a panic (the CLI's
+    /// `.expect` would panic) and without saving. The remote writer never sets below
+    /// `remotes.<name>`, so the same file renames fine.
+    #[test]
+    fn a_preset_below_a_non_table_remote_refuses_while_the_rename_writer_succeeds() {
+        const NON_TABLE: &str = "[remotes]\norigin = \"x\"\n\n[revset-aliases]\n'trunk()' = \"main@origin\"\n";
+        let (_tmp, path) = repo_config(NON_TABLE);
+        let tags = ["v*".to_owned()];
+        let presets = RepoPresets {
+            remote: "origin",
+            fetch_bookmarks: None,
+            fetch_tags: Some(&tags),
+            trunk: None,
+        };
+        let super::ConfigError::Load { reason, .. } =
+            write_repo_presets(|| Ok(load(&path)), presets).expect_err("the parent is not a table");
+        assert!(reason.contains("remotes.origin"), "{reason}");
+        assert_eq!(read_back(&path), NON_TABLE, "nothing is saved");
+
+        rename_remote_in_repo_config(load(&path), "origin", "upstream").expect("the rename succeeds");
+        let text = read_back(&path);
+        assert!(
+            text.contains("upstream = \"x\"")
+                && text.contains("'trunk()' = \"main@upstream\"")
+                && !text.contains("origin"),
+            "{text}"
         );
     }
 

@@ -61,7 +61,7 @@ use jj_lib::str_util::{StringExpression, StringMatcher};
 use jj_lib::transaction::Transaction;
 use jj_lib::view::View;
 
-use crate::mutate::{be, cfg, cfg_text, rev, MutateError};
+use crate::mutate::{be, cfg, rev, MutateError};
 use crate::revset::RevsetConfig;
 use crate::snapshot::VerbContext;
 use crate::template::{TemplateStartup, Templates};
@@ -588,11 +588,11 @@ impl<'r, 't> CommitsValidator<'r, 't> {
             .flat_map(|(_, old_head)| old_head.target.present_adds())
             .cloned()
             .collect();
-        // The CLI resolves with a bare `.resolve()?` here, no config-error wrapping, through
-        // `attach_revset_evaluator`'s id-prefix context (`cli/src/commands/git/push.rs:803-811` @
-        // v0.46.0), as `git.private-commits` below.
-        let immutable_heads = crate::revset::resolve_expression(base, planner.immutable_heads, Some(&planner.prefixes))
-            .map_err(cfg_text)?;
+        // The CLI resolves with a bare `.resolve()?` through `attach_revset_evaluator`'s id-prefix
+        // context (`cli/src/commands/git/push.rs:834-836` @ v0.47.0), so a failure is its
+        // `From<RevsetResolutionError>`: a resolution error with its hints, no config wrapping.
+        let immutable_heads =
+            crate::revset::resolve_expression(base, planner.immutable_heads, Some(&planner.prefixes)).map_err(rev)?;
         let private_commits = if planner.args.allow_private {
             None
         } else {
@@ -1490,10 +1490,8 @@ pub(crate) fn plan_push(
     let mut hints = Vec::new();
     let remotes = resolve_remotes(&base, args, config, sink, &mut hints)?;
     let parse_config = crate::revset::revset_config(config, sink).map_err(cfg)?;
-    // The reason is already the CLI's "Invalid `revset-aliases.immutable_heads()`: …" text;
-    // `cfg` would prepend `config error: `.
     let immutable_heads =
-        crate::revset::immutable_heads_expression(repo.workspace(), &parse_config, sink).map_err(MutateError::from)?;
+        crate::revset::immutable_heads_expression(repo.workspace(), &parse_config, sink).map_err(cfg)?;
     let mut planner = Planner {
         repo,
         args,

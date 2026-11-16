@@ -433,8 +433,9 @@ pub(crate) fn ui_path(workspace_root: &Path, path: &RepoPath) -> String {
     .format_file_path(path)
 }
 
-/// The lines `print_error_sources` (`command_error.rs:1068-1084`) writes for `source`: one
-/// `Caused by: …` line for a single cause, a numbered list below `Caused by:` for a chain.
+/// The lines `print_error_sources` (`cli/src/command_error.rs:1241-1257` @ v0.47.0) writes for
+/// `source`: one `Caused by: …` line for a single cause, a numbered list below `Caused by:` for a
+/// chain.
 pub(crate) fn caused_by(source: Option<&(dyn Error + 'static)>) -> Vec<String> {
     let Some(err) = source else {
         return Vec::new();

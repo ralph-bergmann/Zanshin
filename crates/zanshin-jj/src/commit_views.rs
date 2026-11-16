@@ -259,12 +259,9 @@ fn rev(e: crate::RevsetError) -> CommitViewError {
             reason,
             hints: detail.hints,
         },
-        crate::RevsetError::Config(inner) => CommitViewError::Config {
-            reason: inner.to_string(),
-            hints: match inner {
-                crate::ConfigError::Load { hints, .. } => hints,
-            },
-        },
+        crate::RevsetError::Config(crate::ConfigError::Load { reason, hints }) => {
+            CommitViewError::Config { reason, hints }
+        }
         crate::RevsetError::JjLibError(reason) => CommitViewError::Backend(reason),
         crate::RevsetError::Precondition(inner) => CommitViewError::Precondition(inner),
         // Only `Repo::graph_topology` raises it; no commit view walks a graph.
@@ -731,7 +728,7 @@ mod tests {
                 reason: "not a table".to_owned(),
                 hints: vec!["h".to_owned()],
             })),
-            CommitViewError::Config { reason, hints } if reason.contains("not a table") && hints == ["h"]
+            CommitViewError::Config { reason, hints } if reason == "not a table" && hints == ["h"]
         ));
         assert!(matches!(
             rev(RevsetError::JjLibError("index read failed".to_owned())),

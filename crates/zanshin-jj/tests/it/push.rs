@@ -1106,12 +1106,13 @@ fn private_commits_are_rejected_unless_allowed() {
     assert_eq!(w.remote_refs()["refs/heads/main"], wip);
 }
 
-/// Story 9.58 review: the push commit check resolves `immutable_heads()` with a bare
-/// `.resolve()?` (`cli/src/commands/git/push.rs:803-805` @ v0.46.0), so its refusal keeps
+/// The push commit check resolves `immutable_heads()` with a bare `.resolve()?`
+/// (`cli/src/commands/git/push.rs:834-836` @ v0.47.0), so its refusal is the CLI's
+/// `From<RevsetResolutionError>` (`cli/src/command_error.rs:858-865`): a resolution error with
 /// jj-lib's text — without the "Invalid `revset-aliases.immutable_heads()`" prefix the finish
-/// paths carry.
+/// paths carry — and nothing written.
 #[test]
-fn an_unresolvable_immutable_alias_at_the_commit_check_keeps_jj_libs_text() {
+fn an_unresolvable_immutable_alias_at_the_commit_check_is_a_resolution_error() {
     let mut w = world();
     advance_main(&mut w);
     // The clone's repo config already holds a `[revset-aliases]` table (`trunk()`): add the alias
@@ -1127,15 +1128,16 @@ fn an_unresolvable_immutable_alias_at_the_commit_check_keeps_jj_libs_text() {
     );
     fs::write(&path, text).expect("write the repo config");
     w.reopen();
+    let (before, remote) = (w.head_op(), w.remote_refs());
     let err = w.push(&GitPushArgs::default()).expect_err("the commit check refuses");
-    let MutateError::Config { reason, .. } = &err else {
-        panic!("{err:?}");
-    };
-    assert!(reason.contains("nonexistent_symbol_xyz"), "{reason}");
     assert!(
-        !reason.starts_with("Invalid `revset-aliases.immutable_heads()`"),
-        "{reason}"
+        matches!(&err, MutateError::RevsetResolutionError { reason, .. }
+            if reason.contains("nonexistent_symbol_xyz")
+                && !reason.starts_with("Invalid `revset-aliases.immutable_heads()`")),
+        "{err:?}"
     );
+    assert_eq!(w.head_op(), before, "the refusal writes no operation");
+    assert_eq!(w.remote_refs(), remote, "nothing is pushed");
 }
 
 /// A second remote `up`: a clone of the bare remote, with `main@up` tracked where `main@origin`

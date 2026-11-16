@@ -316,7 +316,8 @@ fn workspace_root_and_log_defaults_never_snapshot() {
     assert!(at_paths(&fx.root).is_empty());
 }
 
-/// "Wrong-typed knob": refused as a config fault naming the key; nothing written.
+/// "Wrong-typed knob": refused as a config fault naming the key, its bare reason without the
+/// `config error: ` label; nothing written.
 #[test]
 fn a_wrong_typed_knob_is_a_config_fault_naming_the_key() {
     let fx = git_fx("snapshot.max-new-file-size = true\n");
@@ -328,7 +329,7 @@ fn a_wrong_typed_knob_is_a_config_fault_naming_the_key() {
 
     assert!(
         matches!(&err, StatusError::Precondition(PreconditionError::Config { reason, .. })
-            if reason.contains("snapshot.max-new-file-size")),
+            if reason.contains("snapshot.max-new-file-size") && !reason.starts_with("config error: ")),
         "{err:?}"
     );
     assert_eq!(raw_ops(&fx.root).len(), before);
