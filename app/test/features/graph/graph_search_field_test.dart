@@ -898,6 +898,30 @@ void main() {
       expect(buttons(tester), <String>['graph-search-new-0'], reason: 'a new list drops the hover claim');
     });
 
+    _testWidgets('New on a hovered row that is not the keyboard row runs that row\'s jj new and closes', (
+      tester,
+    ) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.bookmarkList = features;
+      await tester.tap(_field());
+      await tester.pump();
+      await _type(tester, 'b:feat');
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(id('graph-search-row-2')));
+      await tester.pump();
+      expect(_rows(tester).first.active, isTrue, reason: 'the keyboard row stays on row 0');
+      final String cmd = tester.widget<ZsTooltip>(_tooltip('New change here')).cmd!;
+      expect(cmd, isNot('jj new feature/auth-flow'), reason: "the hovered row's command, not the keyboard row's");
+      await tester.tap(id('graph-search-new-2'));
+      await tester.pump();
+      final action = rig.actions.ran.single as GraphNew;
+      expect(action.command, cmd);
+      expect(action.revsetTarget, rig.searchSource.bookmarkList.singleWhere((b) => cmd.endsWith(b.name)).target);
+      expect(find.byType(ZsFieldListRow), findsNothing);
+    });
+
     _testWidgets('⌘↩ runs jj new on the keyboard ref row and closes; the footer shows both keys', (tester) async {
       final _Rig rig = await _start(tester);
       rig.searchSource.bookmarkList = features;

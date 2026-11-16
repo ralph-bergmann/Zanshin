@@ -1426,9 +1426,9 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       identifier: 'graph-search-row-$i',
       child: content,
     );
-    // The field tracks the hovered row itself: the row's hover never moves the keyboard row.
+    // The field tracks the hovered row itself: the row's hover never moves the keyboard row. Only pointer motion
+    // claims it (onHover), not onEnter, which also fires when a keyboard move scrolls a row under a still pointer.
     return MouseRegion(
-      onEnter: (_) => _hoverAt(i),
       onHover: (_) => _hoverAt(i),
       onExit: (_) {
         if (_hoverRow == i) {

@@ -5,7 +5,7 @@ created: '2026-11-16'
 status: 'done'
 baseline_revision: '5c419d0b4ba5d90b817e99e8632ba079b69d40f1'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/.claude/skills/design-artifacts/SKILL.md'
@@ -126,6 +126,42 @@ deferred: []
   - `[medium]` `[patch]` (intent) The bookmark read widened to every remote row, beyond "add tags" — needed for Track; its real harm is the duplicate synced rows, patched with the first row.
   - `[low]` `[reject]` (intent) Track/New on remote tags are tested only as command strings — the verbs and symbols are tested end to end in earlier stories (9.59, 10.44 closing).
 
+### 2026-11-16 — Review pass (follow-up)
+- verdicts: 32 findings — high 0, medium 2, low 28, false 2, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` (verification) An enabled New button is never clicked, least of all on a hovered row that is not the keyboard row; a miswired `onPressed` or a row mix-up would pass — patched: a widget test hovers row 2 of `b:feat`, taps `graph-search-new-2` and asserts the hovered row's `jj new` and `revsetTarget` ran and the list closed.
+  - `[low]` `[patch]` (verification) `revsetTarget: change?.key ?? key` always equals `key` (`GraphSearchIndex.change` matches `c.key == key`), so the comment's divergent-change claim is false — patched: `revsetTarget: key` with a `shortcut:` comment naming the divergent-target limit and the Bookmarks view's layout lookup as the upgrade.
+  - `[low]` `[reject]` (intent) The index drops synced remote rows, beyond the literal skip list — the previous pass's deliberate patch, mirroring plain `jj bookmark list`; a synced `main@origin` is the same commit as `main`, which stays listed.
+  - `[low]` `[reject]` (intent) A Recent `name@remote` whose row turned synced no longer resolves — same root as the blind Recent row; rejected there.
+  - `[low]` `[reject]` (intent) The catalogue never shows a tracked remote row — same root as the carried catalogue row: `GraphRef` has no tracking flag.
+  - `[low]` `[reject]` (intent) The footer hides ⌘↵ while busy, unlike the literal "on a ref row with `newAction`" — carried: the previous pass's patch; the key does nothing while busy.
+  - `[low]` `[reject]` (intent) ⌘↩ with the list closed no longer applies the text — carried: the ⌘↩-outside-a-ref-row row; the spec's rule.
+  - `[low]` `[reject]` (intent) The jj commands are asserted as strings, never run through the real runner — carried: the remote-tag-actions row; verbs tested end to end in 9.59 / 10.44.
+  - `[low]` `[reject]` (intent) `tags()` against a real repository only checks an empty list — `tags()` is `handle.tags()`, tested on real repositories in its own stories; the search adds no logic there.
+  - `[low]` `[reject]` (intent) The visual surface (Refs Study section 8) is not checked — the intent's Never list moves the Marionette check to the console session.
+  - `[low]` `[reject]` (intent) Tag "no match → Any fallback", "beyond the view → `all()`" and "refusal → toast" have no tag-specific test — the code paths are shared with bookmarks and the runner, which are tested.
+  - `[low]` `[reject]` (blind) A bookmark row's New lands on a same-named tag — carried: the CLI's own resolution.
+  - `[low]` `[reject]` (blind) New on an out-of-view hit has no `all()` rule and no test — the new change becomes @, which the view shows; the Bookmarks view's New on a dimmed row behaves the same; rare.
+  - `[low]` `[reject]` (blind) Track has no keyboard or VoiceOver path — carried.
+  - `[low]` `[reject]` (blind) ⌘↩ swallows a key that used to submit (popup closed, menu open) — carried: the spec's rule.
+  - `[low]` `[reject]` (blind) ⌘↩ while busy gives no feedback — the visible buttons carry the disabled reason; the footer's key hides as the previous pass decided; adding a disabled footer state is new design.
+  - `[low]` `[reject]` (blind) After Track, the Recent `name@remote` entry loses its ref (the synced row is dropped): no buttons, goes to the recorded change — confirmed (`graph_search_field.dart` `_recentRow` looks up by `display`); the recorded change id is the ref's change and the local ref is listed beside it, so only the buttons are lost; the fix needs a fallback lookup or synced rows kept for Recent (new branches/fields).
+  - `[low]` `[reject]` (blind) The widgetbook fake conflates tracked with synced — carried.
+  - `[false]` `[reject]` (blind) `t:` / `tag:` changes how existing input reads — that is the intent's Tag scope prefix, as `b:` before it.
+  - `[medium]` `[patch]` (blind) No test clicks Track or New on a hovered non-keyboard row — same root as the verification row; patched there.
+  - `[low]` `[reject]` (blind) No test of `prepare` when `tags()` fails — `tags()` goes through the same `_read` wrapper as `bookmarks()`, whose failure path predates this story.
+  - `[low]` `[reject]` (blind) Recent JSON stores tag names under `"bookmark"` — the intent fixes the shape (`"tag": true` beside the existing field); a rename needs a stored-data migration.
+  - `[false]` `[reject]` (blind) The port doc comments of `bookmarks()` and `tags()` disagree — each describes its own read correctly: the bookmark read returns every row, `handle.tags()` already drops `git`.
+  - `[low]` `[reject]` (blind) Tag rows use `bookmarksTrack` / `bookmarksBusy` — carried: the bookmark-named helpers and strings row.
+  - `[low]` `[reject]` (blind) The DS card lacks a tag row, a tracked remote row and the busy state — carried: the card is a demo; the prompt documents the rules.
+  - `[low]` `[reject]` (edge) A bookmark named like a tag resolves to the tag — carried.
+  - `[low]` `[reject]` (edge) A conflicted ref offers New and jj refuses — the matrix's "jj refusal → the runner's toast"; the Bookmarks view does the same.
+  - `[low]` `[reject]` (edge) ⌘↩ swallowed in the menu or with the popup closed — carried.
+  - `[low]` `[patch]` (edge) `onEnter` re-claims the hover when a keyboard move scrolls a row under a still pointer, so the buttons leave the keyboard row — confirmed (`_activeChanged` clears the claim, the scroll then fires `onEnter`); patched: only `onHover` (pointer motion) claims the row; the hover tests still pass.
+  - `[low]` `[reject]` (edge) A local `a@b` and remote `a` at `b` collide in the dedupe — carried.
+  - `[low]` `[reject]` (edge) A Recent `name@origin` that turned synced misses — same root as the blind Recent row; rejected there.
+  - `[low]` `[reject]` (edge) The real-repo test's `git` inherits the global git config — the gate pins `GIT_CONFIG_GLOBAL` for `flutter test` (Makefile.toml), the commit passes `--no-gpg-sign`, and the sibling tests use the same pattern.
+
 ## Design Notes
 
 - **`--all-remotes` in the search:** Track needs untracked remote hits, which plain `jj bookmark list` leaves out; `@git` rows are dropped as the Bookmarks view drops them. Tags come from `handle.tags()`, which already lists all remotes minus `git`.
@@ -155,6 +191,11 @@ deferred: []
 - Not run: the parity oracle (no command fixture changed); `cargo make test` / `test-full` / `coverage` (gate rule). No Rust, FFI or schema change.
 - Matrix audit: every row has a passing test (`graph_search_index_test`, `graph_search_field_test` Story 10.47 group, `graph_search_controller_test`, `repo_graph_source_test`).
 
+**Verification notes (2026-11-16, follow-up review pass, targeted checks per the gate rule):**
+- `flutter test test/features/graph test/features/bookmarks test/features/home test/architecture test/l10n test/widgetbook` in `app/` — 1757 pass (1756 + the new hovered-row New test).
+- `dart analyze --fatal-infos --fatal-warnings` in `app/` — no issues; `dart format --set-exit-if-changed .` — 0 changed after formatting the new test.
+- Not run: `cargo make test` / `test-full` / `coverage` (gate rule), the parity oracle and Rust checks (no Rust, FFI, schema or command change), `flutter gen-l10n` (no string change), the DS checks (no DS change).
+
 ## Auto Run Result
 
 Status: done
@@ -175,4 +216,6 @@ Status: done
 
 **Follow-up review:** recommended — two medium entries were patched (patched counts: high 0, medium 2, low 5). The unverified risk: the synced-row filter and the `--all-remotes` read change what the Bookmark scope lists in a real repository with tracked and untracked remotes; only fakes and one real-worker untracked row check it, not a repository where a tracked remote is ahead or behind.
 
-**Residual risks.** No visual check against the Refs Study section 8 or the DS card (Marionette and the DS publish belong to the console session). ⌘↩ is tested with simulated key events only. The catalogue now hides synced remote refs and shows its unsynced ones as untracked. The full gate (incl. coverage) runs at the end of the story loop.
+**Follow-up review pass (2026-11-16).** 32 findings (high 0, medium 2, low 28, false 2). Patched (3 entries: 1 medium, 2 low): a widget test clicks New on a hovered row that is not the keyboard row (medium; the verification and blind rows); only pointer motion (`onHover`) claims the hovered row, so a keyboard move that scrolls a row under a still pointer keeps the buttons on the keyboard row (`graph_search_field.dart`); `revsetTarget: key` with a `shortcut:` comment in place of the no-op `change?.key ?? key` and its false divergent-change claim (`graph_search_index.dart`). Deferred: none. Rejected: the Recent `name@remote` entry that turns synced after Track loses its buttons (low ×3, the fix needs a fallback lookup or synced rows kept for Recent; the entry still goes to the ref's change); New on an out-of-view hit (low, the new @ is shown; as in the Bookmarks view); ⌘↩ busy feedback (low, the buttons carry the reason); conflicted ref offers New (low, the matrix's refusal toast); Recent JSON key name (low, intent fixes the shape); `tags()` failure test (low, shared wrapper); the real-repo test's git config (low, the gate pins it); the synced filter and the catalogue's tracked rows (low, the previous pass's decision / no tracking flag); real-repo tags, tag-specific matrix tests, visual check (low, shared paths / Never list); `t:` changes input meaning and the port doc comments (false); carried rejections of the first pass (same-named tag ×2, Track keyboard path, ⌘↩ outside a ref row ×4, catalogue fake, bookmark-named strings, DS card, `a@b` collision, footer busy, commands as strings). Follow-up review: not recommended — no high was patched (patched counts: high 0, medium 1, low 2).
+
+**Residual risks.** No visual check against the Refs Study section 8 or the DS card (Marionette and the DS publish belong to the console session). ⌘↩ is tested with simulated key events only. The catalogue now hides synced remote refs and shows its unsynced ones as untracked. The full gate (incl. coverage) runs at the end of the story loop. A Recent `name@remote` entry whose remote row became synced shows no buttons (rejected low). A ref on a divergent change runs New with a change-id `revsetTarget` the layout does not key (the `shortcut:` comment).

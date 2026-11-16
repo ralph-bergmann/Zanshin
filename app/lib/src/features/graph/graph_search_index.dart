@@ -347,8 +347,9 @@ final class GraphBookmarkRow extends GraphSearchRow {
           null => revsetSymbol(ref.name),
         },
       ],
-      // The layout key: a divergent change's nodes are keyed by commit id, not by the change id.
-      revsetTarget: change?.key ?? key,
+      // shortcut: the target's change id; a divergent target's nodes are keyed by commit id, so its pending card and
+      // selection follow miss — resolve the layout key as the Bookmarks view does if that case matters.
+      revsetTarget: key,
     ),
     null => null,
   };
