@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/macos/Runner/MainWindowChrome.swift (placeWindowButtons)
     severity: medium (unverified)
+    resolved: >-
+      2026-11-16 — closed as record (Ralph): the follow-up (commit 904fa1c1) sets the titlebar container to 2 × the line (102 pt at 150 %), which most likely moots it; older macOS versions are checked only if they become a target.
   - summary: >-
       The runner's XCTests, which now witness the hover fix and the restore / placeButtons parsing, still run in no gate step.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       Makefile.toml; crates/xtask/src/tasks/gate_plan.rs
     severity: medium
+    resolved: >-
+      2026-11-16 — fixed (console session, commit a82ae42b): gate step test-runner runs the runner's XCTests for app/macos/ changes, the test host on a throwaway home.
 ---
 
 <intent-contract>

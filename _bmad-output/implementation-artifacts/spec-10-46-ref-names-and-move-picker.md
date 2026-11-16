@@ -130,7 +130,7 @@ deferred: []
 
 ## Design Notes
 
-- **`@` inside a name — default taken, Ralph decides later:** `@` stays allowed; only `@{` and a lone `@` are errors (the story's default). In jj `name@remote` is a remote symbol, so such a name works only quoted; the app already refuses to drag such names.
+- **`@` inside a name — default taken, Ralph decides later:** `@` stays allowed; only `@{` and a lone `@` are errors (the story's default). In jj `name@remote` is a remote symbol, so such a name works only quoted; the app already refuses to drag such names. Decided (Ralph, 2026-11-16): keep `@` allowed.
 - **Rules are the story's list, not all of git's:** git also refuses a path component starting with `.` or ending in `.lock` (`a/.b`, `a.lock/b`); those still reach jj and fail at export with jj's refusal toast. Stricter than the CLI by Ralph's 2026-11-15 decision.
 - **Direction word:** the backend preview says only "not a fast-forward" (`allowBackwardsNeeded`); backwards vs sideways comes from the layout's ancestry (indirect edges keep ancestry through hidden commits). With the current target outside the layout the pill says "backwards", the flag's own word.
 - **Titles stay** "Move a bookmark here" / "Move a tag here" (the study says "Move a bookmark to <id>"; the id is in the command line already) — Claude's proposal.

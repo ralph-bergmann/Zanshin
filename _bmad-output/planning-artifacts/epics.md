@@ -8450,6 +8450,28 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 9.2 (`list_tags`), 9.20 (push `-t`), 10.44–10.47.
 
+### Story 9.60: A bad `remotes.<r>.*` pattern refuses with the CLI's `Caused by:` lines and hint [M/bridge]
+*(Added 2026-11-16, Ralph — console session; ledger "Surfaced in the closing run of Story 9.59".)*
+
+**Motivation.** The closing run of 9.59 ported the CLI's name-pattern error text to every name-pattern caller. One case is still missing: a bad pattern in `remotes.<r>.auto-track-bookmarks`, `remotes.<r>.fetch-bookmarks` or `remotes.<r>.fetch-tags` refuses with only "Invalid `remotes.<r>.<field>`: <kind>". The CLI also prints the `Caused by:` lines and the hint (`parse_remote_string_expression`, `cli/src/revset_util.rs:463-488` @ v0.47.0).
+
+**Scope.**
+1. The refusal for these three keys reads like the CLI: the same first line, the `Caused by:` lines (`warning::caused_by`) and `revset::parse_hint`.
+   - Today the text comes from `crates/zanshin-jj/src/config.rs:1714-1724` and the clone preset closure in `crates/zanshin-jj/src/creation.rs:541-550`.
+2. **A hints channel for config errors.** `ConfigError::Load` and `RepoError::Config` carry no hints, so `jj.config_error` cannot transport one. Add hints there (FFI and `zanshin_core`) the way the name-pattern port carries them, so the app shows the hint like every other refusal.
+3. **Parity:** an oracle refusal scenario per key, or one per caller if the text is shared.
+
+**Non-goals.** Other config errors; the UI beyond showing the hint the existing refusal path already shows.
+
+**Depends on.** 9.59 (done).
+
+**Witnesses.**
+- A bad pattern in each of the three keys refuses with the CLI's first line, `Caused by:` lines and hint, in fetch and in clone.
+- The parity oracle agrees with the stock CLI.
+- `jj.config_error` carries the hint through the FFI to Dart.
+
+**Related:** 9.59 and its closing run (`spec-9-59-closing-name-pattern-error-text`).
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
@@ -15291,5 +15313,34 @@ Result: one correction per change and no feedback loop. A sampler after each com
 - The console session checks in the running app.
 
 **Related:** 11.26 (its ledger items "Under a Settings zoom other than 100 %…" and "The top bar may jump for one frame…" are this story's inbound items), 11.20 (zoom), 11.4, 11.12.
+
+---
+
+### Story 11.28: View › Enter Full Screen reads "Exit Full Screen" in full screen; Minimize and Zoom grey there [UI/native]
+*(Added 2026-11-16, Ralph — console session; Ralph found it in the running app. Takes in the ledger item "While the project window is in full screen, Minimize and Zoom stay enabled…" from Story 11.17, same cause.)*
+
+**Motivation.** In full screen the View menu still says "Enter Full Screen". A click leaves full screen, so the item works, but its title is wrong. On the Mac the item reads "Exit Full Screen" while the key window is in full screen, and Window › Minimize and Zoom are greyed there. In Zanshin they stay enabled.
+
+**Root cause (read in the code 2026-11-16).** AppKit switches this title while it validates the item: `NSWindow` does it for `toggleFullScreen:`. The Flutter engine builds every submenu with `autoenablesItems = NO` (`engine/…/macos/framework/Source/FlutterMenuPlugin.mm:372`), so AppKit never validates. The app already relies on that: `MenuStateChannel` (`app/macos/Runner/WindowingBootstrap.swift`) sets `isEnabled` by selector after each menu build. The title stays the one from the menu build.
+
+**Scope.**
+1. While the key window is in full screen, the `toggleFullScreen:` item reads "Exit Full Screen"; otherwise it reads "Enter Full Screen".
+   - The title changes on entering and leaving full screen, on a key-window change, and after every menu rebuild.
+   - In full screen, Window › Minimize and Zoom are greyed, as on the Mac; `AppMenuModel.windowItemsEnabled` takes the key window's full-screen state.
+2. **Proposed way:** extend `zanshin/menu_state`'s `apply` with titles by selector, beside `enabled`. Dart owns the labels (`app_en.arb`, like every other menu label) and knows the key window's full-screen state from its window-chrome report. It re-sends the state when that changes. The native side sets the title the way it sets `isEnabled`.
+   - A purely native observer would work too, but it would put a menu label into Swift.
+3. The menu's other selector items stay as they are.
+
+**Non-goals.** Other titles AppKit would switch while validating (none known in this menu); the engine itself.
+
+**Depends on.** 11.17 (menu state, done), 11.13 (menu bar, done).
+
+**Witnesses.**
+- Tests:
+  - A Dart test: `nativeState` carries the "Exit Full Screen" title and greyed Minimize and Zoom for a key window in full screen, and "Enter Full Screen" with today's enabled rules otherwise.
+  - A runner XCTest: `MenuStateChannel.apply` sets the title by selector, and a malformed payload changes nothing.
+- In the running app, the View menu reads "Exit Full Screen" in full screen and "Enter Full Screen" after leaving it, also after a menu rebuild (for example, toggling Show Minimap) while in full screen.
+
+**Related:** 11.13, 11.17, 11.26, 11.27.
 
 ---

@@ -225,7 +225,7 @@ deferred:
 
 ## Design Notes
 
-- **Tree order (open design question):** folders first, as the inspector tree, so `main` sits below the folders — the story's named default. Leaves keep jj's order (name, then local before its remotes).
+- **Tree order (open design question):** folders first, as the inspector tree, so `main` sits below the folders — the story's named default. Leaves keep jj's order (name, then local before its remotes). Decided (Ralph, 2026-11-16): keep folders first.
 - **"Has a remote" means tracked:** only a tracked remote ref makes `delete` differ from `forget`, and only a tracked one gets its deletion pushed (`find_bookmarks_to_push` / `find_tags_to_push`, `../jj` v0.47.0 cli/src/commands/git/push.rs:1424-1456). An untracked remote copy is untouched by either, so such a delete needs no question.
 - **Tag "Only here"** is two operations (`untrack` per remote, then `delete`; jj 0.47 has no `tag forget`); the toast's Undo undoes the delete only.
 - **Tag rows reuse the bookmark row model**: a `Tag` maps to a `Bookmark` with no distances, so one model, tree and tile serve both kinds (`kind` picks the verbs, labels and drag).

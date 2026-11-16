@@ -36,6 +36,8 @@ deferred:
     location: >-
       app/macos/RunnerTests/RunnerTests.swift
     severity: medium
+    resolved: >-
+      2026-11-16 — fixed (console checks, no commit): native screenshots at 90 / 100 / 150 % and after leaving full screen, real-pointer hover, the Move & Resize menu, clicks on the moved buttons' menu, and Ralph's check of every zoom step in Paper and Night.
   - summary: >-
       The runner's XCTests, now including the Story 11.26 button placement, still run in no gate step.
     evidence: |-
@@ -43,6 +45,8 @@ deferred:
     location: >-
       Makefile.toml; crates/xtask/src/tasks/gate_plan.rs
     severity: medium
+    resolved: >-
+      2026-11-16 — fixed (console session, commit a82ae42b): gate step test-runner runs the runner's XCTests for app/macos/ changes.
 ---
 
 <intent-contract>

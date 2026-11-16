@@ -2435,8 +2435,8 @@ _Claude checked the day axis, the cards, the edges, the view model and the stale
 
 - **While the project window is in full screen, Minimize and Zoom stay enabled and the item keeps the title "Enter Full Screen".** Low.
   - The engine's submenus have `autoenablesItems = NO` (`FlutterMenuPlugin.mm:372`), so `NSWindow`'s menu validation never greys or retitles them; `AppMenuModel.windowItemsEnabled` (`app/lib/src/features/shell/app_menu.dart`) sees only the key window. Pre-existing since 11.13.
-  - **Follow-up:** send the key window's full-screen state too and grey Minimize/Zoom and retitle the item ("Exit Full Screen", an ARB string) over `zanshin/menu_state`; none until Ralph wants it.
-- **The runner's XCTests (`MenuStateChannel`) run in no gate step.** Low.
+  - **Follow-up:** send the key window's full-screen state too and grey Minimize/Zoom and retitle the item ("Exit Full Screen", an ARB string) over `zanshin/menu_state`; none until Ralph wants it. Covered by Story 11.28 (Ralph wants it, 2026-11-16).
+- ~~**The runner's XCTests (`MenuStateChannel`) run in no gate step.**~~ — RESOLVED 2026-11-16 (console session, commit a82ae42b): gate step `test-runner` runs them for changes under `app/macos/` (Ralph's decision), with a throwaway home for the test host. Low.
   - No `Makefile.toml` task or `crates/xtask/src/tasks/gate_plan.rs` rule runs `xcodebuild test`; Story 11.17 ran `app/macos/RunnerTests/RunnerTests.swift` by hand (2 passed).
   - **Follow-up:** a gate step `xcodebuild test -workspace app/macos/Runner.xcworkspace -scheme Runner -only-testing:RunnerTests` for changes under `app/macos/` (a gate change for Ralph), or none.
 
@@ -3143,7 +3143,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 - **A bad `remotes.<r>.auto-track-bookmarks` / `fetch-bookmarks` / `fetch-tags` pattern refuses with only "Invalid `remotes.<r>.<field>`: <kind>", without the CLI's `Caused by:` lines and hint.** Medium.
   - `crates/zanshin-jj/src/config.rs:1714-1724` and the clone `preset` closure (`crates/zanshin-jj/src/creation.rs:541-550`) render `e.kind()` only; the CLI's `parse_remote_string_expression` (`cli/src/revset_util.rs:463-488` @ v0.47.0) adds both. `ConfigError::Load` / `RepoError::Config` carry no hints, so `jj.config_error` needs a hints channel first.
-  - **Follow-up:** render the `Caused by:` lines with `warning::caused_by` and carry `revset::parse_hint` through `jj.config_error` (hints on `ConfigError` / `RepoError::Config`), like the name-pattern port.
+  - **Follow-up:** render the `Caused by:` lines with `warning::caused_by` and carry `revset::parse_hint` through `jj.config_error` (hints on `ConfigError` / `RepoError::Config`), like the name-pattern port. Covered by Story 9.60.
 
 ## Surfaced in Story 10.44 (bmad-build-auto, 2026-11-16)
 
@@ -3165,18 +3165,18 @@ Ralph and Claude went through the inspector point by point; each point was check
 - ~~**The top bar may jump for one frame when AppKit lays the titlebar out again.**~~ — RESOLVED 2026-11-16 (spec-11-27-traffic-lights-hover-and-zoom, commit 73d56a4a): real (4 block reports per hover); the bar no longer reads the block's y, and the buttons are no longer moved inside their own frame notifications. Medium (unverified).
   - `WindowChromeHost` and `MainWindowChrome` both observe the buttons' frame changes synchronously; the host may send the system block (centre 26), or a mixed block while the buttons move one by one, before the runner's move lands.
   - **Follow-up:** watch resize and a theme switch in the running app (console session); if it shows, let the host measure on the next run-loop turn.
-- **The native button move is only partly tested: leaving full screen (incl. the exit animation), becoming key, AppKit replacing the buttons, the reported block and clicks on the moved buttons have no automated witness.** Medium.
+- ~~**The native button move is only partly tested: leaving full screen (incl. the exit animation), becoming key, AppKit replacing the buttons, the reported block and clicks on the moved buttons have no automated witness.**~~ — RESOLVED 2026-11-16 (console checks, no commit): native screenshots at 90 / 100 / 150 % and after leaving full screen, real-pointer hover and the zoom button's Move & Resize menu (this session and the 11.27 fork), clicks on the moved buttons' menu, and Ralph's own check of every zoom step in Paper and Night. Medium.
   - The two XCTests in `app/macos/RunnerTests/RunnerTests.swift` cover open, resize, an appearance switch, a hand reset and the dialog kind on a never-shown window; full-screen transitions do not run headless.
   - **Follow-up:** the console session's Marionette and native-screenshot check against `design/Refs Study.html` section 9.
-- **The runner's XCTests, now including the Story 11.26 button placement, still run in no gate step.** Medium.
+- ~~**The runner's XCTests, now including the Story 11.26 button placement, still run in no gate step.**~~ — RESOLVED 2026-11-16 (console session, commit a82ae42b): gate step `test-runner` for `app/macos/` changes. Medium.
   - Same gap as "The runner's XCTests (`MenuStateChannel`) run in no gate step" above; this run ran them by hand (4 passed).
   - **Follow-up:** a gate step `xcodebuild test -workspace app/macos/Runner.xcworkspace -scheme Runner -only-testing:RunnerTests` for changes under `app/macos/` (a gate change for Ralph), or none.
 
 ## Surfaced in Story 11.27 (bmad-build-auto, 2026-11-16)
 
-- **At 150 % the project window's lights sit at 51 pt (44–58); on a macOS whose titlebar is shorter than about 59 pt they would leave their superview and be clipped.** Medium (unverified).
+- ~~**At 150 % the project window's lights sit at 51 pt (44–58); on a macOS whose titlebar is shorter than about 59 pt they would leave their superview and be clipped.**~~ — CLOSED AS RECORD 2026-11-16 (Ralph): the 11.27 follow-up (commit 904fa1c1) sets the titlebar container to 2 × the line (102 pt at 150 %), which most likely moots it; only macOS 27 is tested, and older systems are not checked unless they become a target. Medium (unverified).
   - `placeWindowButtons()` in `app/macos/Runner/MainWindowChrome.swift` puts the centre at window height − `buttonMidY` with no clamp; the XCTest shows the buttons inside a 66 pt titlebar on macOS 27 only, and the deployment target is 12.0.
   - **Follow-up:** run the app at 150 % on macOS 15 (or read its titlebar height); if it is short, clamp the line or cap the zoom there.
-- **The runner's XCTests now also witness the hover fix and the `restore` / `placeButtons` parsing, and still run in no gate step.** Medium.
+- ~~**The runner's XCTests now also witness the hover fix and the `restore` / `placeButtons` parsing, and still run in no gate step.**~~ — RESOLVED 2026-11-16 (console session, commit a82ae42b): gate step `test-runner` for `app/macos/` changes. Medium.
   - Same gap as the two entries above; reverting the frame observer to a synchronous move would pass the gate. This run ran them by hand (6 passed).
   - **Follow-up:** the gate step named above (a gate change for Ralph), or none.
