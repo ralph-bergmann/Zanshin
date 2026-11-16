@@ -302,3 +302,11 @@ The menu bar did not follow full screen: View still read "Enter Full Screen" and
 → Design system: done in this entry — readme › Menu bar & shortcuts (View and Window) and the readme's Sync section ("Synced through #29" and its dated line); no token, component or card change. Not published (waits for a console session).
 
 - 2026-11-16 (Story 11.28) — the app follows #29: `AppMenuModel` keeps the full-screen views from `ZanshinShell.onWindowChromeChanged`; `nativeState` sends `titles: {toggleFullScreen:: label}` (the ARB strings `menuEnterFullScreen` / `menuExitFullScreen`) and greys Minimize and Zoom through `windowItemsEnabled(key, fullScreen:)`; the runner's `MenuStateChannel` sets the title like `isEnabled` (`app/macos/Runner/WindowingBootstrap.swift`). The running app is not yet checked (the native menu in full screen, also after Show Minimap; console session).
+
+### #30 · 2026-11-16 · Tooltip mono: jj's own text in an error toast's tooltip (Story 11.29 follow-up)
+An error toast draws one line; its tooltip shows jj's full refusal with the `Caused by:` caret diagram and the hints. In the sans label the caret `^---` did not sit under the column it points at (seen with Computer Use, 2026-11-16).
+- **Tooltip `mono`**: the label is jj's own text, verbatim, mono `--fs-sm` in `--text`, lines and spaces kept (`white-space:pre-wrap`); still max 300 px, longer lines wrap. The label / shortcut / command form is unchanged for every other tooltip.
+- **Error toasts use it** for their tooltip: Fetch failed, Push failed, Track failed.
+→ Design system: done in this entry — `components/controls/Tooltip.{jsx,d.ts,prompt.md}`, `controls.css` (`.zs-tip.is-mono`), the Tooltip block in `_ds_bundle.js`, the readme's Sync section ("Synced through #30" and its dated line); no token change. Not published (waits for a console session).
+
+- 2026-11-16 (Story 11.29 follow-up) — the app follows #30: `ZsTooltip.mono` / `ZsTooltipBubble.mono` and `ZsToast.tooltipMono` (`packages/zanshin_ui`); `sync_model.dart` (fetch-failed, push-failed) and `home_page.dart` (track-failed) set it; the fetch-failed toast now also shows a tooltip for a multi-line context without hints.

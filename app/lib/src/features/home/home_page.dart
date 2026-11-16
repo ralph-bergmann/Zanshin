@@ -223,8 +223,9 @@ class _OpenReportToastState extends State<_OpenReportToast> {
           build: (context, dismiss) => ZsToast(
             tone: ZsToastTone.error,
             message: TextSpan(text: text),
-            // The toast draws one line: jj's hint lines show in its tooltip.
+            // The toast draws one line: jj's further lines show in its tooltip, in mono.
             tooltip: text.contains('\n') ? text : null,
+            tooltipMono: true,
             onDismiss: dismiss,
             identifier: 'project-toast-track-error',
           ),

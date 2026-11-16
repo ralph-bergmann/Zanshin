@@ -224,8 +224,11 @@ class SyncModel extends ChangeNotifier implements GraphMenuSync {
     build: (context, dismiss) => ZsToast(
       tone: ZsToastTone.error,
       message: TextSpan(text: <String>[error.context ?? error.code, ...error.hints].join('\n')),
-      // The toast draws one line: the hints show in its tooltip.
-      tooltip: error.hints.isEmpty ? null : <String>[error.context ?? error.code, ...error.hints].join('\n'),
+      // The toast draws one line: jj's further lines (a `Caused by:` diagram, the hints) show in its tooltip, in mono.
+      tooltip: error.hints.isEmpty && !(error.context ?? '').contains('\n')
+          ? null
+          : <String>[error.context ?? error.code, ...error.hints].join('\n'),
+      tooltipMono: true,
       actions: <ZsToastAction>[
         ZsToastAction(
           label: context.l10n.toastRetry,
@@ -352,8 +355,9 @@ class SyncModel extends ChangeNotifier implements GraphMenuSync {
       return ZsToast(
         tone: ZsToastTone.error,
         message: TextSpan(text: text),
-        // The toast draws one line: jj's hint lines show in its tooltip.
+        // The toast draws one line: jj's further lines show in its tooltip, in mono.
         tooltip: text.contains('\n') ? text : null,
+        tooltipMono: true,
         onDismiss: dismiss,
         identifier: 'sync-toast',
       );

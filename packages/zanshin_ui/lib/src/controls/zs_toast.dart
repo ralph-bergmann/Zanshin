@@ -65,6 +65,7 @@ class ZsToast extends StatefulWidget {
     this.actions = const <ZsToastAction>[],
     this.onDismiss,
     this.tooltip,
+    this.tooltipMono = false,
     this.actionFocusSkip = false,
     this.identifier,
     super.key,
@@ -77,6 +78,7 @@ class ZsToast extends StatefulWidget {
     actions: actions,
     onDismiss: onDismiss,
     tooltip: tooltip,
+    tooltipMono: tooltipMono,
     actionFocusSkip: skip,
     identifier: identifier,
     key: key,
@@ -96,6 +98,9 @@ class ZsToast extends StatefulWidget {
 
   /// A tooltip over the text.
   final String? tooltip;
+
+  /// The [tooltip] is jj's own text: shown in mono, its lines kept ([ZsTooltip.mono]).
+  final bool tooltipMono;
 
   /// Whether Tab skips the buttons.
   final bool actionFocusSkip;
@@ -148,7 +153,7 @@ class _ZsToastState extends State<ZsToast> {
       overflow: TextOverflow.ellipsis,
     );
     if (hover != null) {
-      text = ZsTooltip(message: hover, placement: ZsTooltipPlacement.above, child: text);
+      text = ZsTooltip(message: hover, placement: ZsTooltipPlacement.above, mono: widget.tooltipMono, child: text);
     }
     final Widget row = Row(
       mainAxisSize: MainAxisSize.min,

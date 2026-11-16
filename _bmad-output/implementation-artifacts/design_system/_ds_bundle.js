@@ -3332,11 +3332,13 @@ const ZS_FLIP = {
 // (shifted along its axis, the arrowless box never covers the control). Hides on leave (--dur-exit fade) and on press.
 // Keyboard focus shows it after the same delay; it is the control's description for VoiceOver (aria-describedby) while shown.
 // A disabled control with a reason: wrap it — the anchor keeps the hover while the control takes none (base.css › disabled).
+// mono: the label is jj's own text (a refusal's Caused by: diagram and hints), mono --fs-sm, lines and spaces kept.
 function Tooltip({
   label,
   cmd,
   shortcut,
   placement = "bottom",
+  mono,
   open,
   delay,
   children,
@@ -3428,7 +3430,7 @@ function Tooltip({
     ref: tip,
     id: id,
     role: "tooltip",
-    className: ["zs-tip", "is-" + fit.side, closing && "is-closing"].filter(Boolean).join(" "),
+    className: ["zs-tip", "is-" + fit.side, mono && "is-mono", closing && "is-closing"].filter(Boolean).join(" "),
     style: {
       "--tip-dx": fit.dx + "px",
       "--tip-dy": fit.dy + "px"

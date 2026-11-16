@@ -10,7 +10,8 @@ const ZS_FLIP = { bottom: "top", top: "bottom", right: "left", left: "right" };
 // (shifted along its axis, the arrowless box never covers the control). Hides on leave (--dur-exit fade) and on press.
 // Keyboard focus shows it after the same delay; it is the control's description for VoiceOver (aria-describedby) while shown.
 // A disabled control with a reason: wrap it — the anchor keeps the hover while the control takes none (base.css › disabled).
-export function Tooltip({ label, cmd, shortcut, placement = "bottom", open, delay, children, className = "" }) {
+// mono: the label is jj's own text (a refusal's Caused by: diagram and hints), mono --fs-sm, lines and spaces kept.
+export function Tooltip({ label, cmd, shortcut, placement = "bottom", mono, open, delay, children, className = "" }) {
   const [show, setShow] = React.useState(false);
   const [closing, setClosing] = React.useState(false);
   const [fit, setFit] = React.useState({ side: placement, dx: 0, dy: 0, done: false });
@@ -46,7 +47,7 @@ export function Tooltip({ label, cmd, shortcut, placement = "bottom", open, dela
       onFocus={(e) => { try { if (e.target.matches(":focus-visible")) enter(); } catch (_) {} }} onBlur={leave} aria-describedby={visible ? id : undefined}>
       {children}
       {visible && (
-        <span ref={tip} id={id} role="tooltip" className={["zs-tip", "is-" + fit.side, closing && "is-closing"].filter(Boolean).join(" ")}
+        <span ref={tip} id={id} role="tooltip" className={["zs-tip", "is-" + fit.side, mono && "is-mono", closing && "is-closing"].filter(Boolean).join(" ")}
           style={{ "--tip-dx": fit.dx + "px", "--tip-dy": fit.dy + "px" }}>
           <span className="zs-tip-l"><span>{label}</span>{shortcut && <span className="zs-tip-k">{shortcut}</span>}</span>
           {cmd && <code className="zs-tip-cmd">{cmd}</code>}

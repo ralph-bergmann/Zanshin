@@ -9,6 +9,8 @@ export interface TooltipProps {
   shortcut?: string;
   /** bottom (default, top-bar controls) · top · right (rail) · left */
   placement?: "bottom" | "top" | "right" | "left";
+  /** the label is jj's own text (a refusal's `Caused by:` diagram, its hints): mono --fs-sm in --text, lines and spaces kept */
+  mono?: boolean;
   /** force it open (specimens) */
   open?: boolean;
   delay?: number;

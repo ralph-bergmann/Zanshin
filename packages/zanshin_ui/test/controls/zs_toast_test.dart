@@ -114,8 +114,19 @@ void main() {
   testWidgets('a tooltip sits over the text', (tester) async {
     await tester.pumpWidget(toast(tooltip: 'line one\nline two'));
     expect(
-      find.byWidgetPredicate((widget) => widget is ZsTooltip && widget.message == 'line one\nline two'),
+      find.byWidgetPredicate((widget) => widget is ZsTooltip && widget.message == 'line one\nline two' && !widget.mono),
       findsOneWidget,
     );
+  });
+
+  testWidgets('tooltipMono shows the tooltip in mono, and withActionFocusSkip keeps it', (tester) async {
+    const mono = ZsToast(
+      message: TextSpan(text: 'Failed'),
+      tooltip: 'Failed\nHint: x',
+      tooltipMono: true,
+    );
+    await tester.pumpWidget(zsHost(mono, overlay: true, icons: true));
+    expect(find.byWidgetPredicate((widget) => widget is ZsTooltip && widget.mono), findsOneWidget);
+    expect(mono.withActionFocusSkip(true).tooltipMono, isTrue);
   });
 }

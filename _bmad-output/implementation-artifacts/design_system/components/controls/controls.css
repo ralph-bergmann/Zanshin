@@ -44,6 +44,7 @@
 .zs-tip-l{display:flex;align-items:baseline;justify-content:space-between;gap:14px}
 .zs-tip-k{font-weight:400;color:var(--text-faint);white-space:nowrap}
 .zs-tip-cmd{font:400 var(--fs-sm)/1.35 var(--font-mono);color:var(--text-dim);white-space:nowrap}
+.zs-tip.is-mono{font:400 var(--fs-sm)/1.35 var(--font-mono);white-space:pre-wrap}
 @keyframes zs-tip-in{from{opacity:0;transform:translateY(calc(-2px * var(--motion)))}}
 @keyframes zs-tip-in-up{from{opacity:0;transform:translateY(calc(2px * var(--motion)))}}
 @keyframes zs-tip-in-x{from{opacity:0;transform:translateX(calc(-2px * var(--motion)))}}

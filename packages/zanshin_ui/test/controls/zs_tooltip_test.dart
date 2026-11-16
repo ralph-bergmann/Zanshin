@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin_ui/src/controls/zs_control_core.dart';
+import 'package:zanshin_ui/src/controls/zs_control_text.dart';
 import 'package:zanshin_ui/src/controls/zs_tooltip.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
+import 'package:zanshin_ui/src/design/zs_type.dart';
 
 import '../helpers/controls.dart';
 import '../helpers/zs_host.dart';
@@ -89,6 +91,21 @@ void main() {
     await mouse.moveTo(Offset.zero);
     await tester.pump(_m.durExit);
     await tester.pump(_m.durTooltipWarm);
+  });
+
+  testWidgets("mono shows jj's text in mono --fs-sm, its lines and leading spaces kept (DS .zs-tip.is-mono)", (
+    tester,
+  ) async {
+    const text = 'Syntax error\n1 | glob:(\n  |       ^---';
+    await tester.pumpWidget(
+      zsHost(const ZsTooltipBubble(animation: kAlwaysCompleteAnimation, message: text, mono: true)),
+    );
+    final TextStyle mono = tester.widget<Text>(find.text(text)).style!;
+    expect(mono.fontFamily, zsMono(ZsType.fsSm).fontFamily);
+    expect(mono.fontSize, ZsType.fsSm);
+
+    await tester.pumpWidget(zsHost(const ZsTooltipBubble(animation: kAlwaysCompleteAnimation, message: 'New change')));
+    expect(tester.widget<Text>(find.text('New change')).style!.fontFamily, isNot(mono.fontFamily));
   });
 
   testWidgets('within the warm window the next one shows at once', (tester) async {

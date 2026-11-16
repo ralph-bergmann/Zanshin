@@ -44,7 +44,8 @@ enum ZsTooltipPlacement {
 ///
 /// **Bubble.** `--tooltip-bg`, a 1 px `--tooltip-border`, `--shadow-tooltip`, radius `--radius-chip`, padding 5 8 6,
 /// at most 300 wide; the label 500 `--fs-id` in `--text`, the shortcut in `--text-faint`, which reads as dim on the
-/// tooltip (DS components/base.css:50), the command `--fs-sm` mono in `--text-dim`. It takes no pointer.
+/// tooltip (DS components/base.css:50), the command `--fs-sm` mono in `--text-dim`. With [mono] the label is jj's own
+/// text, `--fs-sm` mono in `--text`, its lines and spaces kept (DS `.zs-tip.is-mono`). It takes no pointer.
 ///
 /// **Semantics.** The bubble is not in the semantics tree; the text joins the control's own node: a Zs control below
 /// reads it through [semanticsOf] (the description VoiceOver gets, DS Tooltip.prompt.md:14; r4out a11y KVS-9).
@@ -56,12 +57,17 @@ class ZsTooltip extends StatefulWidget implements ZsControl {
     this.cmd,
     this.shortcut,
     this.placement = ZsTooltipPlacement.below,
+    this.mono = false,
     this.identifier,
     super.key,
   });
 
   /// The label: the action's name or a disabled control's reason.
   final String message;
+
+  /// The [message] is jj's own text, shown verbatim in mono so its column layout (a `Caused by:` caret diagram)
+  /// lines up (DS Tooltip `mono`).
+  final bool mono;
 
   /// The exact jj command, shown in mono on the second line.
   final String? cmd;
@@ -194,6 +200,7 @@ class _ZsTooltipState extends State<ZsTooltip> {
           cmd: widget.cmd,
           shortcut: widget.shortcut,
           placement: widget.placement,
+          mono: widget.mono,
           identifier: widget.identifier,
         ),
         child: child!,
@@ -229,6 +236,7 @@ class ZsTooltipBubble extends StatefulWidget {
     this.cmd,
     this.shortcut,
     this.placement = ZsTooltipPlacement.below,
+    this.mono = false,
     this.identifier,
     super.key,
   });
@@ -247,6 +255,9 @@ class ZsTooltipBubble extends StatefulWidget {
 
   /// The side the bubble sits on; the drift comes from it.
   final ZsTooltipPlacement placement;
+
+  /// The [message] in mono `--fs-sm`, as jj prints it.
+  final bool mono;
 
   /// The bubble's identifier.
   final String? identifier;
@@ -293,7 +304,9 @@ class _ZsTooltipBubbleState extends State<ZsTooltipBubble> {
       ZsTooltipPlacement.right => Offset(-drift, 0),
       ZsTooltipPlacement.left => Offset(drift, 0),
     };
-    final TextStyle label = zsSans(ZsType.fsId, weight: FontWeight.w500, height: 1.35).copyWith(color: colors.text);
+    final TextStyle label =
+        (widget.mono ? zsMono(ZsType.fsSm, height: 1.35) : zsSans(ZsType.fsId, weight: FontWeight.w500, height: 1.35))
+            .copyWith(color: colors.text);
     final String? shortcut = widget.shortcut;
     final String? cmd = widget.cmd;
     return ExcludeSemantics(
