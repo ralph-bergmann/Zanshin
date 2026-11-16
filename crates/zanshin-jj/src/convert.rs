@@ -591,11 +591,12 @@ fn write_trunk_alias(workspace: &Workspace, alias: &str) -> Result<(), RepoError
         let config::ConfigError::Load { reason, .. } = e;
         reason
     };
-    let Some(path) = config::new_repo_config_path(workspace).map_err(|e| RepoError::Backend(reason(e)))? else {
-        return Ok(());
-    };
-    let file = config::load_config_file(ConfigSource::Repo, &path)?;
-    config::set_trunk_alias(Some(file), alias).map_err(|e| RepoError::ConvertFailed { reason: reason(e) })
+    let path = config::new_repo_config_path(workspace).map_err(|e| RepoError::Backend(reason(e)))?;
+    // No path: `set_trunk_alias(None, …)` writes nothing, the CLI's no-home-directory branch.
+    let file = path
+        .map(|path| config::load_config_file(ConfigSource::Repo, &path))
+        .transpose()?;
+    config::set_trunk_alias(file, alias).map_err(|e| RepoError::ConvertFailed { reason: reason(e) })
 }
 
 /// `jj git init`'s External arm over an existing `<root>/.git` (`init.rs:222-224`, `:249-282` @
