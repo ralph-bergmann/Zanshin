@@ -31,12 +31,28 @@ import FlutterMacOS
 ///   Miniaturizable) plus `.fullSizeContentView`, no forced minimum, on
 ///   `WindowFillBase` (`--fl-bg-solid`, the window fill's base). No vibrancy: the
 ///   window is opaque and Flutter paints the fill.
-/// Both get the transparent titlebar, the hidden title, the empty toolbar that
-/// puts the traffic lights where the project window has them, the drag
-/// interceptor and the `--tl-ring` rings, greyed buttons included.
+/// Both get the transparent titlebar, the hidden title, the empty toolbar, the
+/// drag interceptor and the `--tl-ring` rings, greyed buttons included.
+///
+/// The project window moves its traffic lights down so they centre on the top
+/// bar, 12 pt from the window's top edge like every other side (Story 11.26):
+/// their centre line sits at `buttonMidY` from the top. AppKit lays the titlebar
+/// out again on resize, key, a theme change and leaving full screen, so the move
+/// is re-applied on each and whenever a button's frame changes. Dialog windows
+/// keep the system's position, and full screen is left to AppKit.
 final class MainWindowChrome {
+    /// The project window's traffic-light centre line from the window's top edge:
+    /// the top bar's centre (`--tl-mid-y` = `--chrome-inset` 12 + `--chrome-h` 44 / 2).
+    static let buttonMidY: CGFloat = 34
+
     private weak var window: NSWindow?
     private let kind: WindowChromeKind
+
+    /// The buttons `placeWindowButtons()` watches, re-observed when AppKit replaces them.
+    private var placedButtons: [NSButton] = []
+
+    /// Frame observers of `placedButtons`.
+    private var buttonFrameObservers: [NSObjectProtocol] = []
 
     /// Click-through overlay that paints the neutral resting state of the window
     /// control buttons (close, minimize, zoom). Kept as a strong reference so the
@@ -54,6 +70,7 @@ final class MainWindowChrome {
     /// Removes the notification observers when the chrome is deallocated
     deinit {
         NotificationCenter.default.removeObserver(self)
+        buttonFrameObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     /// Add a toolbar to move the window control buttons (close, minimize, zoom) a little bit down.
@@ -126,14 +143,65 @@ final class MainWindowChrome {
             object: window
         )
 
+        placeWindowButtons()
         installTrafficLightOverlay()
 
         // The toolbar and the titlebar accessory view controller are attached
         // lazily, which can rebuild the titlebar view hierarchy after this method
-        // has returned. `installTrafficLightOverlay()` is idempotent, so simply run
-        // it once more after the current run loop turn.
+        // has returned. Both calls are idempotent, so simply run them once more
+        // after the current run loop turn.
         DispatchQueue.main.async { [weak self] in
+            self?.placeWindowButtons()
             self?.installTrafficLightOverlay()
+        }
+    }
+
+    /// Moves the project window's standard buttons so their centre sits
+    /// `buttonMidY` below the window's top edge; x stays where AppKit put it.
+    ///
+    /// Idempotent: a button within 0.5 pt of the target is left alone, so the
+    /// frame change a move posts ends at the next call. In full screen, and for a
+    /// button AppKit moved into another window (the full-screen reveal bar), AppKit
+    /// owns the position.
+    private func placeWindowButtons() {
+        guard kind == .main, let window = self.window else { return }
+
+        let buttons = [
+            window.standardWindowButton(.closeButton),
+            window.standardWindowButton(.miniaturizeButton),
+            window.standardWindowButton(.zoomButton),
+        ].compactMap { $0 }
+        observeFrames(of: buttons)
+
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        // Window coordinates have their origin bottom left.
+        let targetMidY = window.frame.height - Self.buttonMidY
+        for button in buttons where !button.isHidden && button.window === window {
+            guard let host = button.superview else { continue }
+            let dy = targetMidY - button.convert(button.bounds, to: nil).midY
+            guard abs(dy) > 0.5 else { continue }
+            button.setFrameOrigin(
+                NSPoint(x: button.frame.minX, y: button.frame.minY + (host.isFlipped ? -dy : dy)))
+        }
+    }
+
+    /// Re-applies the move whenever AppKit lays a button out again; observes the
+    /// current buttons only, so replaced ones are dropped.
+    private func observeFrames(of buttons: [NSButton]) {
+        guard buttons.count != placedButtons.count || !zip(buttons, placedButtons).allSatisfy({ $0 === $1 })
+        else { return }
+
+        buttonFrameObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        placedButtons = buttons
+        buttonFrameObservers = buttons.map { button in
+            button.postsFrameChangedNotifications = true
+            return NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification,
+                object: button,
+                queue: nil
+            ) { [weak self] _ in
+                self?.placeWindowButtons()
+            }
         }
     }
 
@@ -193,6 +261,7 @@ final class MainWindowChrome {
     /// Re-attaches the overlay when the window becomes key, because a preceding
     /// titlebar rebuild may have orphaned it
     @objc private func handleWindowDidBecomeKey(_ notification: Notification) {
+        placeWindowButtons()
         installTrafficLightOverlay()
     }
 
@@ -205,12 +274,14 @@ final class MainWindowChrome {
     /// Re-attaches and shows the overlay after leaving fullscreen, where AppKit has
     /// rebuilt the titlebar
     @objc private func handleWindowDidExitFullScreen(_ notification: Notification) {
+        placeWindowButtons()
         installTrafficLightOverlay()
         trafficLightOverlay?.setSuppressed(false)
     }
 
     // Window resize event handler
     @objc private func handleWindowDidResize(_ notification: Notification) {
+        placeWindowButtons()
         trafficLightOverlay?.syncGeometry()
     }
 }

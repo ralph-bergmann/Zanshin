@@ -9,7 +9,8 @@ import FlutterMacOS
 /// `watch {viewId}` answers the current report and measures once more on the next run-loop turn, because the toolbar
 /// attaches lazily and rebuilds the titlebar; `unwatch {viewId}` stops. A report is
 /// `{fullScreen, trafficLights?: {x, y, width, height}}`, the block in the Flutter view's points with the origin top
-/// left and absent in full screen or while no button is visible. The buttons are only read, never moved.
+/// left and absent in full screen or while no button is visible. This host only reads the buttons; the runner's
+/// project-window chrome moves them.
 ///
 /// The triggers are Claude's proposal (Story 11.4): the window's resize, key, full-screen and close notifications
 /// and the frame changes of the current buttons, which AppKit replaces when it rebuilds the titlebar. Each one

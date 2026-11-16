@@ -137,7 +137,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(watches(), <String>['watchWindowChrome:${tester.view.viewId}']);
-    expect(shellLayout(tester), (const Offset(91, 4), 60.0));
+    expect(shellLayout(tester), (const Offset(91, 12), 68.0));
   });
 
   testWidgets('the window root leaving the tree unwatches its view', (tester) async {
@@ -333,7 +333,7 @@ void main() {
 
       expect(watches(), isEmpty);
       if (button == null) {
-        expect(chromeOf(tester), <double>[91, 4, 60], reason: "the preview's shell keeps the reference metrics");
+        expect(chromeOf(tester), <double>[91, 12, 68], reason: "the preview's shell keeps the reference metrics");
       } else {
         expect(find.bySemanticsIdentifier(button), findsOneWidget, reason: 'the use case shows its button');
       }

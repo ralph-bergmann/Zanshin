@@ -50,12 +50,12 @@ void main() {
   setUp(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional);
   tearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
 
-  testWidgets('the rail is a 52 wide rail island at (12, 60), its buttons 40 wide with no tooltip', (tester) async {
+  testWidgets('the rail is a 52 wide rail island at (12, 68), its buttons 40 wide with no tooltip', (tester) async {
     await _pump(tester);
     final Rect rail = tester.getRect(
       find.byWidgetPredicate((widget) => widget is ZsIsland && widget.shape == ZsIslandShape.rail),
     );
-    expect(rail.topLeft, const Offset(12, 60));
+    expect(rail.topLeft, const Offset(12, 68));
     expect(rail.width, 52);
     expect(tester.getSize(_button('bookmarks')), const Size.square(40));
     expect(find.byType(ZsTooltip), findsNothing);

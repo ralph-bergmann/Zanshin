@@ -98,7 +98,7 @@ void main() {
     await _ms(tester, 100);
     expect(_opacity(tester), 1);
     expect(_dx(tester), 0);
-    expect(_panel(tester), const Rect.fromLTWH(76, 60, 300, 900 - 60 - 12));
+    expect(_panel(tester), const Rect.fromLTWH(76, 68, 300, 900 - 68 - 12));
     expect(find.descendant(of: find.byType(PinnedPanel), matching: find.text('Bookmarks')), findsOneWidget);
     final TextStyle? title = tester
         .widget<Text>(find.descendant(of: find.byType(PinnedPanel), matching: find.text('Bookmarks')))
@@ -150,7 +150,7 @@ void main() {
       final _Rig rig = await _pump(tester);
       rig.controller.activate('bookmarks');
       await tester.pumpAndSettle();
-      expect(tester.getRect(_edge), const Rect.fromLTRB(76 + 300 - 3, 60 + 16, 76 + 300 + 7, 900 - 12 - 16));
+      expect(tester.getRect(_edge), const Rect.fromLTRB(76 + 300 - 3, 68 + 16, 76 + 300 + 7, 900 - 12 - 16));
       expect(rig.insets.last.left, 76 + 300 + 12);
       final TestGesture drag = await tester.startGesture(tester.getCenter(_edge), kind: PointerDeviceKind.mouse);
       await drag.moveBy(const Offset(25, 0));
@@ -260,7 +260,7 @@ void main() {
       await tester.tap(_button('bookmarks'));
       await tester.pumpAndSettle();
       expect(rig.controller.pinnedId, 'bookmarks');
-      expect(_panel(tester, identifier: 'flyout'), const Rect.fromLTWH(76, 60, 300, 900 - 72));
+      expect(_panel(tester, identifier: 'flyout'), const Rect.fromLTWH(76, 68, 300, 900 - 80));
       expect(rig.insets.last, before, reason: 'the flyout changes no inset');
       expect(_edge, findsNothing);
       expect(

@@ -487,7 +487,7 @@ void main() {
         ),
       ),
     );
-    expect(tester.getTopLeft(find.byType(ZsGlass).first), const Offset(91, 4));
+    expect(tester.getTopLeft(find.byType(ZsGlass).first), const Offset(91, 12));
 
     await _openByClick(tester);
     expect(controller.calm.held, isTrue);

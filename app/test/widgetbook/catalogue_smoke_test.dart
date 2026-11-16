@@ -248,7 +248,7 @@ void main() {
   );
 
   testWidgets(
-    'graph/floating-shell/controls opens with a mutable change selected: the inspector at top 60 with its header, '
+    'graph/floating-shell/controls opens with a mutable change selected: the inspector at top 68 with its header, '
     'title, meta, action row and files (Story 10.8)',
     (tester) async {
       useCatalogueWindow(tester);
@@ -264,7 +264,7 @@ void main() {
       final Rect shell = tester.getRect(find.byType(FloatingShell));
       // The use case scales the window into the catalogue's frame: compare in the shell's own coordinates.
       final double scale = shell.width / 1440;
-      expect((tester.getRect(island).top - shell.top) / scale, moreOrLessEquals(60, epsilon: 0.5));
+      expect((tester.getRect(island).top - shell.top) / scale, moreOrLessEquals(68, epsilon: 0.5));
       Finder within(String identifier) => find.descendant(
         of: inspector,
         matching: find.byWidgetPredicate((w) => w is ZsButton && w.identifier == identifier),

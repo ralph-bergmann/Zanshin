@@ -84,6 +84,16 @@ void main() {
     }
   });
 
+  test('the runner moves the project window buttons to the Dart reference centre line', () {
+    final String swift = File('macos/Runner/MainWindowChrome.swift').readAsStringSync();
+    final RegExpMatch? match = RegExp(r'static let buttonMidY: CGFloat = (\d+(?:\.\d+)?)').firstMatch(swift);
+    expect(match, isNotNull, reason: 'MainWindowChrome.buttonMidY');
+    final double buttonMidY = double.parse(match!.group(1)!);
+    const ZsMetrics metrics = ZsMetrics.standard;
+    expect(buttonMidY, metrics.tlMidY);
+    expect(buttonMidY, metrics.chromeInset + metrics.chromeH / 2);
+  });
+
   test('the Runner target names AccentColor as the app accent in Debug, Release and Profile', () {
     final String project = File('macos/Runner.xcodeproj/project.pbxproj').readAsStringSync();
     expect('ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;'.allMatches(project), hasLength(3));

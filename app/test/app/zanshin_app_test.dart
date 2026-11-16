@@ -301,6 +301,8 @@ void main() {
 
   for (final (WindowChrome chrome, double firstX, double barY, double top)
       in const <(WindowChrome, double, double, double)>[
+        // Where the runner moves the project window's buttons (Story 11.26): the bar 12 from the top.
+        (WindowChrome(trafficLights: Rect.fromLTWH(19, 27, 60, 14)), 91, 12, 68),
         (WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14)), 91, 4, 60),
         (WindowChrome(trafficLights: Rect.fromLTWH(20, 20, 60, 14)), 92, 5, 61),
       ]) {
@@ -359,7 +361,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(ZsAppearance.of(probe()).fullScreen, isFalse);
-    expect(firstIsland(tester).topLeft, const Offset(91, 4));
+    expect(firstIsland(tester).topLeft, const Offset(91, 12));
   });
 
   for (final (String label, String settingsJson, ShellTheme theme, Color accent)

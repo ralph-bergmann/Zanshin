@@ -370,9 +370,10 @@ void main() {
     test('the chrome derives from the traffic-light block', () {
       const ZsMetrics metrics = ZsMetrics.standard;
       expect(metrics.chromeFirstX, 91);
-      expect(metrics.chromeBarY, 4);
-      expect(metrics.chromeTop, 60);
+      expect(metrics.chromeBarY, 12);
+      expect(metrics.chromeTop, 68);
       expect(metrics.chromeLeft, 76);
+      expect(ZsMetrics.dialogTlMidY, 26);
       expect(metrics.focusW, 2);
       expect(metrics.disabledOpacity, .4);
       expect(ZsIconSize.values.map((s) => s.size), <double>[10, 12, 14, 16, 17, 19]);
@@ -394,6 +395,11 @@ void main() {
       expect(measured.chromeTop, 60);
       expect(measured.tlSize, ZsMetrics.standard.tlSize);
       expect(measured.tlPitch, ZsMetrics.standard.tlPitch);
+      // The block the runner moves the project window's buttons to (centre y 34): bar 12, content 68.
+      final moved = ZsMetrics.resolve(const ZsAppearance(trafficLights: Rect.fromLTWH(19, 27, 60, 14)));
+      expect(moved.chromeFirstX, 91);
+      expect(moved.chromeBarY, 12);
+      expect(moved.chromeTop, 68);
       // Another block, centre y 27: the bar's centre line and the first island follow it.
       final shifted = ZsMetrics.resolve(const ZsAppearance(trafficLights: Rect.fromLTWH(20, 20, 60, 14)));
       expect(shifted.chromeFirstX, 92);

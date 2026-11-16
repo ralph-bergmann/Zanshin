@@ -70,10 +70,10 @@ void main() {
   });
 
   test(
-    'insets: top 60 (68 in full screen), left 76 without a pin, right by inspector, minimap or the inset, bottom 12',
+    'insets: top 68 (also in full screen), left 76 without a pin, right by inspector, minimap or the inset, bottom 12',
     () {
       final GraphInsets none = _layout(1440, pinned: false, inspector: false).insets;
-      expect(none, const GraphInsets(top: 60, left: 76, right: 12, bottom: 12, inspectorWidth: 0, minimapWidth: 0));
+      expect(none, const GraphInsets(top: 68, left: 76, right: 12, bottom: 12, inspectorWidth: 0, minimapWidth: 0));
       expect(_layout(1440, pinned: false).insets.inspectorWidth, 460, reason: 'the open inspector');
       expect(_layout(1440, pinned: false, inspector: false, minimap: true).insets.right, 158);
       expect(_layout(1440, pinned: false, inspector: false, minimap: true).insets.minimapWidth, 134);

@@ -1,6 +1,6 @@
-/* TrafficLights — a MOCK of the system's window buttons (cards, the UI kit). In the app AppKit draws them and Zanshin never moves
-   them; it reads their frames and lays the top bar out from them (tokens/spacing.css › chrome: first island at block end + 12,
-   the bar centred on the block). Reference geometry (macOS 27): 14 × 14, pitch 23, block 60 wide at x 19–79, centre y 26.
+/* TrafficLights — a MOCK of the system's window buttons (cards, the UI kit). In the app AppKit draws them, the project window moves them
+   to centre y 34 (sync #27; dialogs keep the system's 26) and the top bar is laid out from their frames (tokens/spacing.css › chrome:
+   first island at block end + 12, the bar centred on the block). Reference geometry (macOS 27): 14 × 14, pitch 23, block x 19–79.
    Zanshin's one deviation, on purpose: at rest the system buttons are hidden and the app draws grey RINGS (TrafficLightOverlayView,
    --tl-ring) — also for buttons that are greyed out; hovering the group shows the system's own buttons: enabled ones in their colours
    with their symbols, disabled ones greyed (--tl-idle). Pressing darkens. No glow, ever. The same at rest in an inactive window. */
@@ -22,8 +22,8 @@
    the red button closes it. The fill is borderless and opaque: --fl-sheen over --fl-bg-solid (no vibrancy — the canvas is Zanshin's
    own indigo, and every contrast here is measured on solid surfaces; Reduce transparency changes nothing).
    Header: --window-hd-h (52) shares its row with the traffic lights; the title starts at block end + 12 and everything in it centres on
-   the block's centre line (--tl-mid-y). Its empty space drags the window. A hairline separates it from the content. */
-.zs-win{position:relative;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;/* mock: the system's corner */background:var(--fl-sheen),var(--fl-bg-solid);color:var(--text);box-shadow:0 0 0 .5px rgba(0,0,0,.45),0 24px 64px -16px rgba(0,0,0,.5);/* mock: the system's shadow (the same in both appearances) */}
+   the block's centre line (--tl-mid-y: the system's 26, dialogs keep the buttons there). Its empty space drags the window. A hairline. */
+.zs-win{--tl-mid-y:26px;position:relative;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;/* mock: the system's corner */background:var(--fl-sheen),var(--fl-bg-solid);color:var(--text);box-shadow:0 0 0 .5px rgba(0,0,0,.45),0 24px 64px -16px rgba(0,0,0,.5);/* mock: the system's shadow (the same in both appearances) */}
 .zs-win-hd{position:relative;flex-shrink:0;display:flex;align-items:center;gap:12px;height:var(--window-hd-h);padding:0 var(--chrome-inset) 0 var(--chrome-first-x);border-bottom:1px solid var(--fl-border)}
 .zs-win-hd>.zs-traffic{position:absolute;left:var(--tl-x);top:calc(var(--tl-mid-y) - var(--tl-size) / 2)}
 .zs-win-hd>*:not(.zs-traffic){margin-top:calc((var(--tl-mid-y) - var(--window-hd-h) / 2) * 2)}

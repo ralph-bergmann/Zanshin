@@ -56,14 +56,14 @@ void main() {
       final Rect place = tester.getRect(find.byKey(_place));
       final Rect view = _viewIsland(tester);
       final Rect action = tester.getRect(find.byKey(_sync)).expandToInclude(tester.getRect(find.byKey(_newChange)));
-      expect(place.top, 4);
+      expect(place.top, 12);
       expect(place.left, 91);
       expect(place.width, 200, reason: 'PLACE keeps its width');
       expect(action.right, width - 12);
       expect(action.width, 238, reason: 'ACTION keeps its width');
       expect(tester.getRect(find.byKey(_newChange)).left - tester.getRect(find.byKey(_sync)).right, 8);
       expect(view.width, viewWidth);
-      expect(view.top, 4);
+      expect(view.top, 12);
       expect(view.left - place.right, greaterThanOrEqualTo(12));
       expect(action.left - view.right, greaterThanOrEqualTo(12));
       // VIEW is centred in its track, which the two max-content-or-1fr tracks frame (CSS grid).

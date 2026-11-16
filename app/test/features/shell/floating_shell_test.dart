@@ -505,7 +505,7 @@ void main() {
     expect(edgeOpacity(), 1);
   });
 
-  testWidgets('the stale notice fades in over 200 ms with no movement at top 60, centred, and out over 180', (
+  testWidgets('the stale notice fades in over 200 ms with no movement at top 68, centred, and out over 180', (
     tester,
   ) async {
     final rig = _Rig(stale: true);
@@ -513,7 +513,7 @@ void main() {
     await tester.pump();
     final Rect rect = tester.getRect(find.byKey(_stale));
     final Rect island = tester.getRect(find.ancestor(of: find.byKey(_stale), matching: find.byType(ZsIsland)));
-    expect(island.top, 60);
+    expect(island.top, 68);
     expect(island.center.dx, 720);
     await _ms(tester, 100);
     expect(_fade(tester, _stale), allOf(greaterThan(0), lessThan(1)));
@@ -558,13 +558,13 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('insets: top 60 (68 in full screen), left 76 or with the panel, right by inspector or minimap', (
+  testWidgets('insets: top 68 (also in full screen), left 76 or with the panel, right by inspector or minimap', (
     tester,
   ) async {
     final _Rig rig = await _pump(tester, _Rig(minimap: false));
     expect(
       rig.insets.last,
-      const GraphInsets(top: 60, left: 76, right: 484, bottom: 12, inspectorWidth: 460, minimapWidth: 0),
+      const GraphInsets(top: 68, left: 76, right: 484, bottom: 12, inspectorWidth: 460, minimapWidth: 0),
     );
     rig.controller.activate('bookmarks');
     await tester.pumpAndSettle();
@@ -694,10 +694,10 @@ void main() {
     Rect island(WidgetTester tester) =>
         tester.getRect(find.ancestor(of: find.byKey(_inspector), matching: find.byType(ZsIsland)));
 
-    testWidgets('sits at top 60, right 12, 12 above the bottom, with its edge on its left side', (tester) async {
+    testWidgets('sits at top 68, right 12, 12 above the bottom, with its edge on its left side', (tester) async {
       await _pump(tester, _Rig(minimap: false));
       await tester.pumpAndSettle();
-      expect(island(tester), const Rect.fromLTRB(1440 - 12 - 460, 60, 1440 - 12, 900 - 12));
+      expect(island(tester), const Rect.fromLTRB(1440 - 12 - 460, 68, 1440 - 12, 900 - 12));
       final Rect edge = tester.getRect(_edge('inspector-edge'));
       expect(edge.left, 1440 - 12 - 460 - 7, reason: '7 in the gap, 3 over the island');
       expect(edge.width, 10);

@@ -1252,7 +1252,9 @@ class _OverlayPainter extends CustomPainter {
     for (var i = 0; i < labels.length; i++) {
       final double y = mapping.my(labels.ys[i]);
       final double sy = y - ms;
-      if (y - last < 18 || years.any((year) => (year.sy - sy).abs() < _yearClear)) {
+      // Content y, not strip y: a label exactly _yearClear from a year would flip with the scroll's rounding.
+      if (y - last < 18 ||
+          labels.years.any((year) => year.below != null && (mapping.my(year.y) - y).abs() < _yearClear)) {
         continue;
       }
       last = y;

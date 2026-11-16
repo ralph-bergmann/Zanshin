@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart';
 /// items 14, :8943-8948): the graph takes them from `ShellScope.insetsOf` and keeps its cards clear of them.
 ///
 /// `ShellLayout` computes them:
-/// - [top] `--chrome-top` (60, 68 in full screen);
+/// - [top] `--chrome-top` (68, in a window and in full screen);
 /// - [left] `--chrome-left` (76), or 76 + the pinned panel's effective width + 12 while a panel is pinned and not
 ///   collapsed;
 /// - [right] the inspector's effective width + 24 while the inspector is open, else the minimap column 158 while a

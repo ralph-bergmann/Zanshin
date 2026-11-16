@@ -137,7 +137,7 @@ void main() {
       final Finder canvas = find.byType(ZsCanvas);
       expect(canvas, findsOneWidget);
       expect(tester.getRect(canvas), const Rect.fromLTWH(0, 0, 1440, 900));
-      expect(tester.getRect(find.byType(WindowDragArea)), const Rect.fromLTWH(0, 0, 1440, 60));
+      expect(tester.getRect(find.byType(WindowDragArea)), const Rect.fromLTWH(0, 0, 1440, 68));
       final RenderObject canvasBox = tester.renderObject(canvas);
       bool reachesCanvas(Offset at) => tester.hitTestOnBinding(at).path.any((entry) => entry.target == canvasBox);
       expect(reachesCanvas(const Offset(600, 30)), isFalse, reason: 'a press in the bar row moves the window only');
@@ -147,7 +147,7 @@ void main() {
       for (var i = 0; i < 3; i++) {
         expect(tester.getSize(empty.at(i)), const Size.square(44));
       }
-      expect(tester.getTopLeft(empty.first), const Offset(91, 4));
+      expect(tester.getTopLeft(empty.first), const Offset(91, 12));
       expect(
         tester.getSemantics(find.bySemanticsIdentifier('graph.reload')),
         isSemantics(isButton: true, hasEnabledState: true, isEnabled: false),
@@ -186,7 +186,7 @@ void main() {
     expect(shell.calls, hasLength(2), reason: 'below the row a pan reaches the canvas, not the window');
   });
 
-  testWidgets('with a project open PLACE is its capsule at 91, 4 and the graph fills VIEW and ACTION; closing it '
+  testWidgets('with a project open PLACE is its capsule at 91, 12 and the graph fills VIEW and ACTION; closing it '
       'empties them', (
     tester,
   ) async {
@@ -198,7 +198,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(ProjectCapsule), findsOneWidget);
-    expect(tester.getTopLeft(find.byType(ProjectCapsule)), const Offset(91, 4));
+    expect(tester.getTopLeft(find.byType(ProjectCapsule)), const Offset(91, 12));
     expect(find.descendant(of: find.byType(ProjectCapsule), matching: find.text('zanshin')), findsOneWidget);
     expect(find.byType(ShellEmptyIsland), findsNothing);
     expect(find.byType(GraphView), findsOneWidget);

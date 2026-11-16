@@ -5,8 +5,8 @@ const { AtPill, Menu, DropMenu, DragGhost, Toast, ChangeId, RevsetDialog, PushDi
 const Swatch = HatchSwatch || (() => null);
 // Settings › Project › Immutable commits starts at jj's default: builtin_immutable_heads()
 const IMM0 = { ...((ImmutablePage && ImmutablePage.defaults) || { trunk: true, tags: true, remoteBookmarks: true, remoteTags: true, others: false, bookmarks: [], custom: "" }) };
-// TOP = --chrome-top on the macOS 27 reference geometry (bar centred on the traffic lights at y 26: 26 + 22 + 12)
-const EDGE = 12, TOP = 60, RAIL_R = 76, PANEL_W = 300, DETAIL_W = 460, MINI = 146;
+// TOP = --chrome-top: the bar 12 from the top, centred on the traffic lights moved to y 34 (34 + 22 + 12)
+const EDGE = 12, TOP = 68, RAIL_R = 76, PANEL_W = 300, DETAIL_W = 460, MINI = 146;
 const s8 = (id) => id.slice(0, 8);
 const short = (name) => { const m = name.match(/[A-Z][A-Z0-9]+-\d+/); return m ? m[0] : name.split("/").pop(); };
 

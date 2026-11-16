@@ -1,6 +1,6 @@
 import React from "react";
 
-// TrafficLights — a mock of the system's window buttons (cards, the UI kit); in the app AppKit draws them where macOS puts them.
+// TrafficLights — a mock of the system's window buttons (cards, the UI kit); in the app AppKit draws them (the project window's moved down to y 34).
 // At rest: grey rings (Zanshin's TrafficLightOverlayView — the one deviation from the system, on purpose). Hovering the group shows
 // the system's buttons: enabled ones in colour with their symbols, disabled ones greyed. 14 × 14, pitch 23 (macOS 26 and later).
 // buttons — which are enabled: the project window all three · Projects { close, zoom } · Settings { close }.

@@ -149,7 +149,8 @@ class ZsMetrics {
       // DS tokens/spacing.css:52; the chrome values derived from the block follow.
       metrics = metrics.copyWith(tlBlockW: 0, tlX: 0, tlMidY: 34);
     } else if (block != null) {
-      // DS tokens/spacing.css:25-30: the bar derives from the system's block, the reference only stands in for it.
+      // DS tokens/spacing.css:25-30: the bar derives from the measured block (in the project window the runner has
+      // moved it to the reference centre line), the reference only stands in for it.
       // `tlSize` and `tlPitch` keep the reference: only mocks draw the buttons.
       metrics = metrics.copyWith(tlX: block.left, tlBlockW: block.width, tlMidY: block.center.dy);
     }
@@ -201,7 +202,7 @@ class ZsMetrics {
     tlPitch: 23,
     tlX: 19,
     tlBlockW: 60,
-    tlMidY: 26,
+    tlMidY: 34,
     chromeInset: 12,
     chromeRailBtn: 40,
     chromeCol: 52,
@@ -347,8 +348,13 @@ class ZsMetrics {
   /// `--tl-block-w` (DS tokens/spacing.css:31).
   final double tlBlockW;
 
-  /// `--tl-mid-y` (DS tokens/spacing.css:31).
+  /// `--tl-mid-y` (DS tokens/spacing.css:31): the project window's traffic-light centre line, where the runner moves
+  /// the buttons so the top bar keeps `--chrome-inset` to the top edge.
   final double tlMidY;
+
+  /// `.zs-win{--tl-mid-y:26px}` (DS components/window/window.css:26): dialog windows keep the system's button
+  /// position; their header centres on it when no block is measured.
+  static const double dialogTlMidY = 26;
 
   /// `--chrome-inset` (DS tokens/spacing.css:32).
   final double chromeInset;
@@ -368,10 +374,10 @@ class ZsMetrics {
   /// `--chrome-first-x` (DS tokens/spacing.css:37).
   double get chromeFirstX => tlX + tlBlockW + chromeInset;
 
-  /// `--chrome-bar-y` (DS tokens/spacing.css:38).
+  /// `--chrome-bar-y` (DS tokens/spacing.css:38): the bar centred on the traffic lights, 12 at the reference.
   double get chromeBarY => tlMidY - chromeH / 2;
 
-  /// `--chrome-top` (DS tokens/spacing.css:39).
+  /// `--chrome-top` (DS tokens/spacing.css:39): 68 at the reference.
   double get chromeTop => tlMidY + chromeH / 2 + chromeInset;
 
   /// `--chrome-left` (DS tokens/spacing.css:40).
