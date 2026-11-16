@@ -1834,6 +1834,7 @@ Spec: spec-9-31-matrix-rows-closing-location-ids-before-immutable.
 - **The CLI's generic, error-structure-derived hint families stay dropped on errors (revset parse/resolution "Did you mean …" and divergent-id hints, config "Check the config file: <path>", fileset, string-pattern and name-pattern parse hints).** Low.
   - CLI v0.46.0 `cli/src/command_error.rs` :892-989, :258-290, :831-874, `cli/src/revset_util.rs` :370-403, :512-520; Story 9.56 built `FfiError.hints` and filled the verb-specific hints only — these hang off the read-path error types (`RevsetError`, `ConfigError`, `FileError`, …).
   - **Follow-up:** a story that derives these hints from the jj-lib error structures and sets them through the existing `hints()` accessors.
+  - **2026-11-16:** the config "Check the config file: <path>" family is done (closing run of Story 9.60, spec-9-60-closing-check-the-config-file-hint, commit e1f7295c).
 - ~~**`convert`'s "import git head" finish does not resolve the immutable set, while the CLI's `jj git init --git-repo` goes through `tx.finish`.**~~ — RESOLVED 2026-10-22 (spec-9-57-convert-no-own-rollback-cli-parity, commit f1c4046): the head-import finish resolves `immutable_heads()` against the base repo before the rebase and refuses `jj.config_error` after `.jj/` exists, as the CLI; both convert verbs dropped their own rollback and report what they left in `left_behind`; oracle `convert_import_unresolvable_immutable` / `convert_colocated_unresolvable_immutable`. Low.
   - (as found) `crates/zanshin-jj/src/convert.rs:655/666` (plain rebase, then `finish_transaction`); under an unresolvable alias the CLI fails after writing `.jj/`, while Zanshin's convert rolls `.jj/` back on any failure (no-data-loss invariant).
   - ~~**Follow-up:** Ralph decides whether convert refuses like the CLI (and keeps or rolls back the half-initialised `.jj/`).~~ Done (f1c4046).
@@ -3183,6 +3184,16 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in Story 9.60 (bmad-build-auto, 2026-11-16)
 
-- **A config error that names its file carries no hint, while the CLI prints "Hint: Check the config file: <path>" for a wrong-typed value, a TOML parse failure and a failed migration.** Medium.
+- ~~**A config error that names its file carries no hint, while the CLI prints "Hint: Check the config file: <path>" for a wrong-typed value, a TOML parse failure and a failed migration.**~~ — RESOLVED 2026-11-16 (closing run of Story 9.60, see the note below). Medium.
   - CLI @ v0.47.0 `cli/src/command_error.rs:415-447` and `config_get_error_hint` (`:1000-1007`) add the hint when the error has a `source_path`; Zanshin's `value_error` / `file_error` (`crates/zanshin-jj/src/config.rs:338-351`) set no hints, and `migrate` (`:1066-1075`) puts "Check the config file: …" into the reason. Pre-existing; Story 9.60's non-goal "other config errors".
   - **Follow-up:** fill `ConfigError::Load.hints` from the error's `source_path` in `value_error`, `file_error` and `migrate` (moving migrate's line out of the reason), and check each carrier forwards it — the hints channel on `jj.config_error` exists since Story 9.60.
+  - **2026-11-16:** RESOLVED in the closing run of Story 9.60 (spec-9-60-closing-check-the-config-file-hint, commit e1f7295c): the three plus the non-table alias table carry the hint; workspace load/creation faults stay hint-free as in the CLI; every carrier forwards it; oracle `hints::` witnesses.
+
+## Surfaced in the closing run of Story 9.60 (bmad-build-auto, 2026-11-16)
+
+- **A config fault's `jj.config_error` context keeps a `config error: ` label on paths that convert through `mutate::cfg` (also `file::cfg`, `commit_views::rev`) and has none through `From<ConfigError>`, so one fault's context differs by path.** Low.
+  - `crates/zanshin-jj/src/mutate.rs:619` `cfg` renders the `ConfigError` Display; `From<ConfigError>` keeps the bare reason. A wrong-typed `snapshot.max-new-file-size` reaches the wire as "config error: Invalid type or value for …", a TOML parse error at open without the label; the oracle helper `config_refusal` (`crates/zanshin-parity/tests/oracle/hints.rs:196-202`) assumes no carrier puts it on the wire. Pre-existing since Story 9.60.
+  - **Follow-up:** convert every `ConfigError` with the bare reason (one conversion, `cfg` = `From`), updating the tests that pin the label.
+- **`git push`'s commit check maps an `immutable_heads()` resolution failure to `jj.config_error` without hints, while the CLI raises a revset resolution error with its hints.** Low.
+  - `crates/zanshin-jj/src/push.rs:595-596` (`cfg_text` on `resolve_expression`'s `RevsetError`); CLI @ v0.47.0 `cli/src/commands/git/push.rs:834-836` `.resolve()?` → `From<RevsetResolutionError>`. Pre-existing (Stories 9.20 / 9.58).
+  - **Follow-up:** map it through `mutate::rev` (resolution code and hints) and update the registry's push sentence.
