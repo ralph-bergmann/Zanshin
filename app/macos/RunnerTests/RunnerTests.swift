@@ -196,6 +196,26 @@ class RunnerTests: XCTestCase {
     withExtendedLifetime(chrome) { window.close() }
   }
 
+  /// macOS keeps a visible toolbar on screen in full screen, a bar over the content; the chrome hides the empty
+  /// toolbar while the window is in full screen and shows it again after.
+  func testFullScreenHidesTheToolbar() throws {
+    let window = plainWindow()
+    let chrome = MainWindowChrome(window: window, kind: .main, buttonMidY: 34)
+    settle(window)
+    let toolbar = try XCTUnwrap(window.toolbar, "the chrome attaches a toolbar")
+    XCTAssertTrue(toolbar.isVisible, "visible in a window")
+
+    NotificationCenter.default.post(name: NSWindow.willEnterFullScreenNotification, object: window)
+    XCTAssertFalse(toolbar.isVisible, "hidden from the start of the full-screen transition")
+
+    NotificationCenter.default.post(name: NSWindow.didExitFullScreenNotification, object: window)
+    settle(window)
+    XCTAssertTrue(toolbar.isVisible, "visible again after leaving full screen")
+    assertCentred(window, at: 34, "the buttons back on the line after leaving full screen")
+
+    withExtendedLifetime(chrome) { window.close() }
+  }
+
   func testADialogWindowKeepsTheSystemPosition() {
     let reference = plainWindow()
     reference.titlebarAppearsTransparent = true

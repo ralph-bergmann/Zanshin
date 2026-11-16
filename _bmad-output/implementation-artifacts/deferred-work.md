@@ -3237,3 +3237,10 @@ Ralph and Claude went through the inspector point by point; each point was check
   - The unattended run allows only synchronous commands; widget tests pin the text, the order and the tooltips. `app/widgetbook/folders/sync.dart` (`_Sheet.refused`); `sync_model.dart` / `home_page.dart` toast `tooltip`.
   - **Follow-up:** a console session opens the state and an error toast with hints through Marionette in Paper and Night and compares them with the DS error note and toast.
   - **2026-11-16, console session:** "Push sheet › Refused with hints" checked through Marionette in Paper and Night — the hints sit one per line under the context in the existing error note and under the change row, no layout change (no commit needed); left: the toast tooltips, which need a hover Marionette cannot do — a manual hover check in the app.
+  - **2026-11-16, console session (Computer Use, throwaway home):** the fetch-failed toast's tooltip shows the full text, the `Caused by:` caret diagram and jj's revsets hint on hover — done; the push-failed toast uses the same tooltip path (not hovered). Open as its own item below.
+
+## Surfaced in the console session after Story 11.29 (2026-11-16)
+
+- **A sync toast's hint tooltip shows a multi-line jj text (a `Caused by:` caret diagram) in the proportional font, so the `^---` caret does not sit under the column it points at.** Low.
+  - `app/lib/src/features/sync/sync_model.dart:228,356` pass the joined text as `tooltip`; the graph's toast already sets `ZsType.id` (mono) for a multi-line text (`graph_toasts.dart:228`). Seen with Computer Use on a `remotes.origin.fetch-bookmarks = "glob:("` fetch refusal.
+  - **Follow-up:** Ralph decides whether toast tooltips with multi-line jj text use the mono id style (a small UI story), or stay as they are.

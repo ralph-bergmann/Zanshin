@@ -335,14 +335,19 @@ final class MainWindowChrome {
     }
 
     /// Hides the overlay before the fullscreen transition starts so it cannot
-    /// interfere with the fullscreen titlebar
+    /// interfere with the fullscreen titlebar, and hides the empty toolbar: macOS
+    /// keeps a window's toolbar on screen in full screen (a 66 pt bar over the
+    /// Flutter content), unless the app asks for `.autoHideToolbar`, which needs
+    /// the window delegate the engine owns.
     @objc private func handleWindowWillEnterFullScreen(_ notification: Notification) {
         trafficLightOverlay?.setSuppressed(true)
+        window?.toolbar?.isVisible = false
     }
 
-    /// Re-attaches and shows the overlay after leaving fullscreen, where AppKit has
-    /// rebuilt the titlebar
+    /// Shows the toolbar again, then re-attaches and shows the overlay after
+    /// leaving fullscreen, where AppKit has rebuilt the titlebar
     @objc private func handleWindowDidExitFullScreen(_ notification: Notification) {
+        window?.toolbar?.isVisible = true
         placeWindowButtons()
         installTrafficLightOverlay()
         trafficLightOverlay?.setSuppressed(false)
