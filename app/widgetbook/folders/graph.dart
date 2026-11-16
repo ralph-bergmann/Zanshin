@@ -19,6 +19,7 @@ import 'package:zanshin/src/features/graph/graph_drop_menu.dart';
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_metrics.dart';
+import 'package:zanshin/src/features/graph/graph_move_sheet.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_preferences.dart';
@@ -50,11 +51,17 @@ import 'package:zanshin_core/zanshin_core.dart'
         ActionOutcome,
         ActionStatus,
         Bookmark,
+        BookmarkDropSource,
         Change,
         ChangeActions,
         ConflictState,
         Diff,
         DiffWhitespace,
+        DropAction,
+        DropActions,
+        DropLocation,
+        DropSource,
+        DropVerb,
         FileChange,
         FileChangeKind,
         FileDiff,
@@ -282,6 +289,22 @@ final graphFolder = WidgetbookFolder(
     WidgetbookComponent(
       name: 'Drop menu',
       useCases: <WidgetbookUseCase>[WidgetbookUseCase(name: 'Open', builder: (context) => const _DropMenus())],
+    ),
+    // Story 10.46: the ref name field and the move picker (DS components/menus/ref-sheets.card.html).
+    WidgetbookComponent(
+      name: 'Ref sheets',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(
+          name: 'Name, replaced',
+          builder: (context) => _onCanvas(_nameSheet(context, 'feature/my new:idea?')),
+        ),
+        WidgetbookUseCase(
+          name: 'Name, rule error',
+          builder: (context) => _onCanvas(_nameSheet(context, 'release/1.5.')),
+        ),
+        WidgetbookUseCase(name: 'Move picker, bookmark', builder: (context) => _onCanvas(_moveSheet(tag: false))),
+        WidgetbookUseCase(name: 'Move picker, tag', builder: (context) => _onCanvas(_moveSheet(tag: true))),
+      ],
     ),
     WidgetbookComponent(
       name: 'Inspector diff',
@@ -1857,6 +1880,84 @@ class _DropMenus extends StatelessWidget {
       ],
     );
   }
+}
+
+/// [sheet] over the window canvas, as the graph shows it.
+Widget _onCanvas(Widget sheet) => Stack(fit: StackFit.expand, children: <Widget>[const ZsCanvas(), sheet]);
+
+/// The Create bookmark here… sheet opened with [text] typed (Story 10.46).
+Widget _nameSheet(BuildContext context, String text) {
+  final AppLocalizations s = context.l10n;
+  return GraphNameSheet(
+    request: GraphNameRequest(
+      title: s.nameSheetCreateTitle,
+      label: s.nameSheetNameLabel,
+      confirm: s.nameSheetCreate,
+      action: (text, id) => GraphBookmarkCreate(<String>[text], revision: id),
+    ),
+    id: 'srkvzmop',
+    initialText: text,
+    onConfirm: (_) {},
+    onCancel: () {},
+  );
+}
+
+/// The demo refs the move picker lists: bookmarks, or tags with one on origin.
+List<Bookmark> _moveRefs({required bool tag}) => tag
+    ? const <Bookmark>[
+        Bookmark(name: 'v1.5.0-rc1', target: 'tnoyqlsv', kind: LocalBookmark(), conflicted: false, synced: true),
+        Bookmark(
+          name: 'v1.5.0-rc1',
+          target: 'tnoyqlsv',
+          kind: RemoteBookmark('origin', tracked: true),
+          conflicted: false,
+          synced: true,
+        ),
+        Bookmark(name: 'v1.4.2', target: 'wkqmlxvo', kind: LocalBookmark(), conflicted: false, synced: true),
+      ]
+    : const <Bookmark>[
+        Bookmark(name: 'feature/auth-flow', target: 'kmwnqzlt', kind: LocalBookmark(), conflicted: false, synced: true),
+        Bookmark(
+          name: 'feature/onboarding/pager',
+          target: 'lmnuoyrw',
+          kind: LocalBookmark(),
+          conflicted: false,
+          synced: true,
+        ),
+        Bookmark(name: 'main', target: 'tnoyqlsv', kind: LocalBookmark(), conflicted: false, synced: true),
+      ];
+
+/// The move picker on `srkvzmop` (Story 10.46); for bookmarks the pager one needs `--allow-backwards`.
+Widget _moveSheet({required bool tag}) => GraphMoveSheet(
+  key: ValueKey<bool>(tag),
+  tag: tag,
+  targetKey: 'srkvzmop',
+  short: 'srkvzmop',
+  drops: const _MoveDrops(),
+  read: () async => _moveRefs(tag: tag),
+  onConfirm: (_) {},
+  onCancel: () {},
+);
+
+/// The move preview of the catalogue: only `feature/onboarding/pager` is not a fast-forward.
+class _MoveDrops implements GraphDrops {
+  const _MoveDrops();
+
+  @override
+  Future<DropActions> dropActions(DropSource source, List<DropLocation> locations) async => DropActions(
+    actions: <DropAction>[
+      DropAction(
+        verb: DropVerb.bookmarkMove,
+        location: 0,
+        outcome: ActionOutcome(
+          status: ActionStatus.available,
+          refusal: null,
+          combinedDescriptionNeeded: false,
+          allowBackwardsNeeded: source is BookmarkDropSource && source.name == 'feature/onboarding/pager',
+        ),
+      ),
+    ],
+  );
 }
 
 /// A partly picked file in the inspector (Story 10.26): the mode row picked, hunk 1 and 3 picked, hunk 2 not. Story

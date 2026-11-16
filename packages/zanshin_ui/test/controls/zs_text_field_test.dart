@@ -104,6 +104,21 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('Story 10.46: input formatters rewrite entered text', (tester) async {
+      final controller = ZsTextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _field(
+          ZsTextField(
+            controller: controller,
+            inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.deny(' ', replacementString: '_')],
+          ),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), 'a b c');
+      expect(controller.text, 'a_b_c');
+    });
+
     testWidgets('Story 10.30: a message appearing and going keeps focus, caret and typing', (tester) async {
       final controller = ZsTextEditingController();
       addTearDown(controller.dispose);

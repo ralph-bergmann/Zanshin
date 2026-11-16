@@ -15,7 +15,9 @@ import 'graph_content.dart';
 import 'graph_drag.dart';
 import 'graph_inspector.dart';
 import 'graph_layout.dart';
+import 'graph_move_sheet.dart';
 import 'graph_ports.dart';
+import 'graph_ref_name.dart';
 import 'graph_view_model.dart';
 import 'hatch_swatch.dart';
 
@@ -36,12 +38,25 @@ const double _menuMaxWidth = 360;
 /// Delete of the bookmark `name` through the project's delete flow (Story 10.44), given jj's `--all-remotes` [rows].
 typedef GraphDeleteBookmark = void Function(String name, List<Bookmark> rows);
 
-/// What the name sheet asks for (Story 10.15): its [title], the field's [label], the [confirm] verb, and the [action]
-/// the typed text makes on a change id (the short id for the shown command, the node key to run).
+/// A sheet a menu row asks for (Story 10.46): the name sheet or the move picker.
 @immutable
-class GraphNameRequest {
+sealed class GraphSheetRequest {
+  const GraphSheetRequest();
+}
+
+/// What the name sheet asks for (Story 10.15): its [title], the field's [label], the [confirm] verb, and the [action]
+/// the typed text makes on a change id (the short id for the shown command, the node key to run). With [refName]
+/// (Story 10.46) the field takes a bookmark or tag name: characters git refuses become `_`, and a broken whole-name rule
+/// disables the confirm.
+class GraphNameRequest extends GraphSheetRequest {
   /// A sheet titled [title].
-  const GraphNameRequest({required this.title, required this.label, required this.confirm, required this.action});
+  const GraphNameRequest({
+    required this.title,
+    required this.label,
+    required this.confirm,
+    required this.action,
+    this.refName = true,
+  });
 
   /// The sheet's title.
   final String title;
@@ -54,6 +69,77 @@ class GraphNameRequest {
 
   /// The action for the typed text on the change `id`.
   final GraphAction Function(String text, String id) action;
+
+  /// Whether the field takes a ref name (false: a revision, typed as is).
+  final bool refName;
+}
+
+/// "Move existing here…" (Story 10.46): the move picker over the existing bookmarks, or the tags when [tag].
+class GraphMoveRequest extends GraphSheetRequest {
+  /// The picker of bookmarks, or of tags when [tag].
+  const GraphMoveRequest({required this.tag});
+
+  /// Whether it moves a tag.
+  final bool tag;
+}
+
+/// Which way a bookmark move goes (Story 10.46): along the history, back to an ancestor, or across to another branch.
+enum GraphMoveDirection {
+  /// A fast-forward.
+  forward,
+
+  /// To an ancestor of where it is (or where it is is outside the layout: the flag's own word).
+  backwards,
+
+  /// To a change on another branch.
+  sideways,
+}
+
+/// The backend's answer for one bookmark move: its `direction`, or the `refusal` (context ?? code) when jj would refuse.
+typedef GraphMoveCheck = ({GraphMoveDirection direction, String? refusal});
+
+/// Whether `jj bookmark move [name] --to [to]` from [from] (the bookmark's change now) would run (Story 10.46): one
+/// `dropActions` preview; a move that needs `--allow-backwards` goes backwards when [to] is an ancestor of [from] in
+/// [layout], sideways when both are in it and it is not, else backwards. Null when the preview fails.
+Future<GraphMoveCheck?> graphBookmarkMoveCheck(
+  GraphDrops drops,
+  GraphLayout? layout, {
+  required String name,
+  required String from,
+  required String to,
+}) async {
+  final DropActions actions;
+  try {
+    actions = await drops.dropActions(BookmarkDropSource(name), <DropLocation>[
+      DropLocation(onto: <String>[to]),
+    ]);
+  } on Object catch (error, stack) {
+    final String reason = error is ZanshinFfiException ? error.code : error.runtimeType.toString();
+    _log.warning('bookmark move preview failed: $reason', error, stack);
+    return null;
+  }
+  for (final DropAction action in actions.actions) {
+    if (action.verb != DropVerb.bookmarkMove) {
+      continue;
+    }
+    final ActionOutcome outcome = action.outcome;
+    if (outcome.status == ActionStatus.refused) {
+      final ActionRefusal? r = outcome.refusal;
+      return (direction: GraphMoveDirection.forward, refusal: r == null ? null : r.context ?? r.code);
+    }
+    if (!outcome.allowBackwardsNeeded) {
+      return (direction: GraphMoveDirection.forward, refusal: null);
+    }
+    final int? fromNode = layout?.indexOfKey(from);
+    final int? toNode = layout?.indexOfKey(to);
+    final GraphMoveDirection direction = layout == null || fromNode == null || toNode == null
+        ? GraphMoveDirection.backwards
+        : _isAncestor(layout, toNode, of: fromNode)
+        ? GraphMoveDirection.backwards
+        : GraphMoveDirection.sideways;
+    return (direction: direction, refusal: null);
+  }
+  return null;
 }
 
 /// Whether [node] is an ancestor of [of] through the layout's edges (an indirect edge is ancestry through hidden
@@ -117,7 +203,7 @@ List<ZsMenuEntry> graphCardMenuEntries(
   ValueChanged<String>? onDescribe,
   ValueChanged<String>? onSquash,
   VoidCallback? onImmutableCommits,
-  ValueChanged<GraphNameRequest>? ask,
+  ValueChanged<GraphSheetRequest>? ask,
 }) {
   final data = GraphCardData.of(layout, node, content: content);
   final String key = data.key;
@@ -300,7 +386,8 @@ GraphNameRequest _createTagRequest(AppLocalizations strings) => GraphNameRequest
 /// The thin bookmark popover's rows for [node] (Story 10.15): per local bookmark a submenu Rename…, Move to…,
 /// Delete; per remote bookmark (not `git`) a submenu with Track or Untrack as [bookmarks] (jj's live `bookmark list
 /// --all-remotes`) says, disabled "Reading bookmarks…" while it is null (or with the failure when [readFailed]);
-/// then Create bookmark here… and Move existing here…, which [ask] for a name. While [blocked] names a reason every
+/// then Create bookmark here…, which [ask]s for a name, and Move existing here…, which asks for the move picker (Story
+/// 10.46). While [blocked] names a reason every
 /// row is disabled with it. With [delete] (Story 10.44) Delete hands the name to the shared delete flow, disabled
 /// when the read failed; without it Delete runs `jj bookmark delete` itself.
 List<ZsMenuEntry> graphBookmarkMenuEntries(
@@ -310,7 +397,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
   required String? blocked,
   required ValueChanged<GraphAction> run,
   required List<Bookmark>? bookmarks,
-  required ValueChanged<GraphNameRequest> ask,
+  required ValueChanged<GraphSheetRequest> ask,
   bool readFailed = false,
   GraphDrag? drag,
   ValueChanged<String>? delete,
@@ -392,6 +479,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
                   label: strings.nameSheetRevisionLabel,
                   confirm: strings.nameSheetMove,
                   action: (text, _) => GraphBookmarkMove(<String>[name], to: text),
+                  refName: false,
                 ),
               ),
             ),
@@ -461,14 +549,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
     item(
       strings.bookmarkMenuMoveHere,
       identifier: 'bookmark-menu-move-here',
-      onSelected: () => ask(
-        GraphNameRequest(
-          title: strings.nameSheetMoveHereTitle,
-          label: strings.nameSheetNameLabel,
-          confirm: strings.nameSheetMove,
-          action: (text, id) => GraphBookmarkMove(<String>[text], to: id),
-        ),
-      ),
+      onSelected: () => ask(const GraphMoveRequest(tag: false)),
     ),
   ];
 }
@@ -477,7 +558,8 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
 /// state ("on `<remotes>`" by [tags], jj's live `tag list --all-remotes` in `tagRow`'s shape, else "local only"; "Reading
 /// tags…" while it is null, the failure when [readFailed]) and a submenu Delete… — through [delete] (10.44's flow,
 /// disabled when the read failed), else `jj tag delete` at once; per remote tag (not `git`) Track or Untrack as the read
-/// says; then Create tag here… and Move existing here…, which [ask] for a name. While [blocked] names a reason every
+/// says; then Create tag here…, which [ask]s for a name, and Move existing here…, which asks for the move picker (Story
+/// 10.46). While [blocked] names a reason every
 /// row is disabled with it.
 List<ZsMenuEntry> graphTagMenuEntries(
   AppLocalizations strings,
@@ -486,7 +568,7 @@ List<ZsMenuEntry> graphTagMenuEntries(
   required String? blocked,
   required ValueChanged<GraphAction> run,
   required List<Bookmark>? tags,
-  required ValueChanged<GraphNameRequest> ask,
+  required ValueChanged<GraphSheetRequest> ask,
   bool readFailed = false,
   ValueChanged<String>? delete,
 }) {
@@ -605,14 +687,7 @@ List<ZsMenuEntry> graphTagMenuEntries(
     item(
       strings.tagMenuMoveHere,
       identifier: 'tag-menu-move-here',
-      onSelected: () => ask(
-        GraphNameRequest(
-          title: strings.nameSheetMoveTagHereTitle,
-          label: strings.nameSheetTagNameLabel,
-          confirm: strings.nameSheetMove,
-          action: (text, id) => GraphTagSet(<String>[text], revision: id, allowMove: true),
-        ),
-      ),
+      onSelected: () => ask(const GraphMoveRequest(tag: true)),
     ),
   ];
 }
@@ -818,16 +893,18 @@ class _MenuHostState extends State<_MenuHost> {
   }
 }
 
-/// Asks for a name for the change [key] (its [short] id shown) in the name sheet.
-typedef _Ask = void Function(String key, String short, GraphNameRequest request);
+/// Asks for a name or a pick for the change [key] (its [short] id shown) in a sheet.
+typedef _Ask = void Function(String key, String short, GraphSheetRequest request);
 
-/// The name sheet in the root overlay, shared by the card menu and both popovers (Stories 10.15, 10.45): [builder]
-/// gets the `ask` that shows it; a confirmed name runs through [model]'s runner.
+/// The name sheet and the move picker in the root overlay, shared by the card menu and both popovers (Stories 10.15,
+/// 10.45, 10.46): [builder] gets the `ask` that shows one; a confirmed action runs through [model]'s runner. The picker
+/// reads the refs through [read].
 class _NameSheetHost extends StatefulWidget {
-  const _NameSheetHost({required this.model, required this.builder});
+  const _NameSheetHost({required this.model, required this.builder, this.read});
 
   final GraphViewModel model;
   final Widget Function(BuildContext context, _Ask ask) builder;
+  final Future<List<Bookmark>> Function()? read;
 
   @override
   State<_NameSheetHost> createState() => _NameSheetHostState();
@@ -837,10 +914,10 @@ class _NameSheetHostState extends State<_NameSheetHost> {
   final _portal = OverlayPortalController();
 
   /// The sheet's request and the change it acts on, while it shows.
-  ({GraphNameRequest request, String key, String short})? _ask;
+  ({GraphSheetRequest request, String key, String short})? _ask;
   var _closing = false;
 
-  void _askFor(String key, String short, GraphNameRequest request) {
+  void _askFor(String key, String short, GraphSheetRequest request) {
     setState(() {
       _ask = (request: request, key: key, short: short);
       _closing = false;
@@ -860,22 +937,41 @@ class _NameSheetHostState extends State<_NameSheetHost> {
     controller: _portal,
     overlayLocation: OverlayChildLocation.rootOverlay,
     overlayChildBuilder: (context) {
-      final ({GraphNameRequest request, String key, String short})? ask = _ask;
+      final ({GraphSheetRequest request, String key, String short})? ask = _ask;
       if (ask == null) {
         return const SizedBox.shrink();
       }
+      final GraphViewModel model = widget.model;
       return Positioned.fill(
-        child: GraphNameSheet(
-          request: ask.request,
-          id: ask.short,
-          closing: _closing,
-          onClosed: _closed,
-          onCancel: _close,
-          onConfirm: (text) {
-            unawaited(widget.model.run(ask.request.action(text, ask.key)));
-            _close();
-          },
-        ),
+        child: switch (ask.request) {
+          final GraphNameRequest request => GraphNameSheet(
+            request: request,
+            id: ask.short,
+            closing: _closing,
+            onClosed: _closed,
+            onCancel: _close,
+            onConfirm: (text) {
+              unawaited(model.run(request.action(text, ask.key)));
+              _close();
+            },
+          ),
+          GraphMoveRequest(:final bool tag) => GraphMoveSheet(
+            tag: tag,
+            targetKey: ask.key,
+            short: ask.short,
+            layout: model.layout,
+            content: model.layout == null ? null : model.content,
+            drops: model.drag.drops,
+            read: widget.read,
+            closing: _closing,
+            onClosed: _closed,
+            onCancel: _close,
+            onConfirm: (action) {
+              unawaited(model.run(action));
+              _close();
+            },
+          ),
+        },
       );
     },
     child: widget.builder(context, _askFor),
@@ -1048,7 +1144,7 @@ class GraphTagMenuHost extends StatelessWidget {
 typedef _RefMenuState = ({
   List<Bookmark>? rows,
   bool readFailed,
-  ValueChanged<GraphNameRequest> ask,
+  ValueChanged<GraphSheetRequest> ask,
   ValueChanged<String>? delete,
 });
 
@@ -1138,6 +1234,7 @@ class _RefMenuHostState extends State<_RefMenuHost> {
   @override
   Widget build(BuildContext context) => _NameSheetHost(
     model: widget.model,
+    read: widget.read,
     builder: (context, ask) => _MenuHost(
       open: widget.open,
       anchor: widget.anchor,
@@ -1157,7 +1254,8 @@ class _RefMenuHostState extends State<_RefMenuHost> {
 
 /// The name sheet (Story 10.15): a [ZsSheet] with the [request]'s title, one mono field focused at open, the live jj
 /// command on [id] in a mono line, Cancel and the gold confirm (disabled while the field is empty); ↩ confirms, Esc
-/// cancels.
+/// cancels. A ref name (Story 10.46) has git's refused characters replaced by `_` with a note, and a broken whole-name
+/// rule as the field's error, which disables the confirm and ↩.
 class GraphNameSheet extends StatefulWidget {
   /// The sheet of [request].
   const GraphNameSheet({
@@ -1165,6 +1263,7 @@ class GraphNameSheet extends StatefulWidget {
     required this.id,
     required this.onConfirm,
     required this.onCancel,
+    this.initialText = '',
     this.closing = false,
     this.onClosed,
     super.key,
@@ -1172,6 +1271,9 @@ class GraphNameSheet extends StatefulWidget {
 
   /// What the sheet asks for.
   final GraphNameRequest request;
+
+  /// The field's text at open, as if typed (the catalogue's states).
+  final String initialText;
 
   /// The change id the shown command names (the short id).
   final String id;
@@ -1193,8 +1295,26 @@ class GraphNameSheet extends StatefulWidget {
 }
 
 class _GraphNameSheetState extends State<GraphNameSheet> {
-  final _text = ZsTextEditingController();
+  late final _text = ZsTextEditingController(
+    text: widget.request.refName ? graphCleanRefName(widget.initialText) : widget.initialText,
+  );
   final _focus = FocusNode(debugLabel: 'name sheet');
+
+  /// Whether characters were replaced since the field was last empty (Story 10.46).
+  late var _replaced = _text.text != widget.initialText;
+
+  /// Typing and paste take the same path: every edit is cleaned before it lands.
+  late final _clean = TextInputFormatter.withFunction((oldValue, newValue) {
+    final String cleaned = graphCleanRefName(newValue.text);
+    if (cleaned == newValue.text) {
+      return newValue;
+    }
+    // Through setState: a replacement that leaves the text as it was (a space over a selected `_`) fires no onChanged.
+    if (!_replaced) {
+      setState(() => _replaced = true);
+    }
+    return newValue.copyWith(text: cleaned);
+  });
 
   @override
   void dispose() {
@@ -1203,9 +1323,12 @@ class _GraphNameSheetState extends State<GraphNameSheet> {
     super.dispose();
   }
 
+  String? _error(AppLocalizations strings, String text) =>
+      widget.request.refName ? graphRefNameError(strings, text) : null;
+
   void _confirm() {
     final String text = _text.text.trim();
-    if (text.isNotEmpty && !widget.closing) {
+    if (text.isNotEmpty && !widget.closing && _error(context.l10n, text) == null) {
       widget.onConfirm(text);
     }
   }
@@ -1215,6 +1338,7 @@ class _GraphNameSheetState extends State<GraphNameSheet> {
     final AppLocalizations strings = context.l10n;
     final ZsColors colors = ZsColors.of(context);
     final String text = _text.text.trim();
+    final String? error = _error(strings, text);
     return ZsSheet(
       semanticLabel: widget.request.title,
       onCancel: widget.onCancel,
@@ -1247,9 +1371,21 @@ class _GraphNameSheetState extends State<GraphNameSheet> {
                 mono: true,
                 label: widget.request.label,
                 identifier: 'name-sheet-field',
-                onChanged: (_) => setState(() {}),
+                error: error,
+                inputFormatters: widget.request.refName ? <TextInputFormatter>[_clean] : null,
+                onChanged: (value) => setState(() {
+                  if (value.isEmpty) {
+                    _replaced = false;
+                  }
+                }),
                 onSubmitted: (_) => _confirm(),
               ),
+              if (_replaced && error == null)
+                Text(
+                  strings.nameSheetReplaced,
+                  key: const ValueKey<String>('name-sheet-replaced'),
+                  style: ZsType.body.copyWith(fontSize: ZsType.fsSm, color: colors.textDim),
+                ),
               Text(
                 text.isEmpty ? ' ' : widget.request.action(text, widget.id).command,
                 key: const ValueKey<String>('name-sheet-command'),
@@ -1272,7 +1408,7 @@ class _GraphNameSheetState extends State<GraphNameSheet> {
                       size: ZsButtonSize.md,
                       variant: ZsButtonVariant.primary,
                       identifier: 'name-sheet-confirm',
-                      onPressed: text.isEmpty ? null : _confirm,
+                      onPressed: text.isEmpty || error != null ? null : _confirm,
                     ),
                   ],
                 ),

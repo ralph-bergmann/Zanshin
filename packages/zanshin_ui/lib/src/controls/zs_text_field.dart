@@ -312,6 +312,7 @@ class ZsTextField extends StatefulWidget implements ZsControl {
     this.enabled = true,
     this.fieldList,
     this.contextMenu = true,
+    this.inputFormatters,
     this.onChanged,
     this.onSubmitted,
     this.statesController,
@@ -321,6 +322,9 @@ class ZsTextField extends StatefulWidget implements ZsControl {
 
   /// The text; the field keeps its own when null.
   final ZsTextEditingController? controller;
+
+  /// Rewrite every edit, typed and pasted alike, before it lands.
+  final List<TextInputFormatter>? inputFormatters;
 
   /// The UTF-16 range of the text the [error] is about, drawn in `--rem` (a revset's parse span); none when null.
   final TextRange? errorRange;
@@ -502,6 +506,7 @@ class _ZsTextFieldState extends State<ZsTextField> {
             maxLines: widget.multiline ? null : 1,
             minLines: widget.multiline ? 2 : null,
             keyboardType: widget.multiline ? TextInputType.multiline : TextInputType.text,
+            inputFormatters: widget.inputFormatters,
             onChanged: widget.onChanged,
             onSubmitted: widget.onSubmitted,
             contextMenuBuilder: widget.contextMenu

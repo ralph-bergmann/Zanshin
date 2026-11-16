@@ -16,6 +16,7 @@ import 'package:zanshin/src/features/graph/graph_card_render.dart';
 import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
+import 'package:zanshin/src/features/graph/graph_move_sheet.dart';
 import 'package:zanshin/src/features/graph/graph_ports.dart';
 import 'package:zanshin/src/features/graph/graph_view.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
@@ -107,7 +108,7 @@ List<ZsMenuEntry> _menu(
   ValueChanged<String>? onDescribe,
   ValueChanged<String>? onSquash,
   VoidCallback? onImmutableCommits,
-  ValueChanged<GraphNameRequest>? ask,
+  ValueChanged<GraphSheetRequest>? ask,
 }) => graphCardMenuEntries(
   _en,
   _l,
@@ -139,7 +140,7 @@ List<ZsMenuEntry> _popover({
   List<Bookmark>? bookmarks,
   String? blocked,
   ValueChanged<GraphAction>? run,
-  ValueChanged<GraphNameRequest>? ask,
+  ValueChanged<GraphSheetRequest>? ask,
 }) => graphBookmarkMenuEntries(
   _en,
   _l,
@@ -155,9 +156,9 @@ List<Bookmark> _rows({required bool tracked}) => <Bookmark>[
   remoteRow('b-mark', 'origin', 'c$_b', tracked: tracked),
 ];
 
-/// The requests Create… and the bookmark's Rename… and Move to… ask for, by label.
-Map<String, GraphNameRequest> _requests() {
-  final asked = <GraphNameRequest>[];
+/// The requests Create…, Move existing here… and the bookmark's Rename… and Move to… ask for, by label.
+Map<String, GraphSheetRequest> _requests() {
+  final asked = <GraphSheetRequest>[];
   final List<ZsMenuEntry> entries = _popover(bookmarks: _rows(tracked: false), ask: asked.add);
   final List<ZsMenuEntry> local = _row(entries, 'b-mark').submenu!;
   for (final item in <ZsMenuItem>[
@@ -168,12 +169,33 @@ Map<String, GraphNameRequest> _requests() {
   ]) {
     item.onSelected!();
   }
-  return <String, GraphNameRequest>{
+  return <String, GraphSheetRequest>{
     'rename': asked[0],
     'moveTo': asked[1],
     'create': asked[2],
     'moveHere': asked[3],
   };
+}
+
+GraphNameRequest _nameRequest(String label) => _requests()[label]! as GraphNameRequest;
+
+/// Previews every bookmark move as not a fast-forward.
+class _BackwardsDrops implements GraphDrops {
+  @override
+  Future<DropActions> dropActions(DropSource source, List<DropLocation> locations) async => const DropActions(
+    actions: <DropAction>[
+      DropAction(
+        verb: DropVerb.bookmarkMove,
+        location: 0,
+        outcome: ActionOutcome(
+          status: ActionStatus.available,
+          refusal: null,
+          combinedDescriptionNeeded: false,
+          allowBackwardsNeeded: true,
+        ),
+      ),
+    ],
+  );
 }
 
 /// Runs every action and writes one operation each.
@@ -375,7 +397,7 @@ void main() {
     test('Story 10.45: the last group creates a bookmark or a tag through the name sheet; disabled without one', () {
       for (final key in <String>[_b, _imm]) {
         final asked = <GraphNameRequest>[];
-        final List<ZsMenuEntry> entries = _menu(key, ask: asked.add);
+        final List<ZsMenuEntry> entries = _menu(key, ask: (r) => asked.add(r as GraphNameRequest));
         final ZsMenuItem bookmark = _row(entries, 'Create bookmark here…');
         final ZsMenuItem tag = _row(entries, 'Create tag here…');
         expect((bookmark.icon, bookmark.identifier), (ZI.bookmark, 'card-menu-create-bookmark'), reason: key);
@@ -511,10 +533,20 @@ void main() {
     });
 
     test('Create… asks for a name; the action names the change', () {
-      final GraphNameRequest create = _requests()['create']!;
+      final GraphNameRequest create = _nameRequest('create');
       expect(create.title, 'Create bookmark here');
       expect(create.action('x', _b), isA<GraphBookmarkCreate>().having((a) => a.revision, 'revision', _b));
     });
+
+    test(
+      'Story 10.46: Rename… and Create… take a ref name, Move to… a revision; Move existing here… asks the picker',
+      () {
+        expect(_nameRequest('rename').refName, isTrue);
+        expect(_nameRequest('create').refName, isTrue);
+        expect(_nameRequest('moveTo').refName, isFalse);
+        expect(_requests()['moveHere'], isA<GraphMoveRequest>().having((r) => r.tag, 'tag', false));
+      },
+    );
 
     test('a failed read: the remote row disabled with the failure', () {
       final ZsMenuItem remote = _row(
@@ -569,7 +601,7 @@ void main() {
       bool readFailed = false,
       String? blocked,
       ValueChanged<GraphAction>? run,
-      ValueChanged<GraphNameRequest>? ask,
+      ValueChanged<GraphSheetRequest>? ask,
       ValueChanged<String>? delete,
     }) => graphTagMenuEntries(
       _en,
@@ -624,15 +656,15 @@ void main() {
       expect(ran.last.command, 'jj tag track v1@origin');
     });
 
-    test('Create tag here… and Move existing here… ask for a name: jj tag set [-r] [--allow-move]', () {
-      final asked = <GraphNameRequest>[];
+    test('Create tag here… asks for a name (jj tag set -r), Move existing here… for the tag picker', () {
+      final asked = <GraphSheetRequest>[];
       final List<ZsMenuEntry> entries = tags(rows: tagRows, ask: asked.add);
       _row(entries, 'Create tag here…').onSelected!();
       _row(entries, 'Move existing here…').onSelected!();
-      expect(asked.map((r) => r.title), <String>['Create tag here', 'Move a tag here']);
-      expect(asked[0].action('v9', 'kmnvxoqp').command, 'jj tag set v9 -r kmnvxoqp');
-      expect(asked[1].action('v1', 'kmnvxoqp').command, 'jj tag set v1 -r kmnvxoqp --allow-move');
-      expect(asked[1].action('v1', _b), isA<GraphTagSet>().having((a) => a.revision, 'revision', _b));
+      final create = asked[0] as GraphNameRequest;
+      expect((create.title, create.refName), ('Create tag here', true));
+      expect(create.action('v9', 'kmnvxoqp').command, 'jj tag set v9 -r kmnvxoqp');
+      expect(asked[1], isA<GraphMoveRequest>().having((r) => r.tag, 'tag', true));
     });
 
     test('busy: every row disabled with the reason', () {
@@ -645,27 +677,24 @@ void main() {
   test('test-fixtures/commands/card-menu.txt holds the commands the menu, the popover and the sheets show', () {
     final List<ZsMenuEntry> menu = _menu(_b);
     final ZsMenuItem local = _row(_popover(bookmarks: _rows(tracked: false)), 'b-mark');
-    final Map<String, GraphNameRequest> sheets = _requests();
     const short = 'kmnvxoqp';
-    // Story 10.45: the tag sheets — the card menu's Create tag here…, the tag popover's Move existing here….
-    final tagSheets = <GraphNameRequest>[];
+    // Story 10.45: the card menu's Create tag here….
+    final tagSheets = <GraphSheetRequest>[];
     _row(_menu(_b, ask: tagSheets.add), 'Create tag here…').onSelected!();
-    _row(
-      graphTagMenuEntries(_en, _l, _node(_b), blocked: null, run: (_) {}, tags: null, ask: tagSheets.add),
-      'Move existing here…',
-    ).onSelected!();
     final commands = <String>[
       for (final ZsMenuItem item in _items(menu))
         if (item.cmd case final String cmd) cmd,
       _row(local.submenu!, 'Delete').cmd!,
       _row(_row(_popover(bookmarks: _rows(tracked: false)), 'b-mark@origin').submenu!, 'Track').cmd!,
       _row(_row(_popover(bookmarks: _rows(tracked: true)), 'b-mark@origin').submenu!, 'Untrack').cmd!,
-      sheets['rename']!.action('feature/x', short).command,
-      sheets['moveTo']!.action('@', short).command,
-      sheets['create']!.action('ü', short).command,
-      sheets['moveHere']!.action('b-mark', short).command,
-      tagSheets[0].action('ü', short).command,
-      tagSheets[1].action('v1', short).command,
+      _nameRequest('rename').action('feature/x', short).command,
+      _nameRequest('moveTo').action('@', short).command,
+      _nameRequest('create').action('ü', short).command,
+      // Story 10.46: the move picker's commands, forward and with --allow-backwards.
+      graphMoveAction(tag: false, name: 'b-mark', id: short).command,
+      graphMoveAction(tag: false, name: 'b-mark', id: short, allowBackwards: true).command,
+      (tagSheets.single as GraphNameRequest).action('ü', short).command,
+      graphMoveAction(tag: true, name: 'v1', id: short).command,
     ];
     final List<String> lines = File('../test-fixtures/commands/card-menu.txt').readAsLinesSync();
     expect(commands, lines);
@@ -686,10 +715,13 @@ void main() {
       GraphDeleteBookmark? deleteBookmark,
       Future<List<Bookmark>> Function()? tags,
       GraphDeleteBookmark? deleteTag,
+      bool textShortcuts = false,
+      GraphDrops? drops,
     }) async {
       source = ScriptedGraphSource(respond: (_) => _layout());
       actions = _Actions();
-      model = GraphViewModel()..init(source, actions: actions, clock: () => DateTime.utc(2026, 10, 30, 12));
+      model = GraphViewModel()
+        ..init(source, actions: actions, drops: drops, clock: () => DateTime.utc(2026, 10, 30, 12));
       final Directory dir = Directory.systemTemp.createTempSync('zanshin_card_menu');
       addTearDown(() => dir.deleteSync(recursive: true));
       final SettingsStore settings = await SettingsStore.load(File('${dir.path}/settings.json'));
@@ -711,9 +743,11 @@ void main() {
         tags: tags,
         deleteTag: deleteTag,
       );
-      await tester.pumpWidget(
-        shellHost(windowActions == null ? view : AppWindowActionsScope(actions: windowActions, child: view)),
+      final Widget host = shellHost(
+        windowActions == null ? view : AppWindowActionsScope(actions: windowActions, child: view),
       );
+      // The app's WidgetsApp brings the text shortcuts (⌘V); the shell host does not.
+      await tester.pumpWidget(textShortcuts ? DefaultTextEditingShortcuts(child: host) : host);
       await tester.pump();
       await tester.pump();
     }
@@ -1125,9 +1159,156 @@ void main() {
       c.openTags(_b, Rect.fromCenter(center: tester.getCenter(card(_b)), width: 40, height: 16));
       await settle(tester);
       await tapRow(tester, 'Move existing here…');
-      await confirmName(tester, 'v1');
+      // Story 10.46: the tag picker; v1 is on origin, so it warns before it moves.
+      expect(find.byType(GraphMoveSheet), findsOneWidget);
+      await tester.enterText(find.byType(EditableText), 'v1');
+      await tester.pump();
+      expect(find.byKey(const ValueKey<String>('move-sheet-published')), findsOneWidget);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pump(m.durExitLg);
+      await tester.pump();
       expect(actions.ran.last.command, 'jj tag set v1 -r $_b --allow-move');
+      expect(find.byType(GraphMoveSheet), findsNothing);
       await finish(tester);
+    });
+
+    testWidgets('Story 10.46: the bookmark popover\'s Move existing here… checks through the graph\'s drops; a '
+        'backwards move runs only with --allow-backwards', (tester) async {
+      await pump(tester, bookmarks: () async => _rows(tracked: false), drops: _BackwardsDrops());
+      cards(tester).openBookmarks(_b, Rect.fromCenter(center: tester.getCenter(card(_b)), width: 40, height: 16));
+      await settle(tester);
+      await tapRow(tester, 'Move existing here…');
+      expect(find.byType(GraphMoveSheet), findsOneWidget);
+      await tester.pump();
+      expect(find.text('backwards'), findsOneWidget);
+      ZsButton move() => tester.widget<ZsButton>(
+        find.byWidgetPredicate((w) => w is ZsButton && w.identifier == 'move-sheet-confirm'),
+      );
+      expect(move().onPressed, isNull);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey<String>('move-sheet-reason'))).data,
+        'This move goes backwards: turn on the switch to allow it.',
+      );
+      await tester.tap(find.bySemanticsIdentifier('move-sheet-allow'));
+      await tester.pump();
+      await tester.tap(find.bySemanticsIdentifier('move-sheet-confirm'));
+      await tester.pump();
+      await tester.pump(m.durExitLg);
+      await tester.pump();
+      expect(actions.ran.last.command, 'jj bookmark move b-mark --to $_b --allow-backwards');
+      await finish(tester);
+    });
+
+    group('Story 10.46: the name field', () {
+      Future<void> openCreate(WidgetTester tester, {bool textShortcuts = false}) async {
+        await pump(tester, textShortcuts: textShortcuts);
+        cards(tester).openMenu(_side, Rect.fromCenter(center: tester.getCenter(card(_side)), width: 0, height: 0));
+        await settle(tester);
+        await tapRow(tester, 'Create bookmark here…');
+      }
+
+      String field(WidgetTester tester) => tester.widget<EditableText>(find.byType(EditableText)).controller.text;
+      Finder note() => find.byKey(const ValueKey<String>('name-sheet-replaced'));
+      ZsButton confirm(WidgetTester tester) => tester.widget<ZsButton>(
+        find.byWidgetPredicate((w) => w is ZsButton && w.identifier == 'name-sheet-confirm'),
+      );
+
+      testWidgets('typed: refused characters become _ with the note; emptying the field hides it', (tester) async {
+        await openCreate(tester);
+        expect(note(), findsNothing);
+        await tester.enterText(find.byType(EditableText), 'feature/my new:idea?');
+        await tester.pump();
+        expect(field(tester), 'feature/my_new_idea_');
+        expect(note(), findsOneWidget);
+        expect(find.text('Spaces and ~ ^ : ? * [ \\ become _'), findsOneWidget);
+        await tester.enterText(find.byType(EditableText), '');
+        await tester.pump();
+        expect(note(), findsNothing);
+        await tester.enterText(find.byType(EditableText), 'feature');
+        await tester.pump();
+        expect(note(), findsNothing, reason: 'nothing replaced since the field was empty');
+        await finish(tester);
+      });
+
+      testWidgets('a replacement that leaves the text as it was still shows the note', (tester) async {
+        await openCreate(tester);
+        await tester.enterText(find.byType(EditableText), 'a_b');
+        await tester.pump();
+        expect(note(), findsNothing);
+        // A space typed over the selected `_`: the cleaned text equals the old one, so no onChanged fires.
+        tester.testTextInput.updateEditingValue(
+          const TextEditingValue(text: 'a b', selection: TextSelection.collapsed(offset: 2)),
+        );
+        await tester.pump();
+        expect(field(tester), 'a_b');
+        expect(note(), findsOneWidget);
+        await finish(tester);
+      });
+
+      testWidgets('pasted with ⌘V: the same replacement', (tester) async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async => switch (call.method) {
+            'Clipboard.getData' => <String, Object?>{'text': 'fix/login ~ crash'},
+            'Clipboard.hasStrings' => <String, Object?>{'value': true},
+            _ => null,
+          },
+        );
+        addTearDown(
+          () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        await openCreate(tester, textShortcuts: true);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+        await tester.pump();
+        await tester.pump();
+        expect(field(tester), 'fix/login___crash');
+        expect(note(), findsOneWidget);
+        await finish(tester);
+      }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+      testWidgets('a broken rule shows as the error, hides the note and turns Create and ↩ off', (tester) async {
+        await openCreate(tester);
+        await tester.enterText(find.byType(EditableText), 'release/1.5.');
+        await tester.pump();
+        expect(find.text('Must not end with “.”'), findsOneWidget);
+        expect(note(), findsNothing, reason: 'the error wins');
+        expect(confirm(tester).onPressed, isNull);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+        expect(actions.ran, isEmpty);
+        expect(find.byType(GraphNameSheet), findsOneWidget);
+        await tester.enterText(find.byType(EditableText), '@');
+        await tester.pump();
+        expect(find.text('Must not be “@” alone'), findsOneWidget);
+        await tester.enterText(find.byType(EditableText), 'a@b');
+        await tester.pump();
+        expect(confirm(tester).onPressed, isNotNull, reason: '@ inside a name stays allowed');
+        await finish(tester);
+      });
+
+      testWidgets('Move to… takes a revision as typed: no replacement, no rule', (tester) async {
+        await pump(tester, bookmarks: () async => _rows(tracked: false));
+        cards(tester).openBookmarks(_b, Rect.fromCenter(center: tester.getCenter(card(_b)), width: 40, height: 16));
+        await settle(tester);
+        await tester.tap(find.text('b-mark'));
+        await settle(tester);
+        await tapRow(tester, 'Move to…');
+        await tester.enterText(find.byType(EditableText), '@- ');
+        await tester.pump();
+        expect(field(tester), '@- ');
+        expect(note(), findsNothing);
+        await tester.enterText(find.byType(EditableText), '@');
+        await tester.pump();
+        expect(find.text('Must not be “@” alone'), findsNothing);
+        expect(confirm(tester).onPressed, isNotNull);
+        await finish(tester);
+      });
     });
   });
 }

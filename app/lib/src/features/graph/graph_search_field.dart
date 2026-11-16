@@ -1216,7 +1216,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
                       overflow: TextOverflow.ellipsis,
                       style: base.copyWith(color: colors.textDim, fontStyle: FontStyle.italic),
                     )
-                  : _highlight(
+                  : graphSearchHighlight(
                       colors,
                       subject,
                       how == GraphChangeMatch.subject ? match : null,
@@ -1250,7 +1250,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         :final (int, int)? match,
       ):
         icon = ZI.bookmark;
-        main = _highlight(colors, name, match, base.copyWith(color: colors.text));
+        main = graphSearchHighlight(colors, name, match, base.copyWith(color: colors.text));
         if (change == null || !change.inView) {
           metaParts.add(_Tag(s.graphSearchNotInView));
         }
@@ -1269,7 +1269,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
             main = Row(
               spacing: 9,
               children: <Widget>[
-                Flexible(child: _highlight(colors, text, match, base.copyWith(color: colors.text))),
+                Flexible(child: graphSearchHighlight(colors, text, match, base.copyWith(color: colors.text))),
                 if (filter.isMine) _Tag('${s.graphSearchYou} · mine()'), // l10n-ignore: jj revset
               ],
             );
@@ -1279,7 +1279,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
           case GraphFilterRowKind.dir:
           case GraphFilterRowKind.path:
             icon = kind == GraphFilterRowKind.dir ? ZI.folder : ZI.file;
-            main = _highlight(colors, text, match, path, split: split, dimColor: colors.textDim);
+            main = graphSearchHighlight(colors, text, match, path, split: split, dimColor: colors.textDim);
           case GraphFilterRowKind.glob:
             icon = ZI.file;
             main = Row(
@@ -1451,45 +1451,6 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
   static Widget _plain(String text, TextStyle style) =>
       Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: style);
 
-  /// [text] with the input's [match] underlined in the accent line and the text before [split] dimmed.
-  static Widget _highlight(
-    ZsColors colors,
-    String text,
-    (int, int)? match,
-    TextStyle style, {
-    int split = 0,
-    Color? dimColor,
-  }) {
-    final List<int> cuts = <int>{
-      0,
-      split,
-      if (match != null) ...<int>[match.$1, match.$2],
-      text.length,
-    }.toList()..sort();
-    final spans = <TextSpan>[];
-    for (var i = 0; i + 1 < cuts.length; i++) {
-      final int a = cuts[i];
-      final int b = cuts[i + 1];
-      if (a == b || a < 0 || b > text.length) {
-        continue;
-      }
-      var part = style;
-      if (a < split) {
-        part = part.copyWith(color: dimColor);
-      }
-      if (match != null && a >= match.$1 && b <= match.$2) {
-        part = _weight(part, 600).copyWith(
-          color: colors.text,
-          decoration: TextDecoration.underline,
-          decorationColor: colors.accentLine,
-          decorationThickness: 1.5,
-        );
-      }
-      spans.add(TextSpan(text: text.substring(a, b), style: part));
-    }
-    return Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false);
-  }
-
   /// A change id with jj's shortest unique prefix bold, max(prefix, 8) characters, one text (decision 16.35).
   static Widget _changeId(ZsColors colors, String id, int prefix, {bool small = false}) {
     final int shown = math.min(id.length, math.max(prefix, 8));
@@ -1558,6 +1519,46 @@ TextStyle _weight(TextStyle style, int weight) => style.copyWith(
   fontWeight: FontWeight.values[(weight ~/ 100) - 1],
   fontVariations: <FontVariation>[FontVariation.weight(weight.toDouble())],
 );
+
+/// [text] with the input's [match] underlined in the accent line and the text before [split] dimmed: the search's
+/// highlight, shared with the move picker (Story 10.46).
+Widget graphSearchHighlight(
+  ZsColors colors,
+  String text,
+  (int, int)? match,
+  TextStyle style, {
+  int split = 0,
+  Color? dimColor,
+}) {
+  final List<int> cuts = <int>{
+    0,
+    split,
+    if (match != null) ...<int>[match.$1, match.$2],
+    text.length,
+  }.toList()..sort();
+  final spans = <TextSpan>[];
+  for (var i = 0; i + 1 < cuts.length; i++) {
+    final int a = cuts[i];
+    final int b = cuts[i + 1];
+    if (a == b || a < 0 || b > text.length) {
+      continue;
+    }
+    var part = style;
+    if (a < split) {
+      part = part.copyWith(color: dimColor);
+    }
+    if (match != null && a >= match.$1 && b <= match.$2) {
+      part = _weight(part, 600).copyWith(
+        color: colors.text,
+        decoration: TextDecoration.underline,
+        decorationColor: colors.accentLine,
+        decorationThickness: 1.5,
+      );
+    }
+    spans.add(TextSpan(text: text.substring(a, b), style: part));
+  }
+  return Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false);
+}
 
 /// `$`: a variant that draws the graph (DS search.css:22).
 class _Dollar extends StatelessWidget {

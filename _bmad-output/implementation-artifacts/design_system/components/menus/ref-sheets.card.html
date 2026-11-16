@@ -1,0 +1,96 @@
+<!-- @dsCard group="Components" viewport="1100x860" name="Ref sheets — name field, move picker" subtitle="The bookmark / tag name field (refused characters become _ with a note; a whole-name rule is the field's error and turns Create off) and Move existing here… as a picker: search rows with each ref's change, a backwards pill and the --allow-backwards switch, a published tag's warning" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}
+.g{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px 28px;align-items:start}
+.c{display:flex;flex-direction:column;gap:10px;min-width:0}
+.cap{font-size:var(--fs-md);line-height:1.45;color:var(--text-dim);text-wrap:pretty}
+.cap b{color:var(--text);font-weight:600}
+.cap code{font:var(--fs-sm) var(--font-mono);color:var(--text-muted)}
+/* the picker's rows: the top search's rows in a quiet well */
+.well{max-height:200px;padding:4px;border-radius:10px;background:var(--fl-hover);overflow:auto;display:flex;flex-direction:column;gap:1px;margin:10px 0}
+.well .zs-gs-path{font-size:var(--fs-md)}
+.now{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-faint)}
+.pill{color:var(--warn);background:var(--warn-bg)}
+.allow{display:flex;align-items:center;gap:10px;font-size:var(--fs-md);color:var(--text-muted)}
+.allow code{font:var(--fs-md) var(--font-mono)}
+.note{font-size:var(--fs-sm);line-height:1.4;color:var(--text-dim);margin-top:8px}
+.note code{font-family:var(--font-mono)}
+.warn{color:var(--warn)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { ConfirmDialog, TextField, Switch, SearchRow, SearchMatch, ChangeId } =window.ZanshinDesignSystem_a33847;
+  // Story 10.46: characters git refuses anywhere in a ref name become "_" as they are typed or pasted (length kept).
+  const clean = (s) => s.replace(/[\s~^:?*[\\\x00-\x1f\x7f]/g, "_");
+  const NOTE = "Spaces and ~ ^ : ? * [ \\ become _";
+  const BOOKMARKS = [
+    { name: "feature/auth-flow", at: "kmwnqzlt", subject: "login form validation" },
+    { name: "feature/onboarding/pager", at: "lmnuoyrw", subject: "page indicator", dir: "backwards" },
+    { name: "feature/onboarding/swipe", at: "kxqtvwnm", subject: "swipe between steps", dir: "sideways" },
+  ];
+  const Row = ({ r, q, active, tag }) => (
+    <SearchRow icon={tag ? "tag" : "bookmark"} active={active} mono label={<SearchMatch text={r.name} match={q}/>}
+      meta={<>
+        {r.dir && <span className="zs-gs-tag pill" title="Moving it there needs --allow-backwards">{r.dir}</span>}
+        <span className="now">now on <ChangeId id={r.at} length={8}/> {r.subject}</span>
+      </>}/>
+  );
+  function Demo() {
+    const [allow, setAllow] = React.useState(false);
+    return (
+      <div className="g">
+        <div className="c">
+          <div className="cap"><b>Name field · replaced</b> · typed <code>feature/my new:idea?</code>; what git refuses anywhere in a ref name becomes <code>_</code> at once, typed or pasted, and a quiet note says so until the field is emptied. Every Create bookmark here…, Create tag here… and Rename… uses it; Move to… (a revision) does not.</div>
+          <ConfirmDialog scrim={false} tone="default" width={420} title="Create bookmark here" confirmLabel="Create" cmd={"jj bookmark create " + clean("feature/my new:idea?") + " -r srkvzmop"} onConfirm={() => {}} onCancel={() => {}}>
+            <TextField mono value={clean("feature/my new:idea?")} message={NOTE} aria-label="Bookmark name" onChange={() => {}}/>
+          </ConfirmDialog>
+        </div>
+        <div className="c">
+          <div className="cap"><b>Name field · a whole-name rule</b> · <code>release/1.5.</code>: a rule about the whole name (a lone <code>@</code>, a leading or trailing <code>/</code>, a leading <code>.</code>, a trailing <code>.lock</code> or <code>.</code>, <code>..</code>, <code>//</code>, <code>@{'{'}</code>) is the field's error — red edge and message, the note hidden — and Create and ↩ are off. <code>@</code> inside a name stays allowed.</div>
+          <ConfirmDialog scrim={false} tone="default" width={420} title="Create bookmark here" confirmLabel="Create" cmd="jj bookmark create release/1.5. -r srkvzmop" onConfirm={() => {}} onCancel={() => {}}>
+            <TextField mono value="release/1.5." error="Must not end with “.”" aria-label="Bookmark name" onChange={() => {}}/>
+          </ConfirmDialog>
+        </div>
+        <div className="c">
+          <div className="cap"><b>Move a bookmark here</b> · the bookmark popover's Move existing here…: the field filters jj's bookmarks (case-insensitive), each row the top search's with its change now; a move that is not a fast-forward carries <i>backwards</i> or <i>sideways</i> (by ancestry) and needs the switch. Until then Move is off and says why; the command line follows the switch.</div>
+          <ConfirmDialog scrim={false} tone="default" width={500} title="Move a bookmark here" confirmLabel="Move"
+            cmd={"jj bookmark move feature/onboarding/pager --to srkvzmop" + (allow ? " --allow-backwards" : "")} onConfirm={() => {}} onCancel={() => {}}>
+            <TextField mono value="feat" placeholder="Bookmark name" aria-label="Bookmark name" onChange={() => {}}/>
+            <div className="well" role="listbox">
+              {BOOKMARKS.map((r, i) => <Row key={r.name} r={r} q="feat" active={i === 1}/>)}
+            </div>
+            <label className="allow"><Switch checked={allow} onChange={setAllow} label="Allow moving backwards or sideways"/>Allow moving backwards or sideways <code>--allow-backwards</code></label>
+            {!allow && <div className="note warn">This move goes backwards: turn on the switch to allow it.</div>}
+          </ConfirmDialog>
+        </div>
+        <div className="c">
+          <div className="cap"><b>Move a tag here</b> · the tag popover's Move existing here…: no switch — a tag moves only with <code>--allow-move</code>, which the note says. A tag a remote holds warns instead: moving it changes a published tag.</div>
+          <ConfirmDialog scrim={false} tone="default" width={500} title="Move a tag here" confirmLabel="Move" cmd="jj tag set v1.5.0-rc1 -r srkvzmop --allow-move" onConfirm={() => {}} onCancel={() => {}}>
+            <TextField mono value="v1.5" placeholder="Tag name" aria-label="Tag name" onChange={() => {}}/>
+            <div className="well" role="listbox">
+              <Row tag active r={{ name: "v1.5.0-rc1", at: "tnoyqlsv", subject: "1.5.0-rc1" }} q="v1.5"/>
+              <Row tag r={{ name: "v1.5.0-rc2", at: "wkqmlxvo", subject: "1.5.0-rc2" }} q="v1.5"/>
+            </div>
+            <div className="note warn">v1.5.0-rc1 is on origin — moving it changes a published tag. Anyone who fetched it keeps the old one; your next push of the tag moves it on origin too.</div>
+          </ConfirmDialog>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

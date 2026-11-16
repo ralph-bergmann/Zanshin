@@ -14,5 +14,6 @@ jj bookmark rename b-mark feature/x
 jj bookmark move b-mark --to @
 jj bookmark create '"ü"' -r kmnvxoqp
 jj bookmark move b-mark --to kmnvxoqp
+jj bookmark move b-mark --to kmnvxoqp --allow-backwards
 jj tag set '"ü"' -r kmnvxoqp
 jj tag set v1 -r kmnvxoqp --allow-move

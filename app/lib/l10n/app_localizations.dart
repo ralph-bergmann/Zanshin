@@ -3626,6 +3626,84 @@ abstract class AppLocalizations {
   /// **'Create'**
   String get nameSheetCreate;
 
+  /// Name sheet note under a bookmark or tag name field after characters git refuses were replaced with _.
+  ///
+  /// In en, this message translates to:
+  /// **'Spaces and ~ ^ : ? * [ \\ become _'**
+  String get nameSheetReplaced;
+
+  /// Bookmark or tag name error: the whole name is this text.
+  ///
+  /// In en, this message translates to:
+  /// **'Must not be “{text}” alone'**
+  String refNameAlone(String text);
+
+  /// Bookmark or tag name error: the name starts with this text.
+  ///
+  /// In en, this message translates to:
+  /// **'Must not start with “{text}”'**
+  String refNameStart(String text);
+
+  /// Bookmark or tag name error: the name ends with this text.
+  ///
+  /// In en, this message translates to:
+  /// **'Must not end with “{text}”'**
+  String refNameEnd(String text);
+
+  /// Bookmark or tag name error: the name contains this text.
+  ///
+  /// In en, this message translates to:
+  /// **'Must not contain “{text}”'**
+  String refNameContain(String text);
+
+  /// Move picker: no ref exists that could move to this change; kind is tag or bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'{kind, select, tag{No tag to move} other{No bookmark to move}}'**
+  String moveSheetNothing(String kind);
+
+  /// Move picker row pill: the move is not a fast-forward; direction is backwards or sideways.
+  ///
+  /// In en, this message translates to:
+  /// **'{direction, select, sideways{sideways} other{backwards}}'**
+  String moveSheetDirection(String direction);
+
+  /// Move picker: tooltip of the backwards or sideways pill; flag is jj's flag, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'Moving it there needs {flag}'**
+  String moveSheetDirectionTooltip(String flag);
+
+  /// Move picker row: the change the ref is on now; id is its short change id, subject its first line (may be empty).
+  ///
+  /// In en, this message translates to:
+  /// **'now on {id} {subject}'**
+  String moveSheetNowOn(String id, String subject);
+
+  /// Move picker: the switch that adds jj's --allow-backwards.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow moving backwards or sideways'**
+  String get moveSheetAllowBackwards;
+
+  /// Move picker: why Move is disabled; direction is the localized moveSheetDirection word.
+  ///
+  /// In en, this message translates to:
+  /// **'This move goes {direction}: turn on the switch to allow it.'**
+  String moveSheetBlocked(String direction);
+
+  /// Move picker for tags: note under the list; flag is jj's flag, verbatim.
+  ///
+  /// In en, this message translates to:
+  /// **'A tag that already exists moves only with {flag}.'**
+  String moveSheetTagNote(String flag);
+
+  /// Move picker for tags: warning when the picked tag is on a remote.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is on {remote} — moving it changes a published tag. Anyone who fetched it keeps the old one; your next push of the tag moves it on {remote} too.'**
+  String moveSheetPublished(String name, String remote);
+
   /// The jj log Configurations window's title (Story 10.22).
   ///
   /// In en, this message translates to:

@@ -1673,6 +1673,71 @@
   "@nameSheetMove": {"description": "Name sheet confirm button: jj bookmark move."},
   "nameSheetCreate": "Create",
   "@nameSheetCreate": {"description": "Name sheet confirm button: jj bookmark create."},
+  "nameSheetReplaced": "Spaces and ~ ^ : ? * [ \\ become _",
+  "@nameSheetReplaced": {"description": "Name sheet note under a bookmark or tag name field after characters git refuses were replaced with _."},
+  "refNameAlone": "Must not be “{text}” alone",
+  "@refNameAlone": {
+    "description": "Bookmark or tag name error: the whole name is this text.",
+    "placeholders": {"text": {"type": "String", "example": "@"}}
+  },
+  "refNameStart": "Must not start with “{text}”",
+  "@refNameStart": {
+    "description": "Bookmark or tag name error: the name starts with this text.",
+    "placeholders": {"text": {"type": "String", "example": "/"}}
+  },
+  "refNameEnd": "Must not end with “{text}”",
+  "@refNameEnd": {
+    "description": "Bookmark or tag name error: the name ends with this text.",
+    "placeholders": {"text": {"type": "String", "example": ".lock"}}
+  },
+  "refNameContain": "Must not contain “{text}”",
+  "@refNameContain": {
+    "description": "Bookmark or tag name error: the name contains this text.",
+    "placeholders": {"text": {"type": "String", "example": ".."}}
+  },
+  "moveSheetNothing": "{kind, select, tag{No tag to move} other{No bookmark to move}}",
+  "@moveSheetNothing": {
+    "description": "Move picker: no ref exists that could move to this change; kind is tag or bookmark.",
+    "placeholders": {"kind": {"type": "String", "example": "tag"}}
+  },
+  "moveSheetDirection": "{direction, select, sideways{sideways} other{backwards}}",
+  "@moveSheetDirection": {
+    "description": "Move picker row pill: the move is not a fast-forward; direction is backwards or sideways.",
+    "placeholders": {"direction": {"type": "String", "example": "backwards"}}
+  },
+  "moveSheetDirectionTooltip": "Moving it there needs {flag}",
+  "@moveSheetDirectionTooltip": {
+    "description": "Move picker: tooltip of the backwards or sideways pill; flag is jj's flag, verbatim.",
+    "placeholders": {"flag": {"type": "String", "example": "--allow-backwards"}}
+  },
+  "moveSheetNowOn": "now on {id} {subject}",
+  "@moveSheetNowOn": {
+    "description": "Move picker row: the change the ref is on now; id is its short change id, subject its first line (may be empty).",
+    "placeholders": {
+      "id": {"type": "String", "example": "kmwnqzlt"},
+      "subject": {"type": "String", "example": "login form validation"}
+    }
+  },
+  "moveSheetAllowBackwards": "Allow moving backwards or sideways",
+  "@moveSheetAllowBackwards": {"description": "Move picker: the switch that adds jj's --allow-backwards."},
+  "moveSheetBlocked": "This move goes {direction}: turn on the switch to allow it.",
+  "@moveSheetBlocked": {
+    "description": "Move picker: why Move is disabled; direction is the localized moveSheetDirection word.",
+    "placeholders": {"direction": {"type": "String", "example": "backwards"}}
+  },
+  "moveSheetTagNote": "A tag that already exists moves only with {flag}.",
+  "@moveSheetTagNote": {
+    "description": "Move picker for tags: note under the list; flag is jj's flag, verbatim.",
+    "placeholders": {"flag": {"type": "String", "example": "--allow-move"}}
+  },
+  "moveSheetPublished": "{name} is on {remote} — moving it changes a published tag. Anyone who fetched it keeps the old one; your next push of the tag moves it on {remote} too.",
+  "@moveSheetPublished": {
+    "description": "Move picker for tags: warning when the picked tag is on a remote.",
+    "placeholders": {
+      "name": {"type": "String", "example": "v1.5.0-rc1"},
+      "remote": {"type": "String", "example": "origin"}
+    }
+  },
   "revsetConfigsTitle": "jj log Configurations",
   "@revsetConfigsTitle": {"description": "The jj log Configurations window's title (Story 10.22)."},
   "revsetConfigsUnnamed": "Unnamed",

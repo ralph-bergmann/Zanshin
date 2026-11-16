@@ -2395,6 +2395,81 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nameSheetCreate => 'Create';
 
   @override
+  String get nameSheetReplaced => 'Spaces and ~ ^ : ? * [ \\ become _';
+
+  @override
+  String refNameAlone(String text) {
+    return 'Must not be “$text” alone';
+  }
+
+  @override
+  String refNameStart(String text) {
+    return 'Must not start with “$text”';
+  }
+
+  @override
+  String refNameEnd(String text) {
+    return 'Must not end with “$text”';
+  }
+
+  @override
+  String refNameContain(String text) {
+    return 'Must not contain “$text”';
+  }
+
+  @override
+  String moveSheetNothing(String kind) {
+    String _temp0 = intl.Intl.selectLogic(
+      kind,
+      {
+        'tag': 'No tag to move',
+        'other': 'No bookmark to move',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String moveSheetDirection(String direction) {
+    String _temp0 = intl.Intl.selectLogic(
+      direction,
+      {
+        'sideways': 'sideways',
+        'other': 'backwards',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String moveSheetDirectionTooltip(String flag) {
+    return 'Moving it there needs $flag';
+  }
+
+  @override
+  String moveSheetNowOn(String id, String subject) {
+    return 'now on $id $subject';
+  }
+
+  @override
+  String get moveSheetAllowBackwards => 'Allow moving backwards or sideways';
+
+  @override
+  String moveSheetBlocked(String direction) {
+    return 'This move goes $direction: turn on the switch to allow it.';
+  }
+
+  @override
+  String moveSheetTagNote(String flag) {
+    return 'A tag that already exists moves only with $flag.';
+  }
+
+  @override
+  String moveSheetPublished(String name, String remote) {
+    return '$name is on $remote — moving it changes a published tag. Anyone who fetched it keeps the old one; your next push of the tag moves it on $remote too.';
+  }
+
+  @override
   String get revsetConfigsTitle => 'jj log Configurations';
 
   @override
