@@ -27,6 +27,9 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs:619
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-loop-9-60-11-28-leftovers, commit ca4886a4): every config fault reaches
+      `jj.config_error` with the bare reason and its hints.
   - summary: >-
       `git push`'s commit check maps an `immutable_heads()` resolution failure to
       `jj.config_error` without hints, while the CLI's bare `.resolve()?` raises a revset
@@ -40,6 +43,9 @@ deferred:
     location: >-
       crates/zanshin-jj/src/push.rs:595
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-loop-9-60-11-28-leftovers, commit ca4886a4): the check refuses with
+      `jj.revset_resolution_error` and the CLI's hints.
 ---
 
 <intent-contract>

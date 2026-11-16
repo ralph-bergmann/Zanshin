@@ -16,6 +16,9 @@ deferred:
     location: >-
       crates/zanshin-jj/src/config.rs:2233-2242
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-loop-9-60-11-28-leftovers, commit ca4886a4): doc corrected; a kept unit
+      test pins the presets writer's refusal on a string `remotes.origin`.
 ---
 
 <intent-contract>

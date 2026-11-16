@@ -3191,16 +3191,16 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in the closing run of Story 9.60 (bmad-build-auto, 2026-11-16)
 
-- **A config fault's `jj.config_error` context keeps a `config error: ` label on paths that convert through `mutate::cfg` (also `file::cfg`, `commit_views::rev`) and has none through `From<ConfigError>`, so one fault's context differs by path.** Low.
+- ~~**A config fault's `jj.config_error` context keeps a `config error: ` label on paths that convert through `mutate::cfg` (also `file::cfg`, `commit_views::rev`) and has none through `From<ConfigError>`, so one fault's context differs by path.**~~ — RESOLVED 2026-11-16 (spec-loop-9-60-11-28-leftovers, commit ca4886a4): every config fault reaches `jj.config_error` with the bare reason and its hints; `value_error` now renders the CLI's `Caused by:` line. Low.
   - `crates/zanshin-jj/src/mutate.rs:619` `cfg` renders the `ConfigError` Display; `From<ConfigError>` keeps the bare reason. A wrong-typed `snapshot.max-new-file-size` reaches the wire as "config error: Invalid type or value for …", a TOML parse error at open without the label; the oracle helper `config_refusal` (`crates/zanshin-parity/tests/oracle/hints.rs:196-202`) assumes no carrier puts it on the wire. Pre-existing since Story 9.60.
   - **Follow-up:** convert every `ConfigError` with the bare reason (one conversion, `cfg` = `From`), updating the tests that pin the label.
-- **`git push`'s commit check maps an `immutable_heads()` resolution failure to `jj.config_error` without hints, while the CLI raises a revset resolution error with its hints.** Low.
+- ~~**`git push`'s commit check maps an `immutable_heads()` resolution failure to `jj.config_error` without hints, while the CLI raises a revset resolution error with its hints.**~~ — RESOLVED 2026-11-16 (spec-loop-9-60-11-28-leftovers, commit ca4886a4): the check refuses with `jj.revset_resolution_error` and the CLI's hints; parity witness added. Low.
   - `crates/zanshin-jj/src/push.rs:595-596` (`cfg_text` on `resolve_expression`'s `RevsetError`); CLI @ v0.47.0 `cli/src/commands/git/push.rs:834-836` `.resolve()?` → `From<RevsetResolutionError>`. Pre-existing (Stories 9.20 / 9.58).
   - **Follow-up:** map it through `mutate::rev` (resolution code and hints) and update the registry's push sentence.
 
 ## Surfaced in the 9.60 / 11.28 story-loop fix-up (bmad-build-auto, 2026-11-16)
 
-- **`write_error`'s doc says its `set_value` / `delete_value` instantiation cannot fail, because those calls only fail on a non-inline TABLE target; jj-lib also fails `set_value` when a parent key holds a non-table value.** Low.
+- ~~**`write_error`'s doc says its `set_value` / `delete_value` instantiation cannot fail, because those calls only fail on a non-inline TABLE target; jj-lib also fails `set_value` when a parent key holds a non-table value.**~~ — RESOLVED 2026-11-16 (spec-loop-9-60-11-28-leftovers, commit ca4886a4): doc corrected; still unreachable through the public API, a kept unit test pins the presets writer's refusal on a string `remotes.origin`. Low.
   - jj-lib 0.47.0 `src/config.rs:432-440` returns `ConfigUpdateError::WouldOverwriteValue` for a non-table parent. The two remote writers' `as_str()` check looks only at the target, and `env_layer` (`crates/zanshin-jj/src/config.rs:671`) and `write_repo_presets` (`:2436-2450`) also call `set_value`. With a malformed repo config (e.g. `remotes.origin = "x"`) that instantiation may be reachable. Coverage is unaffected (one shared body). Pre-existing doc text (spec-loop-9-60-11-28-fixup-coverage-config).
   - **Follow-up:** a test that writes a remote setting into a repo config whose `remotes.<name>` is a string; if it refuses, correct the doc and keep the test.
 
