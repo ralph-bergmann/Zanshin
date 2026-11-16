@@ -3156,3 +3156,18 @@ Ralph and Claude went through the inspector point by point; each point was check
 - ~~**No test checks that the Tags rail count updates when the tag list loads after the bookmark list.**~~ — RESOLVED 2026-11-16 (spec-10-44-closing-new-change-by-ref-name, commit 9ca6885a): the home test holds back each list read and asserts both rail counts. Low.
   - `HomePage` rebuilds on `Listenable.merge([scope?.bookmarks, scope?.tags])` (`app/lib/src/features/home/home_page.dart`); dropping `scope?.tags` fails no test, since `app/test/features/home/home_page_test.dart:502-507` checks only the rail ids. The Bookmarks count has the same gap, and the home rig cannot order the two reads.
   - **Follow-up:** give the home test rig a gated tag read, load tags after bookmarks, and assert both rail counts.
+
+## Surfaced in Story 11.26 (bmad-build-auto, 2026-11-16)
+
+- **Under a Settings zoom other than 100 % the top bar does not keep 12·zoom to the top edge: its native top is 34 − 22·zoom (1 pt at 150 %, about 14 at 90 %).** Medium.
+  - `app/lib/src/features/window/zanshin_window_root.dart:94,110` divides the measured block by the zoom while `chromeH`/`chromeInset` scale; the runner moves the lights to a fixed 34 pt (`app/macos/Runner/MainWindowChrome.swift`, `buttonMidY`). Pre-existing interplay: before this story it was 26 − 22·zoom (−7 at 150 %).
+  - **Follow-up:** decide the rule under zoom (lights at 34·zoom need a taller titlebar than 52 pt, or the bar stops centring on the lights under zoom); none until Ralph wants it.
+- **The top bar may jump for one frame when AppKit lays the titlebar out again.** Medium (unverified).
+  - `WindowChromeHost` and `MainWindowChrome` both observe the buttons' frame changes synchronously; the host may send the system block (centre 26), or a mixed block while the buttons move one by one, before the runner's move lands.
+  - **Follow-up:** watch resize and a theme switch in the running app (console session); if it shows, let the host measure on the next run-loop turn.
+- **The native button move is only partly tested: leaving full screen (incl. the exit animation), becoming key, AppKit replacing the buttons, the reported block and clicks on the moved buttons have no automated witness.** Medium.
+  - The two XCTests in `app/macos/RunnerTests/RunnerTests.swift` cover open, resize, an appearance switch, a hand reset and the dialog kind on a never-shown window; full-screen transitions do not run headless.
+  - **Follow-up:** the console session's Marionette and native-screenshot check against `design/Refs Study.html` section 9.
+- **The runner's XCTests, now including the Story 11.26 button placement, still run in no gate step.** Medium.
+  - Same gap as "The runner's XCTests (`MenuStateChannel`) run in no gate step" above; this run ran them by hand (4 passed).
+  - **Follow-up:** a gate step `xcodebuild test -workspace app/macos/Runner.xcworkspace -scheme Runner -only-testing:RunnerTests` for changes under `app/macos/` (a gate change for Ralph), or none.
