@@ -3144,3 +3144,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **A bad `remotes.<r>.auto-track-bookmarks` / `fetch-bookmarks` / `fetch-tags` pattern refuses with only "Invalid `remotes.<r>.<field>`: <kind>", without the CLI's `Caused by:` lines and hint.** Medium.
   - `crates/zanshin-jj/src/config.rs:1714-1724` and the clone `preset` closure (`crates/zanshin-jj/src/creation.rs:541-550`) render `e.kind()` only; the CLI's `parse_remote_string_expression` (`cli/src/revset_util.rs:463-488` @ v0.47.0) adds both. `ConfigError::Load` / `RepoError::Config` carry no hints, so `jj.config_error` needs a hints channel first.
   - **Follow-up:** render the `Caused by:` lines with `warning::caused_by` and carry `revset::parse_hint` through `jj.config_error` (hints on `ConfigError` / `RepoError::Config`), like the name-pattern port.
+
+## Surfaced in Story 10.44 (bmad-build-auto, 2026-11-16)
+
+- **"New change here" on a bookmark or tag runs `jj new <target change id>`, not the CLI's `jj new <name>`, because the backend's `new_change` takes change ids only.** Medium.
+  - `Repo::new_change(parents: &[ChangeId], …)` (`crates/zanshin-jj/src/repo.rs:1596`) and `RepoHandle.newChange` resolve change ids; `BookmarkListModel.newHere` (`app/lib/src/features/bookmarks/bookmark_list_model.dart`) runs `GraphNew(parents: [target])` and shows that command. A divergent target refuses where the CLI resolves the ref; a conflicted ref uses its first side where the CLI refuses; the op log records the id, not the name.
+  - **Follow-up:** let `new_change` (Rust → FFI → `zanshin_core`) take revset parents like the CLI (`jj new <revsets>`), then run and show `jj new <name>` / `jj new <name>@<remote>` from the row (Stories 10.44, 10.47 use it).
