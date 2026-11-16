@@ -22,6 +22,9 @@ deferred:
     location: >-
       app/lib/src/features/bookmarks/bookmark_list_model.dart (BookmarkListModel.newHere)
     severity: medium
+    resolved: >-
+      2026-11-16 — fixed (spec-10-44-closing-new-change-by-ref-name, commit 9ca6885a): new Repo::new_change_on(revsets)
+      resolves parents like `jj new <REVSETS>`; the row runs and shows `jj new <name>` / `jj new <name>@<remote>`.
   - summary: >-
       No test checks that the Tags rail count updates when the tag list loads after the bookmark list.
     evidence: |-
@@ -31,6 +34,9 @@ deferred:
     location: >-
       app/lib/src/features/home/home_page.dart (rail ListenableBuilder); app/test/features/home/home_page_test.dart
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-10-44-closing-new-change-by-ref-name, commit 9ca6885a): the home test holds back each
+      list read and asserts both rail counts; both listenables mutation-checked.
 ---
 
 <intent-contract>
