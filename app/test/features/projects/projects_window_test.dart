@@ -803,7 +803,7 @@ void main() {
   });
 
   group('failed opens made outside Projects (Ralph, 2026-11-01)', () {
-    testWidgets('one reported while the window is up shows as its notice, with the reason and warnings', (
+    testWidgets("one reported while the window is up shows as its notice, with the reason, jj's hints and warnings", (
       tester,
     ) async {
       final rig = _Rig(tester);
@@ -813,6 +813,7 @@ void main() {
         const ProjectOpenFailed(
           'jj.jj_lib_error',
           'the store is broken',
+          hints: <String>['Check the config file: /c.toml'],
           warnings: <ZanshinWarning>[
             ZanshinWarning(code: 'jj.git_import_failed', message: 'Failed to import refs.'),
           ],
@@ -821,8 +822,29 @@ void main() {
       await tester.pump();
       expect(find.text('Could not open top'), findsOneWidget);
       expect(find.text('the store is broken'), findsOneWidget);
+      expect(find.text('Check the config file: /c.toml'), findsOneWidget);
       expect(find.text('Failed to import refs.'), findsOneWidget);
+      final double context = tester.getTopLeft(find.text('the store is broken')).dy;
+      final double hint = tester.getTopLeft(find.text('Check the config file: /c.toml')).dy;
+      expect(hint, greaterThan(context), reason: 'the hint under the context');
+      expect(tester.getTopLeft(find.text('Failed to import refs.')).dy, greaterThan(hint), reason: 'warnings last');
       expect(rig.session.failedOpen.value, isNull, reason: 'taken: shown once');
+    });
+
+    testWidgets('without a context, the code stands above the hints; without hints, it stays out', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      rig.session.reportFailedOpen(
+        '${rig.home}/code/top',
+        const ProjectOpenFailed('jj.config_error', null, hints: <String>['Check the config file: /c.toml']),
+      );
+      await tester.pump();
+      expect(find.text('jj.config_error'), findsOneWidget);
+      expect(find.text('Check the config file: /c.toml'), findsOneWidget);
+
+      rig.session.reportFailedOpen('${rig.home}/code/top', const ProjectOpenFailed('jj.jj_lib_error', null));
+      await tester.pump();
+      expect(find.text('jj.jj_lib_error'), findsNothing, reason: 'as before: no hints, no code line');
     });
 
     testWidgets('a pending one shows when the window mounts; a missing folder says so', (tester) async {

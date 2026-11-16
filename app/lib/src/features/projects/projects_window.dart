@@ -443,7 +443,12 @@ class ProjectsWindowState extends State<ProjectsWindow> {
         return _ask(_Offer(_OfferKind.convert, root, placement, inside: path));
       case ProjectInsideRepo(:final String root):
         return _ask(_Offer(_OfferKind.enclosing, root, placement, inside: path));
-      case ProjectOpenFailed(:final String? context, :final List<ZanshinWarning> warnings):
+      case ProjectOpenFailed(
+        :final String code,
+        :final String? context,
+        :final List<String> hints,
+        :final List<ZanshinWarning> warnings,
+      ):
         _note(
           switch (made) {
             _OfferKind.convert => this.context.l10n.projectsConversionFailed,
@@ -451,7 +456,12 @@ class ProjectsWindowState extends State<ProjectsWindow> {
             _OfferKind.clone => this.context.l10n.projectsCloneFailed,
             _OfferKind.enclosing || _OfferKind.open => this.context.l10n.projectsOpenFailed(_nameOf(path)),
           },
-          <String?>[context, for (final ZanshinWarning warning in warnings) warning.message],
+          <String?>[
+            // Hints hang under jj's error: the code stands in for a missing context.
+            context ?? (hints.isEmpty ? null : code),
+            ...hints,
+            for (final ZanshinWarning warning in warnings) warning.message,
+          ],
         );
         return false;
       case ProjectSwitchCancelled():

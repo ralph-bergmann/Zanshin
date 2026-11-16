@@ -86,14 +86,22 @@ final class ProjectInsideRepo extends ProjectOpenOutcome {
 
 /// Detecting, opening or creating failed with [code] (`docs/rust-error-codes.md`); the current project stays.
 final class ProjectOpenFailed extends ProjectOpenOutcome {
-  /// The failure [code] with its [context] and the failed call's [warnings].
-  const ProjectOpenFailed(this.code, this.context, {this.warnings = const <ZanshinWarning>[]});
+  /// The failure [code] with its [context], jj's [hints] and the failed call's [warnings].
+  const ProjectOpenFailed(
+    this.code,
+    this.context, {
+    this.hints = const <String>[],
+    this.warnings = const <ZanshinWarning>[],
+  });
 
   /// The error code, e.g. `jj.repo_not_found`.
   final String code;
 
   /// The error's detail (a path, for instance), or null.
   final String? context;
+
+  /// jj's hint lines for the failure, verbatim and in jj's order; empty when there are none.
+  final List<String> hints;
 
   /// What the failed call warned about before it failed (9.35), the messages verbatim.
   final List<ZanshinWarning> warnings;
@@ -503,7 +511,12 @@ class ProjectSession extends ChangeNotifier {
     _log
       ..warning('$doing a project failed: ${error.code}')
       ..fine('$doing failure', error, stack);
-    final failure = ProjectOpenFailed(error.code, error.context, warnings: error.warnings);
+    final failure = ProjectOpenFailed(
+      error.code,
+      error.context,
+      hints: error.hints,
+      warnings: error.warnings,
+    );
     _lastFailure = failure;
     _notify();
     return failure;

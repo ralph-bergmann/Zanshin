@@ -23,7 +23,7 @@ import '../graph/fake_graph_source.dart';
 
 /// The "Sync" folder (Story 11.8): the top bar's sync island in its states, and the Push sheet (DS
 /// components/push/PushDialog) over demo dry-run plans — the preselection with a skipped ref and a tag, two remotes,
-/// the change row with its inline Allow, and a push that failed in part.
+/// the change row with its inline Allow, a push that failed in part, and a plan refused with jj's hints.
 final syncFolder = WidgetbookFolder(
   name: 'Sync',
   children: <WidgetbookNode>[
@@ -57,7 +57,8 @@ enum _Sheet {
   remotes('Two remotes'),
   change('Change allowed'),
   done('Done in part'),
-  gitSwitcher('Git switcher');
+  gitSwitcher('Git switcher'),
+  refused('Refused with hints');
 
   const _Sheet(this.label);
 
@@ -187,11 +188,19 @@ GitPushResult _result(Map<String, List<PushRef>> remotes, {List<PushCreatedBookm
 /// Demo plans: `main` forward, `wip` skipped for its empty description, the tag `v1.5.0` new, `feature/ZAN-412`
 /// sideways and new on upstream.
 class _DemoSync implements RemoteSync {
-  _DemoSync({this.names = const <String>['origin'], this.done = false, this.gitSwitcher = false});
+  _DemoSync({
+    this.names = const <String>['origin'],
+    this.done = false,
+    this.gitSwitcher = false,
+    this.refused = false,
+  });
 
   final List<String> names;
   final bool done;
   final bool gitSwitcher;
+
+  /// Every push refuses with a context and two hints (Story 11.29).
+  final bool refused;
   var _tracked = false;
 
   @override
@@ -245,6 +254,24 @@ class _DemoSync implements RemoteSync {
   @override
   NetworkOperation<GitPushResult> push(PushRequest request) {
     final List<String> remotes = request.remotes ?? const <String>['origin'];
+    if (refused) {
+      return NetworkOperation<GitPushResult>(
+        result: Future<GitPushResult>.error(
+          const ZanshinFfiException.withReport(
+            'jj.invalid_input',
+            "Failed to parse revset: Function `descripton` doesn't exist", // l10n-ignore: demo data
+            precondition: null,
+            warnings: <ZanshinWarning>[],
+            hints: <String>[
+              'Did you mean `description`?', // l10n-ignore: demo data
+              'Check the config file: /Users/me/.config/jj/config.toml', // l10n-ignore: demo data
+            ],
+          ),
+        ),
+        progress: const Stream<ProgressEvent>.empty(),
+        cancel: () async {},
+      );
+    }
     if (gitSwitcher) {
       return _now(_gitSwitcherPlan(request, tracked: _tracked));
     }
@@ -471,6 +498,7 @@ class _SheetHostState extends State<_SheetHost> {
         names: sheet == _Sheet.remotes ? const <String>['origin', 'upstream'] : const <String>['origin'],
         done: sheet == _Sheet.done,
         gitSwitcher: sheet == _Sheet.gitSwitcher,
+        refused: sheet == _Sheet.refused,
       ),
       change: (id: 'ovknlmro', rev: '@'),
       onPushed: (_) {},
@@ -481,7 +509,7 @@ class _SheetHostState extends State<_SheetHost> {
   Future<void> _play() async {
     await _model.load();
     switch (widget.sheet) {
-      case _Sheet.preselection || _Sheet.gitSwitcher:
+      case _Sheet.preselection || _Sheet.gitSwitcher || _Sheet.refused:
         break;
       case _Sheet.remotes:
         _model.toggleRemote('upstream');

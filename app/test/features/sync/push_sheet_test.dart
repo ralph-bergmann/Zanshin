@@ -201,6 +201,43 @@ void main() {
     rig.dispose();
   });
 
+  group("jj's hints on a refusal", () {
+    const hinted = ZanshinFfiException.withReport(
+      'jj.invalid_input',
+      'Invalid revset',
+      precondition: null,
+      warnings: <ZanshinWarning>[],
+      hints: <String>['Did you mean `main`?', 'second hint'],
+    );
+    String note(WidgetTester tester, String identifier) =>
+        tester.widget<Text>(find.descendant(of: _id(identifier), matching: find.byType(Text))).data!;
+
+    testWidgets('a refused plan shows the context, then each hint on its own line', (tester) async {
+      final _Rig rig = await open(tester, configure: (sync) => sync.pushAnswer = (_) => throw hinted);
+      expect(note(tester, 'push-plan-error'), 'Invalid revset\nDid you mean `main`?\nsecond hint');
+      rig.dispose();
+    });
+
+    testWidgets('a refused plan without hints shows the context only', (tester) async {
+      final _Rig rig = await open(
+        tester,
+        configure: (sync) => sync.pushAnswer = (_) => throw const ZanshinFfiException('jj.network_error', 'x'),
+      );
+      expect(note(tester, 'push-plan-error'), 'x');
+      rig.dispose();
+    });
+
+    testWidgets('a refused push shows the context, then each hint', (tester) async {
+      final _Rig rig = await open(tester);
+      rig.sync.pushAnswer = (request) => request.dryRun ? _bare(request) : throw hinted;
+      await tester.tap(_id('push-submit'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(note(tester, 'push-error'), 'Invalid revset\nDid you mean `main`?\nsecond hint');
+      rig.dispose();
+    });
+  });
+
   testWidgets('focus starts on Push; ↩ pushes, but not from the name field', (tester) async {
     final _Rig rig = await open(tester);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'Push');

@@ -405,7 +405,7 @@ class PushSheetModel extends ChangeNotifier {
   String? get changeRefusal {
     final ZanshinFfiException? error = _changeError;
     if (error != null) {
-      return error.context ?? error.code;
+      return <String>[error.context ?? error.code, ...error.hints].join('\n');
     }
     return _changeRefs.map((ref) => ref.explicitRefusal?.message).nonNulls.firstOrNull;
   }
@@ -470,7 +470,9 @@ class PushSheetModel extends ChangeNotifier {
       await run();
     } on Object catch (error) {
       // The sheet runs fix-its unawaited: every failure lands on the row, none escapes to the zone.
-      final String text = error is ZanshinFfiException ? error.context ?? error.code : '$error';
+      final String text = error is ZanshinFfiException
+          ? <String>[error.context ?? error.code, ...error.hints].join('\n')
+          : '$error';
       _log.warning('a push fix-it failed: ${error is ZanshinFfiException ? error.code : error.runtimeType}');
       _fixError = (key: key, text: text);
       return;
@@ -565,7 +567,7 @@ class PushSheetModel extends ChangeNotifier {
           error = <String>[failure.message, ?failure.hint].join('\n');
         }
       } on ZanshinFfiException catch (e) {
-        error = e.context ?? e.code;
+        error = <String>[e.context ?? e.code, ...e.hints].join('\n');
       }
       if (serial != _checkSerial || _disposed) {
         return;

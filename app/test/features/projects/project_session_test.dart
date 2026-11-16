@@ -228,6 +228,26 @@ void main() {
       expect(session.lastFailure, isNull, reason: 'a project opened');
     });
 
+    test("a failed open keeps jj's hints, in jj's order", () async {
+      await register(<String>['/r/a']);
+      repos.openFailures['/r/a'] = const ZanshinFfiException.withReport(
+        'jj.config_error',
+        'Config error',
+        precondition: null,
+        warnings: <ZanshinWarning>[],
+        hints: <String>['Check the config file: /c.toml', 'second hint'],
+      );
+
+      expect(
+        await session.open('/r/a'),
+        isA<ProjectOpenFailed>().having((o) => o.hints, 'hints', <String>[
+          'Check the config file: /c.toml',
+          'second hint',
+        ]),
+      );
+      expect(session.lastFailure?.hints, hasLength(2));
+    });
+
     test('a detect that throws is a failed open', () async {
       repos.detectFailures['/r/a'] = const ZanshinFfiException('jj.detect_failed');
 

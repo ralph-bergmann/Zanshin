@@ -214,13 +214,17 @@ class _OpenReportToastState extends State<_OpenReportToast> {
     try {
       await repo?.trackBookmarks(symbols);
     } on Object catch (error) {
-      final String text = error is ZanshinFfiException ? error.context ?? error.code : '$error';
+      final String text = error is ZanshinFfiException
+          ? <String>[error.context ?? error.code, ...error.hints].join('\n')
+          : '$error';
       widget.toasts.show(
         ShellToastEntry(
           tone: ZsToastTone.error,
           build: (context, dismiss) => ZsToast(
             tone: ZsToastTone.error,
             message: TextSpan(text: text),
+            // The toast draws one line: jj's hint lines show in its tooltip.
+            tooltip: text.contains('\n') ? text : null,
             onDismiss: dismiss,
             identifier: 'project-toast-track-error',
           ),

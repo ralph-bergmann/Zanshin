@@ -161,6 +161,41 @@ void main() {
       expect(rig.model.badge, isNull, reason: 'a successful fetch clears the badge');
     });
 
+    _rigTest("a failure with hints shows jj's text, then each hint, and keeps Retry", (tester) async {
+      final rig = _Rig();
+      await tester.pump();
+      rig.sync.fetchAnswer = () => throw const ZanshinFfiException.withReport(
+        'jj.config_error',
+        'Config error',
+        precondition: null,
+        warnings: <ZanshinWarning>[],
+        hints: <String>['Check the config file: /c.toml', 'second hint'],
+      );
+
+      await rig.model.fetch();
+      expect(await _toastText(tester, rig.toasts), 'Config error\nCheck the config file: /c.toml\nsecond hint');
+      expect(
+        tester.widget<ZsToast>(find.byType(ZsToast)).tooltip,
+        'Config error\nCheck the config file: /c.toml\nsecond hint',
+        reason: 'the toast draws one line: its tooltip shows the hints',
+      );
+      expect(find.bySemanticsIdentifier('sync-toast-retry'), findsOneWidget);
+
+      rig.sync.fetchAnswer = () => throw const ZanshinFfiException.withReport(
+        'jj.config_error',
+        null,
+        precondition: null,
+        warnings: <ZanshinWarning>[],
+        hints: <String>['a hint'],
+      );
+      await rig.model.fetch();
+      expect(
+        await _toastText(tester, rig.toasts),
+        'jj.config_error\na hint',
+        reason: 'no context: the code, then the hints',
+      );
+    });
+
     _rigTest('no remote disables Fetch and Push; a stale working copy disables both', (tester) async {
       final rig = _Rig();
       rig.sync
@@ -521,6 +556,18 @@ void main() {
         expect(await rig.model.pushNow(request), isFalse);
         expect(rig.toasts.current?.tone, ZsToastTone.error);
         expect(await _toastText(tester, rig.toasts), 'The push failed: x');
+        expect(tester.widget<ZsToast>(find.byType(ZsToast)).tooltip, isNull, reason: 'one line: no tooltip');
+
+        rig.sync.pushAnswer = (_) => throw const ZanshinFfiException.withReport(
+          'jj.invalid_input',
+          'x',
+          precondition: null,
+          warnings: <ZanshinWarning>[],
+          hints: <String>['h1', 'h2'],
+        );
+        expect(await rig.model.pushNow(request), isFalse);
+        expect(await _toastText(tester, rig.toasts), 'The push failed: x\nh1\nh2');
+        expect(tester.widget<ZsToast>(find.byType(ZsToast)).tooltip, 'The push failed: x\nh1\nh2');
 
         final quiet = _Rig();
         await tester.pump();

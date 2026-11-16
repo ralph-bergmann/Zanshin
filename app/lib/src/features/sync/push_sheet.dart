@@ -259,9 +259,17 @@ class _PushSheetState extends State<PushSheet> {
       spacing: 14,
       children: <Widget>[
         if (model.planError case final ZanshinFfiException error)
-          _Note(text: error.context ?? error.code, tone: _NoteTone.error, identifier: 'push-plan-error'),
+          _Note(
+            text: <String>[error.context ?? error.code, ...error.hints].join('\n'),
+            tone: _NoteTone.error,
+            identifier: 'push-plan-error',
+          ),
         if (model.pushError case final ZanshinFfiException error)
-          _Note(text: error.context ?? error.code, tone: _NoteTone.error, identifier: 'push-error'),
+          _Note(
+            text: <String>[error.context ?? error.code, ...error.hints].join('\n'),
+            tone: _NoteTone.error,
+            identifier: 'push-error',
+          ),
         if (done) _doneNote(context, model),
         if (model.config.signOnPush)
           _Note(

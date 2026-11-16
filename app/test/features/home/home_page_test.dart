@@ -423,13 +423,24 @@ void main() {
     await tester.runAsync(() => session.convert('/r/bad'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    repos.repoAt('/r/bad').trackError = const ZanshinFfiException('jj.invalid_input', 'No such remote bookmark');
+    repos.repoAt('/r/bad').trackError = const ZanshinFfiException.withReport(
+      'jj.invalid_input',
+      'No such remote bookmark',
+      precondition: null,
+      warnings: <ZanshinWarning>[],
+      hints: <String>['a hint'],
+    );
     tester.widget<ZsToast>(find.byType(ZsToast)).actions.single.onPressed();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     final ZsToast error = tester.widget(find.byType(ZsToast));
     expect(error.identifier, 'project-toast-track-error');
-    expect(error.message.toPlainText(), 'No such remote bookmark');
+    expect(error.message.toPlainText(), 'No such remote bookmark\na hint', reason: "jj's hint under its text");
+    expect(
+      error.tooltip,
+      'No such remote bookmark\na hint',
+      reason: 'the toast draws one line: its tooltip shows the hint',
+    );
     await tester.pump(const Duration(seconds: 7));
     await tester.pump(const Duration(milliseconds: 300));
   });

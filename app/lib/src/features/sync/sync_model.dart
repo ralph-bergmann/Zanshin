@@ -223,7 +223,9 @@ class SyncModel extends ChangeNotifier implements GraphMenuSync {
     tone: ZsToastTone.error,
     build: (context, dismiss) => ZsToast(
       tone: ZsToastTone.error,
-      message: TextSpan(text: error.context ?? error.code),
+      message: TextSpan(text: <String>[error.context ?? error.code, ...error.hints].join('\n')),
+      // The toast draws one line: the hints show in its tooltip.
+      tooltip: error.hints.isEmpty ? null : <String>[error.context ?? error.code, ...error.hints].join('\n'),
       actions: <ZsToastAction>[
         ZsToastAction(
           label: context.l10n.toastRetry,
@@ -329,7 +331,7 @@ class SyncModel extends ChangeNotifier implements GraphMenuSync {
     } on ZanshinFfiException catch (error) {
       _log.warning('the push failed: ${error.code}');
       if (error.code != 'jj.stale_working_copy') {
-        _show(_pushFailedEntry((_) => error.context ?? error.code));
+        _show(_pushFailedEntry((_) => <String>[error.context ?? error.code, ...error.hints].join('\n')));
       }
       return false;
     } on Object catch (error, stack) {
@@ -345,12 +347,17 @@ class SyncModel extends ChangeNotifier implements GraphMenuSync {
 
   ShellToastEntry _pushFailedEntry(String Function(AppLocalizations strings) detail) => ShellToastEntry(
     tone: ZsToastTone.error,
-    build: (context, dismiss) => ZsToast(
-      tone: ZsToastTone.error,
-      message: TextSpan(text: context.l10n.toastPushFailed(detail(context.l10n))),
-      onDismiss: dismiss,
-      identifier: 'sync-toast',
-    ),
+    build: (context, dismiss) {
+      final String text = context.l10n.toastPushFailed(detail(context.l10n));
+      return ZsToast(
+        tone: ZsToastTone.error,
+        message: TextSpan(text: text),
+        // The toast draws one line: jj's hint lines show in its tooltip.
+        tooltip: text.contains('\n') ? text : null,
+        onDismiss: dismiss,
+        identifier: 'sync-toast',
+      );
+    },
   );
 
   /// The sheet's exit ended: it is gone.

@@ -436,4 +436,31 @@ void main() {
     expect(model.canPush, isFalse);
     expect(model.checkError, 'refused\na hint');
   });
+
+  test("a change refusal, a fix-it failure and a commit-check failure thrown with hints show jj's hints", () async {
+    // Each path refuses with its own text, so no getter can pass on another path's error.
+    ZanshinFfiException hinted(String path) => ZanshinFfiException.withReport(
+      'jj.invalid_input',
+      '$path refused',
+      precondition: null,
+      warnings: const <ZanshinWarning>[],
+      hints: <String>['$path h1', '$path h2'],
+    );
+    final (PushSheetModel model, FakeRemoteSync sync, _) = await _sheet(
+      configure: (sync) => sync
+        ..pushAnswer = ((request) => request.mode != PushMode.custom
+            ? _plans(request)
+            : throw hinted(request.changes.isNotEmpty ? 'change' : 'check'))
+        ..trackError = hinted('fix'),
+    );
+    expect(model.changeRefusal, 'change refused\nchange h1\nchange h2');
+
+    await model.track(_main, 'main@origin');
+    expect(model.fixErrorOf(_main), 'fix refused\nfix h1\nfix h2');
+
+    model.toggle(_main);
+    await pumpEventQueue();
+    expect(model.checkError, 'check refused\ncheck h1\ncheck h2');
+    expect(sync.pushes, isEmpty);
+  });
 }
