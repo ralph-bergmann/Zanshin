@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/bookmark_ops.rs:177
     severity: medium
+    resolved: >-
+      2026-11-16 — fixed (spec-9-59-closing-name-pattern-error-text, commit d8b4c8b4): every caller of the shared helpers refuses with the CLI's text, Caused by lines and hint; oracle witnesses in hints.rs and scenario tag_delete_bad_pattern.
   - summary: >-
       The shared bookmark and list helpers still cite the CLI at v0.46.0.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/bookmark_ops.rs, crates/zanshin-jj/src/bookmarks.rs
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-9-59-closing-name-pattern-error-text, commit d8b4c8b4): every CLI citation in bookmark_ops.rs and bookmarks.rs re-read and re-cited at v0.47.0.
 ---
 
 <intent-contract>
