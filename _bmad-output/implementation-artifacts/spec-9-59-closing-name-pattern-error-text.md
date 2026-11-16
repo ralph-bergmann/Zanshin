@@ -25,6 +25,10 @@ deferred:
     location: >-
       crates/zanshin-jj/src/config.rs:1714
     severity: medium
+    resolved: >-
+      2026-11-16 — fixed (spec-9-60-remote-pattern-error-hints, commit 23dba0c4): the shared parser
+      renders the CLI's text with `Caused by:` lines and the revset hint, carried as
+      `jj.config_error` hints on every path that reads the four keys.
 ---
 
 <intent-contract>

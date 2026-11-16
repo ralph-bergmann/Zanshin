@@ -3141,7 +3141,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in the closing run of Story 9.59 (bmad-build-auto, 2026-11-16)
 
-- **A bad `remotes.<r>.auto-track-bookmarks` / `fetch-bookmarks` / `fetch-tags` pattern refuses with only "Invalid `remotes.<r>.<field>`: <kind>", without the CLI's `Caused by:` lines and hint.** Medium.
+- ~~**A bad `remotes.<r>.auto-track-bookmarks` / `fetch-bookmarks` / `fetch-tags` pattern refuses with only "Invalid `remotes.<r>.<field>`: <kind>", without the CLI's `Caused by:` lines and hint.**~~ — RESOLVED 2026-11-16 (spec-9-60-remote-pattern-error-hints, commit 23dba0c4): the shared parser renders the CLI's text with `Caused by:` lines and the revset hint, carried as `jj.config_error` hints on every path that reads the four keys. Medium.
   - `crates/zanshin-jj/src/config.rs:1714-1724` and the clone `preset` closure (`crates/zanshin-jj/src/creation.rs:541-550`) render `e.kind()` only; the CLI's `parse_remote_string_expression` (`cli/src/revset_util.rs:463-488` @ v0.47.0) adds both. `ConfigError::Load` / `RepoError::Config` carry no hints, so `jj.config_error` needs a hints channel first.
   - **Follow-up:** render the `Caused by:` lines with `warning::caused_by` and carry `revset::parse_hint` through `jj.config_error` (hints on `ConfigError` / `RepoError::Config`), like the name-pattern port. Covered by Story 9.60.
 
