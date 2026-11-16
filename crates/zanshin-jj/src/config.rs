@@ -967,10 +967,7 @@ pub(crate) fn load_raw(
     for layer in CLI_DEFAULTS.iter() {
         config.add_layer(Arc::clone(layer));
     }
-    let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML).map_err(|e| ConfigError::Load {
-        reason: describe(&e),
-        hints: Vec::new(),
-    })?;
+    let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML).map_err(write_error)?;
     config.add_layer(builtin);
 
     add_path_layers(
@@ -2231,16 +2228,18 @@ pub(crate) fn snapshot_auto_track(config: &StackedConfig) -> Result<String, Conf
 // never create one; `set_trunk_alias` is paired with `new_repo_config_file`, which CREATES.
 // See the module doc for why that asymmetry is the CLI's, not an oversight.
 
-/// A failure while WRITING the repo config, rendered through its `source()` chain.
+/// A repo-config write failure, or one that cannot happen, rendered via its `source()` chain.
 ///
-/// One generic function rather than a closure per call site. Two of the instantiations are
+/// One generic function rather than a closure per call site. Three of the instantiations are
 /// unreachable by construction — `set_value`/`delete_value` only fail when the target is a
 /// non-inline TABLE, which the two remote writers have already ruled out with `as_str()`,
-/// and `getrandom::fill` only fails when the OS RNG is unavailable — so a per-call-site
-/// closure would add lines no test can execute. Sharing one body means the reachable
-/// instantiations ([`jj_lib::config::ConfigFileSaveError`] via the unwritable-file tests,
-/// [`jj_lib::secure_config::SecureConfigError`] via the uncreatable-root test) cover the
-/// same lines the unreachable ones would.
+/// `getrandom::fill` only fails when the OS RNG is unavailable, and the builtin layer parse
+/// in [`load_raw`] only fails if the compiled-in `BUILTIN_CONFIG_TOML` is malformed (pinned
+/// by `builtin_config_layer_is_valid_toml`) — so a per-call-site closure would add lines no
+/// test can execute. Sharing one body means the reachable instantiations
+/// ([`jj_lib::config::ConfigFileSaveError`] via the unwritable-file tests,
+/// [`jj_lib::secure_config::SecureConfigError`] via the uncreatable-root test) cover the same
+/// lines the unreachable ones would.
 fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
     ConfigError::Load {
         reason: describe(&err),
