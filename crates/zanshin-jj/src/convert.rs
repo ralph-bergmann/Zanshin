@@ -121,7 +121,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use jj_lib::config::StackedConfig;
+use jj_lib::config::{ConfigSource, StackedConfig};
 use jj_lib::git::{import_refs, GitImportOptions, GitRefKind};
 use jj_lib::ref_name::{GitRefName, RemoteName, WorkspaceName};
 use jj_lib::repo::ReadonlyRepo;
@@ -214,9 +214,14 @@ impl ConversionReport {
 /// - [`RepoError::AlreadyJjRepo`] — `path` is already a jj workspace.
 /// - [`RepoError::NotAGitRepo`] — `path` is neither a Git repo nor exists, or it cannot be
 ///   resolved to an absolute path (the same answer the not-found case gives).
-/// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error during
-///   conversion; what was written up to the failure stays, as in the CLI.
-/// - [`RepoError::Config`] — the jj config stack the workspace would be created with (resolved
+/// - [`RepoError::ConvertFailed`] — a jj-lib or `detect_repo` I/O error during conversion, or
+///   the `trunk()` alias step cannot save its file; what was written up to the failure stays, as
+///   in the CLI.
+/// - [`RepoError::Backend`] — the `trunk()` alias step cannot determine the repo's secure config
+///   (the CLI's "Failed to determine the secure config for a repo"); `.jj/` stays and is named in
+///   `left_behind`.
+/// - [`RepoError::Config`] — the `trunk()` alias step cannot load its file (with the CLI's hints),
+///   or the jj config stack the workspace would be created with (resolved
 ///   for its own paths, as the CLI's `settings_for_new_workspace`) cannot be read; such a
 ///   user-level or new-workspace-stack fault refuses before anything is written. A fault of the
 ///   user-level stack is checked first, as the CLI's start-up does, so it wins over every other
@@ -317,10 +322,14 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
 ///   already a jj workspace.
 /// - [`RepoError::NotAGitRepo`] — `git_repo_path` is not a Git repo (normal or
 ///   bare) or does not exist.
-/// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error, or
-///   `workspace_path` cannot be created or resolved (the CLI's "Failed to create workspace: …",
-///   e.g. a missing parent); what was written up to the failure stays, as in the CLI.
-/// - [`RepoError::Config`] — as for [`convert_colocated`]: a user-level fault refuses first,
+/// - [`RepoError::ConvertFailed`] — a jj-lib or `detect_repo` I/O error, the `trunk()` alias step
+///   cannot save its file, or `workspace_path` cannot be created or resolved (the CLI's "Failed
+///   to create workspace: …", e.g. a missing parent); what was written up to the failure stays,
+///   as in the CLI.
+/// - [`RepoError::Backend`] — as for [`convert_colocated`]: the `trunk()` alias step's
+///   secure-config fault.
+/// - [`RepoError::Config`] — as for [`convert_colocated`] (the `trunk()` alias step's load fault
+///   included): a user-level fault refuses first,
 ///   before the destination is created; a fault that needs the destination's own paths (a
 ///   scoped table) surfaces once the destination exists (the CLI's order), so a destination
 ///   created for the call stays, as in the CLI. Also the head import's finish when
@@ -537,7 +546,7 @@ fn convert_failed(e: impl std::fmt::Display) -> RepoError {
 /// still gets the alias, as long as `upstream` or `origin` has a HEAD reference.
 ///
 /// The file this writes lives OUTSIDE `.jj/`, under `<config_dir>/jj/repos/<config-id>/`
-/// (see [`crate::config::new_repo_config_file`]); `.jj/repo/config-id` is created alongside
+/// (see [`crate::config::new_repo_config_path`]); `.jj/repo/config-id` is created alongside
 /// it. When no `<config_dir>` can be determined, the whole step is skipped silently — the
 /// CLI's own "we couldn't find the user's home directory" branch.
 fn maybe_set_trunk_alias(workspace: &Workspace, repo: &impl jj_lib::repo::Repo) -> Result<(), RepoError> {
@@ -564,13 +573,29 @@ fn maybe_set_trunk_alias(workspace: &Workspace, repo: &impl jj_lib::repo::Repo) 
         if let Some(symbol) = bookmark {
             // TODO(upstream): the CLI assumes the symbolic target names the same remote.
             let alias = symbol.name.to_remote_symbol(RemoteName::new(remote)).to_string();
-            let file = config::new_repo_config_file(workspace)
-                .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
-            config::set_trunk_alias(file, &alias).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+            return write_trunk_alias(workspace, &alias);
         }
         return Ok(());
     }
     Ok(())
+}
+
+/// The CLI's `write_repo_presets` for the trunk alone (`cli/src/commands/git/mod.rs:155-193` @
+/// v0.47.0), its three steps mapped apart as the CLI raises them
+/// (`cli/src/command_error.rs:409-413,951-955`): the secure-config path is an internal error
+/// ([`RepoError::Backend`]), the file's load a config error ([`RepoError::Config`], with its
+/// hints), its save a user error ([`RepoError::ConvertFailed`]). Each reason is the CLI's text
+/// without its label. No `<config_dir>` → nothing is written.
+fn write_trunk_alias(workspace: &Workspace, alias: &str) -> Result<(), RepoError> {
+    let reason = |e: config::ConfigError| {
+        let config::ConfigError::Load { reason, .. } = e;
+        reason
+    };
+    let Some(path) = config::new_repo_config_path(workspace).map_err(|e| RepoError::Backend(reason(e)))? else {
+        return Ok(());
+    };
+    let file = config::load_config_file(ConfigSource::Repo, &path)?;
+    config::set_trunk_alias(Some(file), alias).map_err(|e| RepoError::ConvertFailed { reason: reason(e) })
 }
 
 /// `jj git init`'s External arm over an existing `<root>/.git` (`init.rs:222-224`, `:249-282` @

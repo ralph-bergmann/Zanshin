@@ -143,7 +143,7 @@ use jj_lib::config::{
 };
 use jj_lib::ref_name::RemoteRefSymbolBuf;
 use jj_lib::repo::StoreLoadError;
-use jj_lib::secure_config::{self, SecureConfig};
+use jj_lib::secure_config::{self, SecureConfig, SecureConfigError};
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::{Workspace, WorkspaceInitError, WorkspaceLoadError, WorkspaceLoader};
 use rand_chacha::rand_core::SeedableRng as _;
@@ -288,11 +288,12 @@ const TRUNK_CONFIG_NAME: [&str; 2] = ["revset-aliases", "trunk()"];
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     /// A config file could not be read, parsed or written back, a `config-id` is malformed,
-    /// or a config value has the wrong type. The offending file path or config key is in
-    /// `reason`.
+    /// or a config value has the wrong type. The offending config key is in `reason`, the file
+    /// path in `reason` or in `hints`.
     #[error("config error: {reason}")]
     Load {
-        /// Human-readable failure, naming the file or the config key.
+        /// The CLI's text: it names the key, or the path in a read error's "Cannot access <path>"
+        /// cause; a parse or wrong-typed value's file is in `hints`.
         reason: String,
         /// The jj CLI's hint lines for this fault, verbatim and in the CLI's order: a
         /// `remotes.<name>.*` pattern that does not parse, and a fault in a known config file
@@ -320,21 +321,26 @@ pub struct LogDefaults {
     pub synthetic_elided: bool,
 }
 
-/// Renders an error and its `source()` chain as `"outer: inner: …"`.
-///
-/// jj-lib's config errors keep the interesting detail (the TOML parse position, the io
-/// reason, the serde type mismatch) in the source chain, so the top-level Display alone
-/// would be useless in an `error.context`.
-fn describe(err: &(dyn std::error::Error + 'static)) -> String {
-    let mut out = err.to_string();
-    let mut source = err.source();
-    while let Some(e) = source {
-        out.push_str(": ");
-        out.push_str(&e.to_string());
-        source = e.source();
-    }
-    out
+/// `err` as the CLI prints it without its label: its Display, then its sources as `Caused by:`
+/// lines — the body of `user_error` / `config_error` / `internal_error` (`print_error_sources`,
+/// `cli/src/command_error.rs` @ v0.47.0).
+pub(crate) fn error_text(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut lines = vec![err.to_string()];
+    lines.extend(crate::warning::caused_by(err.source()));
+    lines.join("\n")
 }
+
+/// `message`, then `err` and its sources as `Caused by:` lines — the body of the CLI's
+/// `*_with_message` errors (`cli/src/command_error.rs` @ v0.47.0).
+fn message_text(message: &str, err: &(dyn std::error::Error + 'static)) -> String {
+    let mut lines = vec![message.to_owned()];
+    lines.extend(crate::warning::caused_by(Some(err)));
+    lines.join("\n")
+}
+
+/// The CLI's message for a `SecureConfigError` (`From<SecureConfigError>`,
+/// `cli/src/command_error.rs:951-955` @ v0.47.0).
+const SECURE_CONFIG_FAILED: &str = "Failed to determine the secure config for a repo";
 
 /// The CLI's hint for a config fault whose file is known: `Check the config file: <path>`
 /// (`cli/src/command_error.rs:415-447,1000-1007` @ v0.47.0); none without a path.
@@ -345,44 +351,42 @@ pub(crate) fn check_file_hint(source_path: Option<&Path>) -> Vec<String> {
         .collect()
 }
 
-/// A load/parse failure, prefixed with the file it came from. A parse error carries the CLI's
-/// hint naming the file it is in (for a directory layer, the file inside it); a read error none.
-fn file_error(path: &Path, err: &ConfigLoadError) -> ConfigError {
+/// A load/parse failure as the CLI's `Config error:` text without the label ([`error_text`]):
+/// the path is in the parse error's hint or in a read error's "Cannot access <path>" cause. A
+/// parse error carries the CLI's hint naming the file it is in (for a directory layer, the file
+/// inside it); a read error none.
+fn file_error(err: &ConfigLoadError) -> ConfigError {
     let source_path = match err {
         ConfigLoadError::Parse { source_path, .. } => source_path.as_deref(),
         ConfigLoadError::Read(_) => None,
     };
     ConfigError::Load {
-        reason: format!("{}: {}", path.display(), describe(err)),
+        reason: error_text(err),
         hints: check_file_hint(source_path),
     }
 }
 
-/// A lookup failure as the CLI's `Config error:` text without the label: `ConfigGetError`'s
-/// Display (it names the config key), then its sources as `Caused by:` lines
-/// (`print_error_sources`). A wrong-typed value from a file carries the CLI's hint naming that
-/// file.
+/// A lookup failure as the CLI's `Config error:` text without the label ([`error_text`]):
+/// `ConfigGetError`'s Display (it names the config key), then its sources. A wrong-typed value
+/// from a file carries the CLI's hint naming that file.
 pub(crate) fn value_error(err: &ConfigGetError) -> ConfigError {
     let source_path = match err {
         ConfigGetError::Type { source_path, .. } => source_path.as_deref(),
         ConfigGetError::NotFound { .. } => None,
     };
-    let mut lines = vec![err.to_string()];
-    lines.extend(crate::warning::caused_by(std::error::Error::source(err)));
     ConfigError::Load {
-        reason: lines.join("\n"),
+        reason: error_text(err),
         hints: check_file_hint(source_path),
     }
 }
 
-/// A lookup failure jj-lib hit while loading or creating a workspace, with no hint: the CLI
-/// reports its own failure there — "Internal error: …" on load (`cli/src/cli_util.rs:3026`
-/// `map_workspace_load_error`), "Failed to access the repository" on creation
-/// (`cli/src/command_error.rs:520-522`, `From<WorkspaceInitError>`) @ v0.47.0 — never "Check the
-/// config file".
+/// A lookup failure of a key jj-lib reads at workspace load, with no hint: the CLI fails at that
+/// load first and reports its own failure there (`map_workspace_load_error`,
+/// `cli/src/cli_util.rs:3026` @ v0.47.0) — never "Check the config file". Zanshin reaches it
+/// only when the file changed after the open.
 fn workspace_value_error(err: &ConfigGetError) -> ConfigError {
     ConfigError::Load {
-        reason: describe(err),
+        reason: error_text(err),
         hints: Vec::new(),
     }
 }
@@ -653,7 +657,7 @@ fn add_path_layers(config: &mut StackedConfig, source: ConfigSource, paths: &[Pa
         } else {
             config.load_file(source, path)
         }
-        .map_err(|e| file_error(path, &e))?;
+        .map_err(|e| file_error(&e))?;
     }
     Ok(())
 }
@@ -736,7 +740,7 @@ fn add_secure_layer(
         return Ok(());
     };
     if path.exists() {
-        config.load_file(source, &path).map_err(|e| file_error(&path, &e))?;
+        config.load_file(source, &path).map_err(|e| file_error(&e))?;
     }
     Ok(())
 }
@@ -829,14 +833,15 @@ impl SecureLayer {
     /// # Errors
     ///
     /// - [`ConfigError::Load`] — the OS RNG failed, or the secure-config directory / id file
-    ///   could not be read, created or written.
+    ///   could not be read, created or written: the CLI's "Failed to determine the secure config
+    ///   for a repo" with its causes.
     pub(crate) fn create_path(&self, randomness_seed: Option<u64>) -> Result<Option<PathBuf>, ConfigError> {
         let Some(root) = self.root_config_dir.as_deref() else {
             return Ok(None);
         };
         let loaded = (self.new_secure)(self.dir.clone())
             .load_config(&mut secure_rng(randomness_seed)?, root)
-            .map_err(write_error)?;
+            .map_err(|e| secure_config_error(&e))?;
         Ok(loaded.config_file)
     }
 
@@ -857,7 +862,7 @@ impl SecureLayer {
     ///
     /// - [`ConfigError::Load`] — the id file is malformed or unreadable (the read side's
     ///   path-named refusal, checked BEFORE jj-lib runs, so nothing is written), or jj-lib failed:
-    ///   the CLI's "Failed to determine the secure config for a repo: …".
+    ///   the CLI's "Failed to determine the secure config for a repo" with its causes.
     pub(crate) fn fix_up(&self, rng: &mut ChaCha20Rng, sink: &mut Vec<crate::Warning>) -> Result<(), ConfigError> {
         let Some(root) = self.root_config_dir.as_deref() else {
             return Ok(());
@@ -866,10 +871,7 @@ impl SecureLayer {
         let old_id = std::fs::read_to_string(self.dir.join(self.id_file_name)).ok();
         let loaded = (self.new_secure)(self.dir.clone())
             .maybe_load_config(rng, root)
-            .map_err(|e| ConfigError::Load {
-                reason: format!("Failed to determine the secure config for a repo: {}", describe(&e)),
-                hints: Vec::new(),
-            })?;
+            .map_err(|e| secure_config_error(&e))?;
         let new_id = loaded
             .config_file
             .as_deref()
@@ -903,6 +905,14 @@ fn secure_rng(randomness_seed: Option<u64>) -> Result<ChaCha20Rng, ConfigError> 
     let mut seed = [0_u8; 32];
     getrandom::fill(&mut seed).map_err(write_error)?;
     Ok(ChaCha20Rng::from_seed(seed))
+}
+
+/// A `SecureConfigError` as the CLI's text without its label ([`SECURE_CONFIG_FAILED`]).
+fn secure_config_error(err: &SecureConfigError) -> ConfigError {
+    ConfigError::Load {
+        reason: message_text(SECURE_CONFIG_FAILED, err),
+        hints: Vec::new(),
+    }
 }
 
 /// The repo and workspace secure layers, in ascending precedence — the ONE description both
@@ -1100,7 +1110,7 @@ pub(crate) type Deprecations = Vec<(ConfigSource, String)>;
 ///   file it is in.
 fn migrate(config: &mut StackedConfig) -> Result<Deprecations, ConfigError> {
     jj_lib::config::migrate(config, &[line_range_arg_rule()]).map_err(|e| ConfigError::Load {
-        reason: describe(&e),
+        reason: error_text(&e),
         hints: check_file_hint(e.source_path.as_deref()),
     })
 }
@@ -1287,7 +1297,8 @@ pub(crate) fn settings_from(env: &ConfigEnv, config: StackedConfig) -> Result<Us
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — a stack file is unreadable or not valid TOML, a `config-id` is
-///   malformed, or a value has the wrong type; the path or key is named.
+///   malformed, or a value has the wrong type; the key, or the file (in the reason or its hint),
+///   is named.
 pub(crate) fn user_settings_for(
     loader: &dyn WorkspaceLoader,
     command: CliCommand,
@@ -1362,47 +1373,76 @@ pub(crate) fn user_settings_for_new_workspace(
     settings_from(&env, load_with(&env, Some(paths), command)?)
 }
 
-/// The first `ConfigGetError` down `err`'s `source()` chain, as a [`ConfigError`].
+/// Whether a `ConfigGetError` is down `err`'s `source()` chain.
 ///
 /// jj-lib reads several keys itself from the settings a workspace is loaded or created with —
 /// the working copy's `ui.conflict-marker-style`, `working-copy.*` and `fsmonitor.*`
 /// (`TreeStateSettings::try_from_user_settings`) among them — and keeps a wrong-typed value's
 /// `ConfigGetError` as a `#[source]` behind its own error.
-fn config_get_error(err: &(dyn std::error::Error + 'static)) -> Option<ConfigError> {
-    std::iter::successors(Some(err), |e| e.source())
-        .find_map(|e| e.downcast_ref::<ConfigGetError>())
-        .map(workspace_value_error)
+fn has_config_get_error(err: &(dyn std::error::Error + 'static)) -> bool {
+    std::iter::successors(Some(err), |e| e.source()).any(<dyn std::error::Error>::is::<ConfigGetError>)
+}
+
+/// A workspace load/creation fault: no hint, as the CLI reports its own failure there.
+fn workspace_fault(reason: String) -> ConfigError {
+    ConfigError::Load {
+        reason,
+        hints: Vec::new(),
+    }
 }
 
 /// The config fault behind a failed workspace LOAD, if that is what it was.
 ///
 /// A wrong-typed value in any layer of the stack fails the load exactly where the CLI fails
 /// too, because jj-lib reads it from the settings the workspace is loaded WITH. Most readers
-/// keep the `ConfigGetError` in the source chain ([`config_get_error`]); the git backend's
+/// keep the `ConfigGetError` in the source chain ([`has_config_get_error`]); the git backend's
 /// factory (`UserSettings::git_backend_settings`: `git.executable-path` and its siblings) wraps
 /// it TRANSPARENTLY (`StoreLoadError::Backend` → `BackendLoadError(ConfigGetError)`,
 /// `default_backend_factories.rs` @ jj-lib 0.47.0), which hides it from the chain, so that one is
-/// dug out by type. Either way the result names the key, as a fault [`settings_from`] catches,
-/// but carries no hint: the CLI reports its own load failure there.
+/// checked by type. The reason is the CLI's load-failure text without its label
+/// (`map_workspace_load_error`, `cli/src/cli_util.rs:3026-3060` @ v0.47.0); no hint.
 pub(crate) fn load_config_fault(err: &WorkspaceLoadError) -> Option<ConfigError> {
-    let git = match err {
-        WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(inner))) => {
-            inner.downcast_ref::<ConfigGetError>()
+    let git = matches!(
+        err,
+        WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(inner)))
+            if inner.is::<ConfigGetError>()
+    );
+    if !git && !has_config_get_error(err) {
+        return None;
+    }
+    let reason = match err {
+        WorkspaceLoadError::StoreLoadError(e @ (StoreLoadError::ReadError { .. } | StoreLoadError::Backend(_))) => {
+            message_text("The repository appears broken or inaccessible", e)
         }
-        _ => None,
+        // `Signing`: the CLI's `user_error`.
+        WorkspaceLoadError::StoreLoadError(e) => error_text(e),
+        // `WorkingCopyState` is transparent: its Display and sources are the inner error's.
+        _ => error_text(err),
     };
-    git.map(workspace_value_error).or_else(|| config_get_error(err))
+    Some(workspace_fault(reason))
 }
 
 /// The config fault behind a failed workspace CREATION, if that is what it was — the
 /// creation-side twin of [`load_config_fault`]: every `Workspace::init_*_git` reads the same
-/// `git.*` keys, transparently wrapped as `BackendInitError(ConfigGetError)`.
+/// `git.*` keys, transparently wrapped as `BackendInitError(ConfigGetError)`. The reason is the
+/// CLI's creation-failure text without its label (`From<WorkspaceInitError>`,
+/// `cli/src/command_error.rs:501-530` @ v0.47.0); no hint.
 pub(crate) fn init_config_fault(err: &WorkspaceInitError) -> Option<ConfigError> {
-    let git = match err {
-        WorkspaceInitError::Backend(BackendInitError(inner)) => inner.downcast_ref::<ConfigGetError>(),
-        _ => None,
+    let git = matches!(
+        err,
+        WorkspaceInitError::Backend(BackendInitError(inner)) if inner.is::<ConfigGetError>()
+    );
+    if !git && !has_config_get_error(err) {
+        return None;
+    }
+    let reason = match err {
+        // Both variants are transparent: Display and sources are the inner error's.
+        WorkspaceInitError::Backend(_) | WorkspaceInitError::WorkingCopyState(_) => {
+            message_text("Failed to access the repository", err)
+        }
+        _ => error_text(err),
     };
-    git.map(workspace_value_error).or_else(|| config_get_error(err))
+    Some(workspace_fault(reason))
 }
 
 /// The effective `user.email` of a loaded stack — the `mine()` revset's input.
@@ -2233,7 +2273,8 @@ pub(crate) fn snapshot_auto_track(config: &StackedConfig) -> Result<String, Conf
 // never create one; `set_trunk_alias` is paired with `new_repo_config_file`, which CREATES.
 // See the module doc for why that asymmetry is the CLI's, not an oversight.
 
-/// A repo-config write failure, or one that cannot happen, rendered via its `source()` chain.
+/// A repo-config write failure, or one that cannot happen, as the CLI's text without its label
+/// ([`error_text`]): a save fault reads "Failed to write configuration file", then its causes.
 ///
 /// One generic function rather than a closure per call site. Three of the instantiations are
 /// unreachable through the public API:
@@ -2248,12 +2289,11 @@ pub(crate) fn snapshot_auto_track(config: &StackedConfig) -> Result<String, Conf
 ///   is malformed (pinned by `builtin_config_layer_is_valid_toml`).
 ///
 /// So a per-call-site closure would add lines no test can execute. Sharing one body means the
-/// reachable instantiations ([`jj_lib::config::ConfigFileSaveError`] via the unwritable-file
-/// tests, [`jj_lib::secure_config::SecureConfigError`] via the uncreatable-root test) cover the
-/// same lines the unreachable ones would.
+/// reachable instantiation ([`jj_lib::config::ConfigFileSaveError`] via the unwritable-file
+/// tests) covers the same lines the unreachable ones would.
 fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
     ConfigError::Load {
-        reason: describe(&err),
+        reason: error_text(&err),
         hints: Vec::new(),
     }
 }
@@ -2265,9 +2305,9 @@ fn write_error<E: std::error::Error + 'static>(err: E) -> ConfigError {
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — the file exists but could not be read or is not valid TOML; the
-///   path is named.
+///   path is named (in the hint or in the cause).
 pub(crate) fn load_config_file(source: ConfigSource, path: &Path) -> Result<ConfigFile, ConfigError> {
-    ConfigFile::load_or_empty(source, path).map_err(|e| file_error(path, &e))
+    ConfigFile::load_or_empty(source, path).map_err(|e| file_error(&e))
 }
 
 /// Writes `file` back — `ConfigFile::save`, a `toml_edit` round trip that keeps comments and
@@ -2360,10 +2400,31 @@ fn create_repo_config_file(
     // `load_config` generates the file when none exists, so the path is `Some` whenever a root
     // is known. Mapping rather than matching — the shape the CLI's own `new_repo_config_file`
     // uses — keeps the impossible `None` from becoming a branch no test could execute.
-    SecureLayer::repo_at(repo_dir.to_owned(), root_config_dir.map(Path::to_owned))
-        .create_path(randomness_seed)?
+    create_repo_config_path(repo_dir, root_config_dir, randomness_seed)?
         .map(|path| load_config_file(ConfigSource::Repo, &path))
         .transpose()
+}
+
+/// The path step of [`create_repo_config_file`] — the CLI's create-forcing `repo_config_path`:
+/// creates the secure directory and `config-id`, not the file.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — as [`SecureLayer::create_path`].
+fn create_repo_config_path(
+    repo_dir: &Path,
+    root_config_dir: Option<&Path>,
+    randomness_seed: Option<u64>,
+) -> Result<Option<PathBuf>, ConfigError> {
+    SecureLayer::repo_at(repo_dir.to_owned(), root_config_dir.map(Path::to_owned)).create_path(randomness_seed)
+}
+
+/// `workspace`'s `.jj/repo` (jj-lib's already-resolved path — see `load_for_workspace`), the
+/// `<config_dir>/jj/repos` root and the randomness seed, from the process environment.
+fn repo_config_inputs(workspace: &Workspace) -> (&Path, Option<PathBuf>, Option<u64>) {
+    let env = ConfigEnv::from_env();
+    let root = env.root_config_dir().map(|r| r.join("repos"));
+    (workspace.repo_path(), root, env.randomness_seed())
 }
 
 /// The repo-level config file of `workspace`, created if it does not exist.
@@ -2378,14 +2439,21 @@ fn create_repo_config_file(
 /// - [`ConfigError::Load`] — the secure-config directory could not be created or written, or
 ///   an already-present config file is unreadable or not valid TOML.
 pub(crate) fn new_repo_config_file(workspace: &Workspace) -> Result<Option<ConfigFile>, ConfigError> {
-    let env = ConfigEnv::from_env();
-    let root = env.root_config_dir();
-    create_repo_config_file(
-        // `repo_path()` is jj-lib's already-resolved `.jj/repo` — see `load_for_workspace`.
-        workspace.repo_path(),
-        root.as_ref().map(|r| r.join("repos")).as_deref(),
-        env.randomness_seed(),
-    )
+    let (repo_dir, root, seed) = repo_config_inputs(workspace);
+    create_repo_config_file(repo_dir, root.as_deref(), seed)
+}
+
+/// The path half of [`new_repo_config_file`] — the CLI's create-forcing `repo_config_path`, for
+/// a caller that maps the path, load and save faults apart as the CLI does
+/// (`cli/src/commands/git/mod.rs:155-193` @ v0.47.0). `Ok(None)` iff no `<config_dir>` is known.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the secure-config directory could not be created or written: the
+///   CLI's "Failed to determine the secure config for a repo" with its causes.
+pub(crate) fn new_repo_config_path(workspace: &Workspace) -> Result<Option<PathBuf>, ConfigError> {
+    let (repo_dir, root, seed) = repo_config_inputs(workspace);
+    create_repo_config_path(repo_dir, root.as_deref(), seed)
 }
 
 /// The repo-level presets `jj git clone` and `jj git init` write — the fields of the CLI's
@@ -2469,8 +2537,9 @@ pub(crate) fn write_repo_presets(
 /// Writes `revset-aliases.'trunk()' = <symbol>` — the one preset `jj git init`'s External flow
 /// sets (`maybe_set_repository_level_trunk_alias`): [`write_repo_presets`] with the trunk alone.
 ///
-/// `file` is [`new_repo_config_file`]'s answer: `None` means no `<config_dir>` could be
-/// determined, and then this is a no-op that creates nothing.
+/// `file` is the repo-level file to write: in production `Some`, loaded by the conversion's
+/// `write_trunk_alias` from [`new_repo_config_path`]'s path, which skips the call when no
+/// `<config_dir>` is known. `None` is a no-op that creates nothing.
 ///
 /// # Errors
 ///
@@ -3425,7 +3494,10 @@ mod tests {
             ..bare_env()
         };
         let err = load_with(&env, None, NO_COMMAND).expect_err("invalid TOML must refuse");
-        assert!(err.to_string().contains("config.toml"), "got: {err}");
+        assert!(
+            matches!(&err, super::ConfigError::Load { hints, .. } if hints[0].ends_with("config.toml")),
+            "the hint names the file: {err:?}"
+        );
     }
 
     #[test]
@@ -3686,6 +3758,101 @@ mod tests {
         assert!(fault.to_string().contains("ui.conflict-marker-style"), "got: {fault}");
     }
 
+    /// The reason of a workspace load fault is the CLI's `map_workspace_load_error` text without
+    /// its label, one assertion per arm.
+    #[test]
+    fn load_config_fault_renders_the_clis_load_failure_text() {
+        use jj_lib::backend::BackendLoadError;
+        use jj_lib::config::ConfigGetError;
+        use jj_lib::repo::StoreLoadError;
+        use jj_lib::signing_factory::SignInitError;
+        use jj_lib::working_copy::WorkingCopyStateError;
+        use jj_lib::workspace::WorkspaceLoadError;
+
+        let wrong_type = |name: &str| ConfigGetError::Type {
+            name: name.to_owned(),
+            error: "invalid type: integer `1`".into(),
+            source_path: None,
+        };
+        let reason = |err: &WorkspaceLoadError| {
+            let super::ConfigError::Load { reason, .. } = super::load_config_fault(err).expect("a config fault");
+            reason
+        };
+
+        let git = WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(Box::new(wrong_type(
+            "git.executable-path",
+        )))));
+        assert_eq!(
+            reason(&git),
+            "The repository appears broken or inaccessible\nCaused by:\n\
+             1: Invalid type or value for git.executable-path\n2: invalid type: integer `1`"
+        );
+
+        let signing = WorkspaceLoadError::StoreLoadError(StoreLoadError::Signing(SignInitError::BackendConfig(
+            wrong_type("signing.backends.ssh.program"),
+        )));
+        assert_eq!(
+            reason(&signing),
+            "Failed to configure signing backend\nCaused by:\n\
+             1: Invalid type or value for signing.backends.ssh.program\n2: invalid type: integer `1`"
+        );
+
+        let wc = WorkspaceLoadError::WorkingCopyState(WorkingCopyStateError {
+            message: "Failed to read the tree state settings".to_owned(),
+            err: Box::new(wrong_type("ui.conflict-marker-style")),
+        });
+        assert_eq!(
+            reason(&wc),
+            "Failed to read the tree state settings\nCaused by:\n\
+             1: Invalid type or value for ui.conflict-marker-style\n2: invalid type: integer `1`"
+        );
+    }
+
+    /// The reason of a workspace creation fault is the CLI's `From<WorkspaceInitError>` text
+    /// without its label, one assertion per arm.
+    #[test]
+    fn init_config_fault_renders_the_clis_creation_failure_text() {
+        use jj_lib::backend::BackendInitError;
+        use jj_lib::config::ConfigGetError;
+        use jj_lib::signing_factory::SignInitError;
+        use jj_lib::working_copy::WorkingCopyStateError;
+        use jj_lib::workspace::WorkspaceInitError;
+
+        let wrong_type = |name: &str| ConfigGetError::Type {
+            name: name.to_owned(),
+            error: "invalid type: integer `1`".into(),
+            source_path: None,
+        };
+        let reason = |err: &WorkspaceInitError| {
+            let super::ConfigError::Load { reason, .. } = super::init_config_fault(err).expect("a config fault");
+            reason
+        };
+
+        let git = WorkspaceInitError::Backend(BackendInitError(Box::new(wrong_type("git.executable-path"))));
+        assert_eq!(
+            reason(&git),
+            "Failed to access the repository\nCaused by:\n\
+             1: Invalid type or value for git.executable-path\n2: invalid type: integer `1`"
+        );
+
+        let wc = WorkspaceInitError::WorkingCopyState(WorkingCopyStateError {
+            message: "Failed to read the tree state settings".to_owned(),
+            err: Box::new(wrong_type("ui.conflict-marker-style")),
+        });
+        assert_eq!(
+            reason(&wc),
+            "Failed to access the repository\nCaused by:\n1: Failed to read the tree state settings\n\
+             2: Invalid type or value for ui.conflict-marker-style\n3: invalid type: integer `1`"
+        );
+
+        let signing = WorkspaceInitError::SignInit(SignInitError::BackendConfig(wrong_type("signing.backend")));
+        assert_eq!(
+            reason(&signing),
+            "Failed to configure signing backend\nCaused by:\n\
+             1: Invalid type or value for signing.backend\n2: invalid type: integer `1`"
+        );
+    }
+
     #[test]
     fn init_config_fault_digs_out_the_git_backends_and_the_chains_config_reads() {
         use jj_lib::backend::BackendInitError;
@@ -3754,15 +3921,30 @@ mod tests {
         let parse = StackedConfig::empty()
             .load_file(ConfigSource::Repo, &file)
             .expect_err("not TOML");
+        let parse_fault = super::file_error(&parse);
+        let super::ConfigError::Load { reason, .. } = &parse_fault;
+        assert!(
+            reason.starts_with("Configuration cannot be parsed as TOML document\nCaused by: TOML parse error"),
+            "the CLI's text, no path: {reason}"
+        );
         assert_eq!(
-            hints(super::file_error(&file, &parse)),
+            hints(parse_fault),
             [format!("Check the config file: {}", file.display())]
         );
         let read = ConfigLoadError::Read(jj_lib::file_util::PathError {
             path: file.clone(),
             source: std::io::Error::other("x"),
         });
-        assert!(hints(super::file_error(&file, &read)).is_empty());
+        let read_fault = super::file_error(&read);
+        let super::ConfigError::Load { reason, .. } = &read_fault;
+        assert_eq!(
+            reason,
+            &format!(
+                "Failed to read configuration file\nCaused by:\n1: Cannot access {}\n2: x",
+                file.display()
+            )
+        );
+        assert!(hints(read_fault).is_empty());
 
         let load = WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(Box::new(wrong_type(
             Some("/r/config.toml"),
@@ -4071,10 +4253,10 @@ fetch-tags = \"none\"
     fn an_unparseable_repo_config_is_a_config_error_naming_the_file() {
         let (_tmp, path) = repo_config("not = = toml\n");
         let err = load_repo_config_file(Some(&path)).expect_err("invalid TOML must refuse");
-        let reason = err.to_string();
         assert!(
-            reason.contains("config.toml") && reason.contains("TOML"),
-            "the file and the parse position must both be named, got: {reason}"
+            matches!(&err, super::ConfigError::Load { reason, hints }
+                if reason.contains("TOML parse error") && hints[0].ends_with("config.toml")),
+            "the parse position and (in the hint) the file must both be named, got: {err:?}"
         );
     }
 
@@ -4207,9 +4389,14 @@ fetch-tags = \"none\"
 
         let err = create_repo_config_file(repo_dir.path(), Some(&blocker.join("repos")), None)
             .expect_err("an uncreatable secure-config root must refuse");
+        let super::ConfigError::Load { reason, .. } = &err;
         assert!(
-            err.to_string().contains("repos"),
-            "the offending path must be named, got: {err}"
+            reason.starts_with("Failed to determine the secure config for a repo\nCaused by:\n1: Cannot access "),
+            "the CLI's text: {reason}"
+        );
+        assert!(
+            reason.contains("repos"),
+            "the offending path must be named, got: {reason}"
         );
         assert!(
             !repo_dir.path().join("config-id").exists(),
@@ -4230,10 +4417,10 @@ fetch-tags = \"none\"
 
         let err = create_repo_config_file(repo_dir.path(), Some(root.path()), None)
             .expect_err("invalid TOML must refuse before anything is written");
-        let reason = err.to_string();
         assert!(
-            reason.contains("config.toml") && reason.contains("TOML"),
-            "the file and the parse position must both be named, got: {reason}"
+            matches!(&err, super::ConfigError::Load { reason, hints }
+                if reason.contains("TOML parse error") && hints[0].ends_with("config.toml")),
+            "the parse position and (in the hint) the file must both be named, got: {err:?}"
         );
     }
 
@@ -4430,7 +4617,10 @@ fetch-bookmarks = \"main\"
         };
         let mut sink = Vec::new();
         let err = fix_up_secure_config(&env, paths(&repo, &root), &mut sink).expect_err("the user file refuses");
-        assert!(err.to_string().contains("user.toml"), "{err}");
+        assert!(
+            matches!(&err, super::ConfigError::Load { hints, .. } if hints[0].ends_with("user.toml")),
+            "{err:?}"
+        );
         assert!(sink.is_empty());
         assert!(!repo.join("config-id").exists(), "nothing was migrated");
         assert!(std::fs::symlink_metadata(repo.join("config.toml")).unwrap().is_file());
@@ -4444,7 +4634,10 @@ fetch-bookmarks = \"main\"
         let (env, repo, root) = legacy_workspace(tmp.path(), "ws", "not toml [", Some("[c]\nd = 2\n"));
         let mut sink = Vec::new();
         let err = fix_up_secure_config(&env, paths(&repo, &root), &mut sink).expect_err("the repo file refuses");
-        assert!(err.to_string().contains("cfg/jj/repos"), "the NEW file is named: {err}");
+        assert!(
+            matches!(&err, super::ConfigError::Load { hints, .. } if hints[0].contains("cfg/jj/repos")),
+            "the NEW file is named: {err:?}"
+        );
         assert_eq!(kinds(&sink), [crate::WarningKind::ConfigMigrated]);
         assert!(repo.join("config-id").exists());
         assert!(
@@ -4498,7 +4691,7 @@ fetch-bookmarks = \"main\"
         let err = fix_up_layers(&env, paths(&repo, &root), &mut sink).expect_err("an uncreatable dir refuses");
         assert!(
             err.to_string()
-                .starts_with("config error: Failed to determine the secure config for a repo: "),
+                .starts_with("config error: Failed to determine the secure config for a repo\nCaused by:"),
             "{err}"
         );
         assert!(sink.is_empty());
@@ -4806,7 +4999,7 @@ fetch-bookmarks = \"main\"
         let err = super::migrate(&mut broken).expect_err("a non-string refuses");
         assert!(
             matches!(&err, crate::ConfigError::Load { reason, hints }
-                if reason.starts_with("Migration failed: Invalid type or value for fix.tools.t.line-range-arg")
+                if reason.starts_with("Migration failed\nCaused by:\n1: Invalid type or value for fix.tools.t.line-range-arg\n2: ")
                     && hints.is_empty()),
             "no file, no hint: {err:?}"
         );
@@ -4816,7 +5009,7 @@ fetch-bookmarks = \"main\"
         from_file.add_layer(file_layer);
         let crate::ConfigError::Load { reason, hints } = super::migrate(&mut from_file).expect_err("refuses");
         assert!(
-            reason.starts_with("Migration failed: ") && !reason.contains('\n'),
+            reason.starts_with("Migration failed\nCaused by:\n") && !reason.contains("/x/config.toml"),
             "the file moved to the hint: {reason}"
         );
         assert_eq!(hints, ["Check the config file: /x/config.toml"]);

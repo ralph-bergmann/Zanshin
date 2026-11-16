@@ -98,11 +98,13 @@ fn the_config_stack_reaches_the_ffi_envelopes() {
     let path = cstr(&fx.path);
     // SAFETY: `path` is a valid NUL-terminated C string alive for the call; the token is
     // freed exactly once by `read_and_free`.
-    let (code, context) = error_of(&unsafe { read_and_free(zanshin_repo_open(path.as_ptr())) });
+    let bytes = unsafe { read_and_free(zanshin_repo_open(path.as_ptr())) };
+    let (code, _) = error_of(&bytes);
     assert_eq!(code, JJ_CONFIG_ERROR);
+    let hints = parse_envelope(&bytes).error().and_then(|e| e.hints());
     assert!(
-        context.contains("broken.toml"),
-        "the path must be named, got: {context}"
+        hints.is_some_and(|h| h.iter().any(|h| h.ends_with("broken.toml"))),
+        "the hint must name the path, got: {hints:?}"
     );
 
     let fresh = tmp.path().join("fresh");

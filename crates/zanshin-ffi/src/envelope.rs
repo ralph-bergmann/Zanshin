@@ -213,7 +213,8 @@ pub const JJ_REVSET_PARSE_ERROR: &str = "jj.revset_parse_error";
 pub const JJ_REVSET_RESOLUTION_ERROR: &str = "jj.revset_resolution_error";
 /// AR-P-4: emitted by `log_defaults.rs` and `graph.rs` when the repo's effective jj config
 /// cannot be read — a malformed/unreadable config file, a bad `config-id`, or a
-/// wrong-typed config value; the offending file path or config key in `context`.
+/// wrong-typed config value; `context` is the CLI's text (the key, or a read error's path), a
+/// parse or wrong-typed value's file in the "Check the config file" hint.
 pub const JJ_CONFIG_ERROR: &str = "jj.config_error";
 /// AR-P-4: emitted by `config.rs::zanshin_config_get` when no layer sets the name ("Value not
 /// found for <name>") and by `zanshin_config_unset` when the file does not hold it (`"<name>"

@@ -630,7 +630,7 @@ or no `# Errors` block.
 | `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a (+9.37) |
 | `zanshin_repo_init` | `(const uint8_t *data, uintptr_t len)` | `RepoInitRequest` | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.jj_lib_error`, `jj.git_repo_exists`, `jj.already_jj_repo`, `jj.convert_failed`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20) |
 | `zanshin_repo_clone` | `(const uint8_t *data, uintptr_t len)` | `RepoCloneRequest` (+ `cancel_token`, see § Cancel) | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.destination_not_empty`, `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20, 9.20 closing run, 9.52, 9.57 closing run; `Progress`: 9.20) |
-| `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c (+9.33) |
+| `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.jj_lib_error`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c (+9.33, leftovers 9.60/11.28) |
 | `zanshin_repo_detect` | `(const char *path)` | — | `RepoDetect` | `jj.detect_failed`, `ffi.null_pointer`, `ffi.utf8_error` | 3.4c |
 | `zanshin_repo_close` | `(uint64_t handle)` | — | — (no-payload success) | `ffi.invalid_handle` | 3.4a |
 | `zanshin_status` | `(uint64_t handle)` | — | `Status` (both change ids ABSENT and `files` empty when this workspace has no `@` — the CLI's "No working copy.", no error) | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b (+9.12 closing run) |
@@ -1388,7 +1388,7 @@ native bytes before it frees them. See `docs/graph-layout.md` §13.)*
 | `jj.revset_parse_error`      | An expression or an anchor is syntactically invalid / an unknown function (incl. a blank `prioritize`; an EMPTY `short_prefixes` is NOT an error). Reason in `context`. |
 | `jj.revset_resolution_error` | `revset`, `prioritize` or an anchor names a symbol that cannot be resolved. NOT raised for `short_prefixes` itself (it warns and degrades) — but a set that fails to load refuses an id-prefix-shaped symbol of the other texts (2026-10-25). |
 | `jj.stale_working_copy`      | The pre-verb snapshot found the working copy stale (Story 9.26); nothing is written. |
-| `jj.config_error`            | The repo's effective jj config is unreadable, not valid TOML, has a malformed `config-id`, or a wrong-typed value; the file path or key in `context`. A single bad `[revset-aliases]` entry only warns. |
+| `jj.config_error`            | The repo's effective jj config is unreadable, not valid TOML, has a malformed `config-id`, or a wrong-typed value; `context` is the CLI's text (the key, or a read error's path), a parse or wrong-typed value's file in the "Check the config file" hint. A single bad `[revset-aliases]` entry only warns. |
 | `jj.jj_lib_error`            | A jj-lib load, evaluation, index or (with `with_timestamps`) commit-load failure, a failed snapshot backend, or an id the encoder refuses; detail in `context`. |
 | `graph.dangling_edge`        | A Direct/Indirect edge names a target outside the node set — unreachable with jj-lib's stream contract; the target id in `context`. |
 
@@ -1550,7 +1550,7 @@ LogDefaults {
 | Code                  | Condition                                                                     |
 |-----------------------|-------------------------------------------------------------------------------|
 | `ffi.invalid_handle`  | Rust: `handle == 0`. Worker: unknown/closed `handleId`. `context` is absent.   |
-| `jj.config_error`     | A config file is unreadable or not valid TOML, a `config-id` is not exactly 20 ASCII hex characters, or one of the four values has the wrong type; the file path or config key in `context`. Never a silent fall-back to the builtin defaults. |
+| `jj.config_error`     | A config file is unreadable or not valid TOML, a `config-id` is not exactly 20 ASCII hex characters, or one of the four values has the wrong type; `context` is the CLI's text (the key, or a read error's path), a parse or wrong-typed value's file in the "Check the config file" hint. Never a silent fall-back to the builtin defaults. |
 
 The two `[revset-aliases]` failure levels differ, exactly as in the CLI:
 

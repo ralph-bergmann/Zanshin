@@ -214,10 +214,14 @@ fn a_malformed_config_file_is_a_config_error_naming_the_file() {
     let repo = Repo::open(&fx.path).unwrap();
 
     write_repo_config(&fx.path, "not = = toml");
-    let ConfigError::Load { reason, .. } = repo.log_defaults().expect_err("malformed TOML must hard-error");
+    let ConfigError::Load { reason, hints } = repo.log_defaults().expect_err("malformed TOML must hard-error");
     assert!(
-        reason.contains("config.toml"),
-        "the context must name the file, got: {reason}"
+        reason.starts_with("Configuration cannot be parsed as TOML document\nCaused by: TOML parse error"),
+        "the CLI's text, got: {reason}"
+    );
+    assert!(
+        hints[0].starts_with("Check the config file: ") && hints[0].ends_with("config.toml"),
+        "the hint must name the file, got: {hints:?}"
     );
 }
 

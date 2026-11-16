@@ -103,7 +103,8 @@ pub enum RepoError {
     /// start-up on the same faults, so nothing is opened or written.
     #[error("config error: {reason}")]
     Config {
-        /// Human-readable failure, naming the offending file path or config key.
+        /// The CLI's text: it names the key, or the path in a read error's cause; a parse or
+        /// wrong-typed value's file is in `hints`.
         reason: String,
         /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint, or "Check the
         /// config file: <path>" for a fault in a known file; empty otherwise (a workspace load
@@ -5097,7 +5098,8 @@ impl Repo {
     /// exists but is unreachable (a parent component denies search, a symlink loop, a non-directory
     /// component) — [`RepoError::NotARepo`] if `.jj` is absent, [`RepoError::Config`] if the
     /// workspace's effective jj config stack cannot be read (a file that is unreadable or not
-    /// valid TOML, a malformed `config-id`, a wrong-typed value — the path or key is named), or
+    /// valid TOML, a malformed `config-id`, a wrong-typed value — the reason is the CLI's text,
+    /// a parse or wrong-typed value's file in the "Check the config file" hint), or
     /// [`RepoError::Backend`] on jj-lib failure.
     ///
     /// The workspace is opened with the settings the CLI would use: Default → System → `EnvBase`

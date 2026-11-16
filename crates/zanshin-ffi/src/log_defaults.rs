@@ -66,8 +66,8 @@ fn log_defaults_to_envelope(defaults: &LogDefaults) -> Vec<u8> {
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
 /// - `jj.config_error` — a config file is unreadable or not valid TOML, a `config-id` is
-///   malformed, or one of the four values has the wrong type; the offending file path or
-///   config key in `context`.
+///   malformed, or one of the four values has the wrong type; `context` is the CLI's text (the
+///   key, or a read error's path), a parse or wrong-typed value's file in the hint.
 ///
 /// # Safety
 /// `handle` must be a value returned by a successful `zanshin_repo_open`,

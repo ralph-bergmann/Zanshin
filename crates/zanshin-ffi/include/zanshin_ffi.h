@@ -764,8 +764,8 @@ ZanshinBuf *zanshin_interdiff(uint64_t handle,
  * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
  * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
  * - `jj.config_error` — the stack does not load (a file unreadable or not TOML, a malformed id
- *   file, a wrong-typed start-up key), or the start-up fix-up failed; the path or key in
- *   `context`.
+ *   file, a wrong-typed start-up key), or the start-up fix-up failed; `context` is the CLI's
+ *   text (the key, or a read error's path), a parse or wrong-typed value's file in the hint.
  * - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
  *
  * # Safety
@@ -790,8 +790,9 @@ ZanshinBuf *zanshin_config_list(const uint8_t *data, uintptr_t len);
  * - `jj.invalid_input` — `name` is absent.
  * - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
  * - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
- * - `jj.config_error` — the stack does not load, or the start-up fix-up failed; the path or key
- *   in `context`.
+ * - `jj.config_error` — the stack does not load, or the start-up fix-up failed; `context` is
+ *   the CLI's text (the key, or a read error's path), a parse or wrong-typed value's file in the
+ *   hint.
  * - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
  * - `jj.config_not_found` — no layer sets `name` ("Value not found for <name>").
  *
@@ -2138,7 +2139,8 @@ ZanshinBuf *zanshin_git_colocation_disable(uint64_t handle);
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.config_error` — the repo's effective jj config is unreadable, not valid TOML, has a
- *   malformed `config-id`, or holds a wrong-typed value; the file path or key in `context`.
+ *   malformed `config-id`, or holds a wrong-typed value; `context` is the CLI's text (the key, or
+ *   a read error's path), a parse or wrong-typed value's file in the hint.
  * - `jj.jj_lib_error` — a jj-lib load, evaluation, index or commit-load failure; detail in
  *   `context`.
  * - `graph.dangling_edge` — a Direct/Indirect edge names a target outside the node set (jj-lib's
@@ -2168,8 +2170,8 @@ ZanshinBuf *zanshin_graph_topology(uint64_t handle, const uint8_t *data, uintptr
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
  * - `jj.config_error` — a config file is unreadable or not valid TOML, a `config-id` is
- *   malformed, or one of the four values has the wrong type; the offending file path or
- *   config key in `context`.
+ *   malformed, or one of the four values has the wrong type; `context` is the CLI's text (the
+ *   key, or a read error's path), a parse or wrong-typed value's file in the hint.
  *
  * # Safety
  * `handle` must be a value returned by a successful `zanshin_repo_open`,
@@ -3145,7 +3147,9 @@ void zanshin_network_cancel(uint64_t token);
  * - `jj.config_error` — the workspace's effective jj config stack (the CLI's: system, user,
  *   repo, workspace files and the `JJ_*` environment) cannot be read: a file that is
  *   unreadable or not valid TOML, a malformed `config-id`, a wrong-typed value — or the
- *   secure-config fix-up failed. `context` names the path or key. Nothing is opened.
+ *   secure-config fix-up failed. `context` is the CLI's text (the key, or a read error's
+ *   path); a parse or wrong-typed value's file is in the "Check the config file" hint. Nothing
+ *   is opened.
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -3186,8 +3190,10 @@ ZanshinBuf *zanshin_repo_open(const char *path);
  *   `RepoInit`, or `backend` / `object_hash` is out of range.
  * - `jj.invalid_input` — `path` is absent, both colocation flags are set, or the native backend
  *   is given a Git flag.
- * - `jj.jj_lib_error` — the destination cannot be created ("Failed to create workspace: …") or
- *   the jj-lib creation failed; detail in `context`. After the destination step it may carry
+ * - `jj.jj_lib_error` — the destination cannot be created ("Failed to create workspace: …"),
+ *   the jj-lib creation failed, or the External flow's `trunk()` alias step cannot determine the
+ *   repo's secure config (the CLI's "Failed to determine the secure config for a repo" and its
+ *   causes); detail in `context`. After the destination step it may carry
  *   `FfiError.left_behind` (see above).
  * - `jj.git_repo_exists` — `no_colocate` over a directory holding `.git/`; the path in `context`.
  * - `jj.already_jj_repo` — the destination is already a jj workspace.
@@ -3196,7 +3202,10 @@ ZanshinBuf *zanshin_repo_open(const char *path);
  * - `jj.config_error` — the jj config stack cannot be read (the user-level stack first, as the
  *   CLI's start-up, then the stack resolved for the new workspace's paths), `git.colocate` /
  *   `git.object-hash` is malformed, or the created workspace's own stack cannot when it is
- *   re-opened. `context` names the path or key. After the destination step it may carry
+ *   re-opened. `context` is the CLI's text (the key, or a read error's path); a parse or
+ *   wrong-typed value's file is in the "Check the config file" hint. The External flow's
+ *   `trunk()` alias step maps a load fault here too (the CLI's mapping; not reachable, the file
+ *   is fresh). After the destination step it may carry
  *   `FfiError.left_behind` (see above).
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
  *   no handle is returned rather than one for an unwatched repo. It comes AFTER a successful
@@ -3381,13 +3390,17 @@ ZanshinBuf *zanshin_repo_detect(const char *path);
  * - `jj.not_a_git_repo` — the path has no `.git/` or does not exist.
  * - `jj.convert_failed` — a jj-lib, config-write or `detect_repo` I/O error during
  *   conversion; detail in `context`, what it wrote in `FfiError.left_behind`.
+ * - `jj.jj_lib_error` — the `trunk()` alias step cannot determine the repo's secure config (the
+ *   CLI's "Failed to determine the secure config for a repo" and its causes, in `context`); the
+ *   `.jj` it wrote is in `FfiError.left_behind`.
  * - `jj.config_error` — the jj config stack the workspace is created with cannot be read
  *   (the user-level stack first, as the CLI's start-up, then the stack resolved for the new
  *   workspace's paths; such a fault refuses before anything is written), a later config fault
  *   (the start-up environment, e.g. a bad `immutable_heads()`; the refs step's import options;
  *   the snapshot knobs — these leave `.jj/` as the CLI does and name it in
  *   `FfiError.left_behind`), or the converted workspace's own stack cannot when it is opened.
- *   `context` names the path or key.
+ *   `context` is the CLI's text (the key, or a read error's path); a parse or wrong-typed
+ *   value's file is in the "Check the config file" hint.
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:

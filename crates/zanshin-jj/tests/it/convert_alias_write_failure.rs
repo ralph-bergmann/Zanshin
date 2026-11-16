@@ -73,10 +73,18 @@ fn an_uncreatable_repo_config_fails_the_conversion_and_leaves_its_jj() {
     );
 
     let outcome = convert_colocated(&work);
+    // The CLI's `Internal error: Failed to determine the secure config for a repo` (its
+    // `From<SecureConfigError>`), without the label; the config-id in the path is random.
+    let err = outcome
+        .result
+        .as_ref()
+        .expect_err("an uncreatable repo config must fail the conversion");
     assert!(
-        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
-        "an uncreatable repo config must fail the conversion, got: {:?}",
-        outcome.result
+        matches!(err, RepoError::Backend(reason)
+            if reason.starts_with("Failed to determine the secure config for a repo\nCaused by:\n1: Cannot access ")
+                && reason.contains("/jj/repos/")
+                && reason.ends_with("\n2: Not a directory (os error 20)")),
+        "the CLI's text: {err:?}"
     );
     assert!(
         work.join(".jj").is_dir(),

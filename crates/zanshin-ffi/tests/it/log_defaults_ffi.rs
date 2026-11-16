@@ -149,9 +149,10 @@ fn log_defaults_on_malformed_config_returns_jj_config_error() {
     let err = env.error().expect("error field must be present");
     assert_eq!(err.code(), Some(JJ_CONFIG_ERROR));
     assert!(
-        err.context().is_some_and(|c| c.contains("config.toml")),
-        "the context must name the file, got {:?}",
-        err.context()
+        err.hints()
+            .is_some_and(|h| h.iter().any(|h| h.ends_with("config.toml"))),
+        "the hint must name the file, got {:?}",
+        err.hints()
     );
 
     unsafe { close(handle) };

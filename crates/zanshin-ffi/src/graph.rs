@@ -467,7 +467,8 @@ pub fn graph_topology_to_envelope(
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.config_error` — the repo's effective jj config is unreadable, not valid TOML, has a
-///   malformed `config-id`, or holds a wrong-typed value; the file path or key in `context`.
+///   malformed `config-id`, or holds a wrong-typed value; `context` is the CLI's text (the key, or
+///   a read error's path), a parse or wrong-typed value's file in the hint.
 /// - `jj.jj_lib_error` — a jj-lib load, evaluation, index or commit-load failure; detail in
 ///   `context`.
 /// - `graph.dangling_edge` — a Direct/Indirect edge names a target outside the node set (jj-lib's

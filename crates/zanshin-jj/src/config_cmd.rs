@@ -279,7 +279,8 @@ pub enum ConfigCmdError {
     /// wrong-typed start-up key), or the selected file could not be read or written.
     #[error("config error: {reason}")]
     Config {
-        /// Human-readable failure, naming the file or key.
+        /// The CLI's text: it names the key, or the path in a read error's cause; a parse or
+        /// wrong-typed value's file is in the hints.
         reason: String,
         /// The jj CLI's hint lines — "Check the config file: <path>" for a fault in a known
         /// file; empty otherwise.
@@ -1511,7 +1512,8 @@ mod tests {
             gc_delete_with(&env, &[], &mut Vec::new()).map(|_| ()).unwrap_err(),
         ] {
             assert!(
-                matches!(&err, ConfigCmdError::Config { reason, .. } if reason.contains("config.toml")),
+                matches!(&err, ConfigCmdError::Config { reason, .. }
+                    if reason.starts_with("Configuration cannot be parsed as TOML document\nCaused by:")),
                 "{err}"
             );
             assert_eq!(err.hints(), [format!("Check the config file: {}", file.display())]);

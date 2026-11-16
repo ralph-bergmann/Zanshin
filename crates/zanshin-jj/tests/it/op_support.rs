@@ -256,12 +256,12 @@ fn a_malformed_repo_config_makes_describe_fail_with_config_not_backend() {
         .expect_err("a malformed config must not be silently ignored");
 
     // The pre-verb snapshot reads the stack first (Story 9.26), so it is the one that refuses.
-    let MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. }) = &err else {
+    let MutateError::Precondition(zanshin_jj::PreconditionError::Config { hints, .. }) = &err else {
         panic!("expected Config, got {err:?}");
     };
     assert!(
-        reason.contains("config.toml"),
-        "the reason must name the file: {reason}"
+        hints[0].ends_with("config.toml"),
+        "the hint must name the file: {hints:?}"
     );
     write_repo_config(&fx.path, "");
     assert_eq!(

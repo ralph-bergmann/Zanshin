@@ -774,7 +774,9 @@ fn creation_envelope_for(outcome: CreationOutcome, session_id: u64) -> Result<Ve
 /// - `jj.config_error` — the workspace's effective jj config stack (the CLI's: system, user,
 ///   repo, workspace files and the `JJ_*` environment) cannot be read: a file that is
 ///   unreadable or not valid TOML, a malformed `config-id`, a wrong-typed value — or the
-///   secure-config fix-up failed. `context` names the path or key. Nothing is opened.
+///   secure-config fix-up failed. `context` is the CLI's text (the key, or a read error's
+///   path); a parse or wrong-typed value's file is in the "Check the config file" hint. Nothing
+///   is opened.
 /// - `ffi.null_pointer` — `path` is a null pointer.
 /// - `ffi.utf8_error` — `path` contains invalid UTF-8.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -822,8 +824,10 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
 ///   `RepoInit`, or `backend` / `object_hash` is out of range.
 /// - `jj.invalid_input` — `path` is absent, both colocation flags are set, or the native backend
 ///   is given a Git flag.
-/// - `jj.jj_lib_error` — the destination cannot be created ("Failed to create workspace: …") or
-///   the jj-lib creation failed; detail in `context`. After the destination step it may carry
+/// - `jj.jj_lib_error` — the destination cannot be created ("Failed to create workspace: …"),
+///   the jj-lib creation failed, or the External flow's `trunk()` alias step cannot determine the
+///   repo's secure config (the CLI's "Failed to determine the secure config for a repo" and its
+///   causes); detail in `context`. After the destination step it may carry
 ///   `FfiError.left_behind` (see above).
 /// - `jj.git_repo_exists` — `no_colocate` over a directory holding `.git/`; the path in `context`.
 /// - `jj.already_jj_repo` — the destination is already a jj workspace.
@@ -832,7 +836,10 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
 /// - `jj.config_error` — the jj config stack cannot be read (the user-level stack first, as the
 ///   CLI's start-up, then the stack resolved for the new workspace's paths), `git.colocate` /
 ///   `git.object-hash` is malformed, or the created workspace's own stack cannot when it is
-///   re-opened. `context` names the path or key. After the destination step it may carry
+///   re-opened. `context` is the CLI's text (the key, or a read error's path); a parse or
+///   wrong-typed value's file is in the "Check the config file" hint. The External flow's
+///   `trunk()` alias step maps a load fault here too (the CLI's mapping; not reachable, the file
+///   is fresh). After the destination step it may carry
 ///   `FfiError.left_behind` (see above).
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
 ///   no handle is returned rather than one for an unwatched repo. It comes AFTER a successful
@@ -1083,13 +1090,17 @@ pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut Zanshi
 /// - `jj.not_a_git_repo` — the path has no `.git/` or does not exist.
 /// - `jj.convert_failed` — a jj-lib, config-write or `detect_repo` I/O error during
 ///   conversion; detail in `context`, what it wrote in `FfiError.left_behind`.
+/// - `jj.jj_lib_error` — the `trunk()` alias step cannot determine the repo's secure config (the
+///   CLI's "Failed to determine the secure config for a repo" and its causes, in `context`); the
+///   `.jj` it wrote is in `FfiError.left_behind`.
 /// - `jj.config_error` — the jj config stack the workspace is created with cannot be read
 ///   (the user-level stack first, as the CLI's start-up, then the stack resolved for the new
 ///   workspace's paths; such a fault refuses before anything is written), a later config fault
 ///   (the start-up environment, e.g. a bad `immutable_heads()`; the refs step's import options;
 ///   the snapshot knobs — these leave `.jj/` as the CLI does and name it in
 ///   `FfiError.left_behind`), or the converted workspace's own stack cannot when it is opened.
-///   `context` names the path or key.
+///   `context` is the CLI's text (the key, or a read error's path); a parse or wrong-typed
+///   value's file is in the "Check the config file" hint.
 /// - `ffi.null_pointer` — `path` is a null pointer.
 /// - `ffi.utf8_error` — `path` contains invalid UTF-8.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:

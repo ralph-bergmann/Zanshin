@@ -606,9 +606,10 @@ fn malformed_repo_config_is_an_error_naming_the_file() {
     let Err(RevsetError::Config(err)) = result else {
         panic!("a malformed config must yield RevsetError::Config, got: {result:?}");
     };
+    let zanshin_jj::ConfigError::Load { hints, .. } = &err;
     assert!(
-        err.to_string().contains("config.toml"),
-        "the context must name the file, got: {err}"
+        hints[0].ends_with("config.toml"),
+        "the hint must name the file, got: {err:?}"
     );
 }
 
@@ -655,10 +656,14 @@ fn a_non_table_revset_aliases_key_is_a_config_error() {
     let Err(RevsetError::Config(err)) = result else {
         panic!("a non-table `revset-aliases` must yield RevsetError::Config, got: {result:?}");
     };
-    let reason = err.to_string();
+    let zanshin_jj::ConfigError::Load { reason, hints } = &err;
+    assert_eq!(
+        reason,
+        "Invalid type or value for revset-aliases\nCaused by: Expected a table, but is integer"
+    );
     assert!(
-        reason.contains("config.toml") && reason.contains("revset-aliases"),
-        "the context must name the file and the key, got: {reason}"
+        hints[0].ends_with("config.toml"),
+        "the hint must name the file, got: {hints:?}"
     );
 }
 
@@ -1016,12 +1021,12 @@ fn eval_revset_malformed_repo_config_is_a_config_error() {
     write_repo_config(&fx.path, "not = = toml");
     let result = repo.eval_revset("all()", |_| ControlFlow::Continue(()));
     // The pre-verb snapshot reads the stack first (Story 9.26), so it is the one that refuses.
-    let Err(RevsetError::Precondition(err @ zanshin_jj::PreconditionError::Config { .. })) = result else {
+    let Err(RevsetError::Precondition(zanshin_jj::PreconditionError::Config { hints, .. })) = result else {
         panic!("a malformed config must yield a config error, got: {result:?}");
     };
     assert!(
-        err.to_string().contains("config.toml"),
-        "the context must name the file, got: {err}"
+        hints[0].ends_with("config.toml"),
+        "the hint must name the file, got: {hints:?}"
     );
 }
 

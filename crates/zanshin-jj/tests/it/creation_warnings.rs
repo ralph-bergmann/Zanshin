@@ -989,8 +989,9 @@ fn a_late_failure_keeps_the_report(tmp: &Path, xdg: &Path) {
     let outcome = convert_colocated(&work);
     set_env("XDG_CONFIG_HOME", Some(xdg.to_str().unwrap()));
 
+    // The secure-config fault: the CLI's internal error (`From<SecureConfigError>`).
     assert!(
-        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
+        matches!(outcome.result, Err(RepoError::Backend(_))),
         "{:?}",
         outcome.result
     );

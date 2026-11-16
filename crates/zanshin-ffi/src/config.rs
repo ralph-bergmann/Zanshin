@@ -483,8 +483,8 @@ fn gc_result_to_envelope(r: &zanshin_jj::ConfigGcResult, report: &CallReport) ->
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
 /// - `jj.config_error` — the stack does not load (a file unreadable or not TOML, a malformed id
-///   file, a wrong-typed start-up key), or the start-up fix-up failed; the path or key in
-///   `context`.
+///   file, a wrong-typed start-up key), or the start-up fix-up failed; `context` is the CLI's
+///   text (the key, or a read error's path), a parse or wrong-typed value's file in the hint.
 /// - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
 ///
 /// # Safety
@@ -517,8 +517,9 @@ pub unsafe extern "C" fn zanshin_config_list(data: *const u8, len: usize) -> *mu
 /// - `jj.invalid_input` — `name` is absent.
 /// - `jj.path_not_found` — `workspace_root` does not resolve; the path in `context`.
 /// - `jj.repo_not_found` — `workspace_root` is not a jj workspace; the path in `context`.
-/// - `jj.config_error` — the stack does not load, or the start-up fix-up failed; the path or key
-///   in `context`.
+/// - `jj.config_error` — the stack does not load, or the start-up fix-up failed; `context` is
+///   the CLI's text (the key, or a read error's path), a parse or wrong-typed value's file in the
+///   hint.
 /// - `jj.config_parse_error` — `name` is not a TOML dotted key; span and message in `context`.
 /// - `jj.config_not_found` — no layer sets `name` ("Value not found for <name>").
 ///

@@ -52,8 +52,10 @@ fbs.ObjectHash _objectHash(ObjectHash? hash) => switch (hash) {
 /// `jj.invalid_input`); neither = the `git.colocate` config. [objectHash] is
 /// `--object-hash`. A Git init creates a missing [path] (one level).
 ///
-/// Errors: `jj.invalid_input`, `jj.jj_lib_error`, `jj.git_repo_exists`,
-/// `jj.already_jj_repo`, `jj.convert_failed`, `jj.config_error`,
+/// Errors: `jj.invalid_input`, `jj.jj_lib_error` (also the External flow's
+/// `trunk()` alias step when it cannot determine the repo's secure config),
+/// `jj.git_repo_exists`, `jj.already_jj_repo`, `jj.convert_failed`,
+/// `jj.config_error`,
 /// `ffi.invalid_argument`, `watcher.io_error`. A failure is not rolled back
 /// (the disk is as `jj git init` leaves it); the error's
 /// `FfiError.left_behind` names the destination, the `.jj/` and — for a new
@@ -178,7 +180,9 @@ Uint8List zanshinRepoDetect(String path) {
 /// Returns the raw FlatBuffers `Envelope<RepoHandle>` bytes.
 ///
 /// Errors: `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`,
-/// `watcher.io_error`. A failure is not rolled back (the disk is as `jj git
+/// `jj.jj_lib_error` (the `trunk()` alias step cannot determine the repo's
+/// secure config), `jj.config_error`, `watcher.io_error`. A failure is not
+/// rolled back (the disk is as `jj git
 /// init` leaves it); the error's `FfiError.left_behind` names the `.jj/` it
 /// left (Story 9.57). A `watcher.io_error` comes after a successful
 /// conversion: the repository is complete and carries no `left_behind`.

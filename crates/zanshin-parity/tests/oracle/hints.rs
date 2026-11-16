@@ -6,9 +6,10 @@
 //! through Zanshin and through the pinned `jj` on the SAME repo (a refusal writes no operation, so
 //! both see one state) and compares Zanshin's hint with the CLI's `Hint: ` stderr line verbatim.
 //! The name-pattern witnesses (Story 9.59 closing run) compare the whole error text too. The
-//! config-file witnesses (Story 9.60 closing run) compare the "Check the config file" hint; the
-//! wrong-typed snapshot knob's witness compares the whole text too. The push commit-check witness
-//! compares an unresolvable `immutable_heads()`'s whole resolution error and its hints.
+//! config-file witnesses (Story 9.60 closing run) compare the whole `Config error:` /
+//! `Internal error:` text without its label and the "Check the config file" hint. The push
+//! commit-check witness compares an unresolvable `immutable_heads()`'s whole resolution error and
+//! its hints.
 
 use std::ops::ControlFlow;
 use std::path::Path;
@@ -575,47 +576,76 @@ fn wrong_typed_snapshot_key_carries_the_cli_check_the_config_file_hint() {
     assert_eq!(cli.1, check_file_hint(&path));
 }
 
-/// A repo-level file that is not TOML: `jj status` and `Repo::open` refuse with the same hint.
+/// `Repo::open` at `root` refuses with a config error whose text and hints equal the CLI's
+/// refusal of `jj status` under `label`; the CLI's (text, hints) are returned.
+#[track_caller]
+fn assert_open_refusal_is_the_clis(label: &str, root: &Path) -> (String, Vec<String>) {
+    let cli = cli_error_labeled(label, &["status"], root);
+    let err = Repo::open(root).map(|_| ()).expect_err("the open refuses");
+    assert!(matches!(err, zanshin_jj::RepoError::Config { .. }), "{err:?}");
+    assert_eq!(config_refusal(&err.to_string(), err.hints()), cli);
+    cli
+}
+
+/// A repo-level file that is not TOML: `jj status` and `Repo::open` refuse with the same text —
+/// the parse error and its caret diagram, no path — and the hint naming the file.
 #[test]
 fn toml_parse_error_carries_the_cli_check_the_config_file_hint() {
     test_helpers::pin_test_env();
     let (_dir, root, path) = repo_with_config_path();
     jj(&root, &["config", "set", "--repo", "a", "1"]).ok();
     std::fs::write(&path, "a = \n").expect("break the repo config");
-    let (_, cli) = cli_error_labeled("Config error: ", &["status"], &root);
-    let err = Repo::open(&root).map(|_| ()).expect_err("not TOML");
-    assert!(matches!(err, zanshin_jj::RepoError::Config { .. }), "{err:?}");
-    assert_eq!(err.hints(), cli);
-    assert_eq!(cli, check_file_hint(&path));
+    let (text, hints) = assert_open_refusal_is_the_clis("Config error: ", &root);
+    assert!(
+        text.starts_with("Configuration cannot be parsed as TOML document\nCaused by: TOML parse error"),
+        "{text}"
+    );
+    assert_eq!(hints, check_file_hint(&path));
 }
 
-/// A failed `line-range-arg` migration: the hint, not a second reason line, names the file.
+/// A repo-level "file" that is a directory: the CLI's read error names the path in its cause and
+/// gives no hint, and so does `Repo::open`.
+#[test]
+fn unreadable_repo_config_is_the_cli_read_error_without_a_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root, path) = repo_with_config_path();
+    jj(&root, &["config", "set", "--repo", "a", "1"]).ok();
+    std::fs::remove_file(&path).expect("remove the repo config");
+    std::fs::create_dir(&path).expect("a directory in its place");
+    let (text, hints) = assert_open_refusal_is_the_clis("Config error: ", &root);
+    assert_eq!(
+        text,
+        format!(
+            "Failed to read configuration file\nCaused by:\n1: Cannot access {path}\n2: Is a directory (os error 21)"
+        )
+    );
+    assert!(hints.is_empty(), "{hints:?}");
+}
+
+/// A failed `line-range-arg` migration: the same text — "Migration failed" and its numbered causes —
+/// and the hint, not a reason line, names the file.
 #[test]
 fn failed_migration_carries_the_cli_check_the_config_file_hint() {
     test_helpers::pin_test_env();
     let (_dir, root, path) = repo_with_config_path();
     jj(&root, &["config", "set", "--repo", "fix.tools.t.line-range-arg", "1"]).ok();
-    let (_, cli) = cli_error_labeled("Config error: ", &["status"], &root);
-    let err = Repo::open(&root).map(|_| ()).expect_err("the migration fails");
-    let zanshin_jj::RepoError::Config { reason, hints } = &err else {
-        panic!("a config refusal: {err:?}");
-    };
+    let (text, hints) = assert_open_refusal_is_the_clis("Config error: ", &root);
     assert!(
-        reason.starts_with("Migration failed: ") && !reason.contains("Check the config file"),
-        "{reason}"
+        text.starts_with("Migration failed\nCaused by:\n1: Invalid type or value for fix.tools.t.line-range-arg\n"),
+        "{text}"
     );
-    assert_eq!(hints, &cli);
-    assert_eq!(cli, check_file_hint(&path));
+    assert_eq!(hints, check_file_hint(&path));
 }
 
-/// A non-table `revset-aliases`: `jj log` and Zanshin's revset read refuse with the same hint. The
-/// read's start-up environment builds the alias table, so the fault arrives as its precondition's.
+/// A non-table `revset-aliases`: `jj log` and Zanshin's revset read refuse with the same text and
+/// hint. The read's start-up environment builds the alias table, so the fault arrives as its
+/// precondition's.
 #[test]
 fn non_table_revset_aliases_carries_the_cli_check_the_config_file_hint() {
     test_helpers::pin_test_env();
     let (_dir, root, path) = repo_with_config_path();
     jj(&root, &["config", "set", "--repo", "revset-aliases", "1"]).ok();
-    let (_, cli) = cli_error_labeled("Config error: ", &["log"], &root);
+    let cli = cli_error_labeled("Config error: ", &["log"], &root);
     let mut repo = Repo::open(&root).expect("open");
     let err = repo
         .eval_revset("@", |_| ControlFlow::Break(()))
@@ -623,20 +653,45 @@ fn non_table_revset_aliases_carries_the_cli_check_the_config_file_hint() {
     let zanshin_jj::RevsetError::Precondition(inner @ zanshin_jj::PreconditionError::Config { .. }) = &err else {
         panic!("a start-up config refusal: {err:?}");
     };
-    assert_eq!(inner.hints(), cli);
-    assert_eq!(cli, check_file_hint(&path));
+    assert_eq!(config_refusal(&inner.to_string(), inner.hints()), cli);
+    assert_eq!(
+        cli,
+        (
+            "Invalid type or value for revset-aliases\nCaused by: Expected a table, but is integer".to_owned(),
+            check_file_hint(&path)
+        )
+    );
 }
 
-/// A key jj-lib reads while loading the workspace: the CLI reports its own load failure with no
-/// hint, and so does Zanshin's `Repo::open`.
+/// A key jj-lib reads while loading the working copy: the CLI reports its own load failure —
+/// "Failed to read the tree state settings" and its causes — with no hint, and so does
+/// Zanshin's `Repo::open`.
 #[test]
 fn workspace_load_fault_carries_no_hint_like_the_cli() {
     test_helpers::pin_test_env();
     let (_dir, root, _) = repo_with_config_path();
     jj(&root, &["config", "set", "--repo", "ui.conflict-marker-style", "1"]).ok();
-    let (_, cli) = cli_error_labeled("Internal error: ", &["status"], &root);
-    let err = Repo::open(&root).map(|_| ()).expect_err("the workspace does not load");
-    assert!(matches!(err, zanshin_jj::RepoError::Config { .. }), "{err:?}");
-    assert!(cli.is_empty(), "{cli:?}");
-    assert!(err.hints().is_empty(), "{err:?}");
+    let (text, hints) = assert_open_refusal_is_the_clis("Internal error: ", &root);
+    assert!(
+        text.starts_with("Failed to read the tree state settings\nCaused by:\n1: "),
+        "{text}"
+    );
+    assert!(hints.is_empty(), "{hints:?}");
+}
+
+/// A key the git backend reads while loading the store: the CLI's "The repository appears broken
+/// or inaccessible" and its causes, with no hint, on both sides.
+#[test]
+fn git_backend_load_fault_is_the_cli_store_load_failure() {
+    test_helpers::pin_test_env();
+    let (_dir, root, _) = repo_with_config_path();
+    jj(&root, &["config", "set", "--repo", "git.executable-path", "1"]).ok();
+    let (text, hints) = assert_open_refusal_is_the_clis("Internal error: ", &root);
+    assert!(
+        text.starts_with(
+            "The repository appears broken or inaccessible\nCaused by:\n1: Invalid type or value for git.executable-path\n"
+        ),
+        "{text}"
+    );
+    assert!(hints.is_empty(), "{hints:?}");
 }

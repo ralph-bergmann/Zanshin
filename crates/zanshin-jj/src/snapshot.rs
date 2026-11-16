@@ -201,7 +201,8 @@ pub enum PreconditionError {
     /// the partial [`Precondition`] says so.
     #[error("config error: {reason}")]
     Config {
-        /// Human-readable failure, naming the file or the config key.
+        /// The CLI's text: it names the key, or the path in a read error's cause; a parse or
+        /// wrong-typed value's file is in the hints.
         reason: String,
         /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint, or "Check the
         /// config file: <path>" for a fault in a known file; empty otherwise.

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::backend::CommitId as JjCommitId;
-use jj_lib::config::{ConfigSource, StackedConfig};
+use jj_lib::config::{ConfigGetError, ConfigSource, StackedConfig};
 use jj_lib::dsl_util::{AliasDeclarationParser, AliasesMap};
 use jj_lib::fileset::{FilePatternParseError, FilesetAliasesMap, FilesetParseError};
 use jj_lib::id_prefix::IdPrefixContext;
@@ -1082,15 +1082,12 @@ where
             Ok(Some(table)) => table,
             Ok(None) => continue,
             Err(item) => {
-                let path = layer.path.as_deref().unwrap_or(Path::new("<builtin>"));
-                return Err(ConfigError::Load {
-                    reason: format!(
-                        "{}: {table_name}: Expected a table, but is {}",
-                        path.display(),
-                        item.type_name()
-                    ),
-                    hints: crate::config::check_file_hint(layer.path.as_deref()),
-                });
+                // The CLI's own error for this (`cli/src/config.rs:1183-1189` @ v0.47.0).
+                return Err(crate::config::value_error(&ConfigGetError::Type {
+                    name: table_name.to_owned(),
+                    error: format!("Expected a table, but is {}", item.type_name()).into(),
+                    source_path: layer.path.clone(),
+                }));
             }
         };
         for (decl, item) in table.iter() {
@@ -1322,7 +1319,7 @@ mod tests {
         let ConfigError::Load { reason, hints } = &err;
         assert_eq!(
             reason,
-            "/r/config.toml: revset-aliases: Expected a table, but is integer"
+            "Invalid type or value for revset-aliases\nCaused by: Expected a table, but is integer"
         );
         assert_eq!(hints, &["Check the config file: /r/config.toml"]);
         assert_eq!(

@@ -1074,7 +1074,9 @@ class ZanshinWorker {
   /// `jj.snapshot_files_refused`.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `jj.already_jj_repo`,
-  /// `jj.not_a_git_repo`, `jj.convert_failed`), carrying the failed
+  /// `jj.not_a_git_repo`, `jj.convert_failed`, `jj.jj_lib_error` when the
+  /// `trunk()` alias step cannot determine the repo's secure config), carrying
+  /// the failed
   /// conversion's warnings and its PARTIAL snapshot report (Story 9.35). The
   /// conversion never touches the working copy or `.git/`, and a failure is
   /// not rolled back: the disk is as `jj git init` leaves it, and the

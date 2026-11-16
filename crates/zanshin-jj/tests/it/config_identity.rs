@@ -251,7 +251,7 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
     for (verb, result) in results {
         assert!(
             matches!(&result, Err(MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, hints }))
-                if reason.contains("broken-verbs.toml") && *hints == hint),
+                if reason.starts_with("Configuration cannot be parsed as TOML document\nCaused by:") && *hints == hint),
             "{verb} must refuse in the pre-verb snapshot (Story 9.26), got: {result:?}"
         );
     }
@@ -482,13 +482,13 @@ fn scopes_and_faults(tmp: &Path, other: &FixtureHandle, mut other_repo: Repo) {
         .new_change(&wc, &[], &[])
         .expect_err("a broken stack must refuse");
     assert!(
-        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. })
-            if reason.contains("broken.toml")),
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { hints, .. })
+            if hints[0].ends_with("broken.toml")),
         "unexpected error: {err:?}"
     );
     let err = Repo::open(&other.path).expect_err("invalid TOML must refuse the open");
     assert!(
-        matches!(&err, RepoError::Config { reason, .. } if reason.contains("broken.toml")),
+        matches!(&err, RepoError::Config { hints, .. } if hints[0].ends_with("broken.toml")),
         "unexpected error: {err:?}"
     );
 

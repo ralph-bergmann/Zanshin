@@ -471,7 +471,9 @@ fn warnings_of(warnings: &[zanshin_jj::Warning], kind: WarningKind, prefix: &str
 #[test]
 fn a_broken_template_alias_table_refuses_every_verb() {
     let mut fx = base(&[("template-aliases", "1")]);
-    fx.assert_start_up_refusal(|reason| reason.ends_with("template-aliases: Expected a table, but is integer"));
+    fx.assert_start_up_refusal(|reason| {
+        reason == "Invalid type or value for template-aliases\nCaused by: Expected a table, but is integer"
+    });
 }
 
 /// A `revsets.short-prefixes` that does not parse refuses a verb that renders no template.
@@ -614,7 +616,9 @@ fn the_start_up_warnings_come_in_the_clis_order() {
 #[test]
 fn a_broken_template_alias_table_refuses_before_immutable_heads() {
     let mut fx = base(&[("revset-aliases.'immutable_heads()'", "'('"), ("template-aliases", "1")]);
-    fx.assert_start_up_refusal(|reason| reason.ends_with("template-aliases: Expected a table, but is integer"));
+    fx.assert_start_up_refusal(|reason| {
+        reason == "Invalid type or value for template-aliases\nCaused by: Expected a table, but is integer"
+    });
 }
 
 /// With `revsets.short-prefixes` unset, the start-up parse falls back to `revsets.log` — and

@@ -674,9 +674,9 @@ fn describe_with_a_malformed_repo_config_returns_jj_config_error() {
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CONFIG_ERROR));
     assert!(
         env.error()
-            .and_then(|e| e.context())
-            .is_some_and(|c| c.contains("config.toml")),
-        "context must name the offending file, as the read side's rows do"
+            .and_then(|e| e.hints())
+            .is_some_and(|h| h.iter().any(|h| h.ends_with("config.toml"))),
+        "the hint must name the offending file, as the read side's rows do"
     );
 
     close_handle(handle);

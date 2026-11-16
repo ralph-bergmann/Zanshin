@@ -704,9 +704,9 @@ fn graph_topology_on_malformed_repo_config_returns_jj_config_error() {
     assert!(
         parse_envelope(&bytes)
             .error()
-            .and_then(|e| e.context())
-            .is_some_and(|c| c.contains("config.toml")),
-        "the context must name the offending file"
+            .and_then(|e| e.hints())
+            .is_some_and(|h| h.iter().any(|h| h.ends_with("config.toml"))),
+        "the hint must name the offending file"
     );
 
     unsafe { close(handle) };

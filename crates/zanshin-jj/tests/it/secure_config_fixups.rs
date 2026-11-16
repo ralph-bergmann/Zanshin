@@ -282,8 +282,8 @@ fn a_refused_open_still_reports_the_migration() {
     let opened = Repo::open_with_report(&root);
     let new = secure_file("repos", &repo_id(&root));
     match &opened.result {
-        Err(RepoError::Config { reason, .. }) => {
-            assert!(reason.contains(&new.display().to_string()), "{reason}");
+        Err(RepoError::Config { hints, .. }) => {
+            assert_eq!(hints, &[format!("Check the config file: {}", new.display())]);
         }
         other => panic!("a config refusal: {other:?}"),
     }

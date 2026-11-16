@@ -165,7 +165,8 @@ fn reads_and_repair(tmp: &Path, first: &Path, hand: &Path) {
         config_set(None, &file(first), "a", "1").result.map(|_| ()).unwrap_err(),
     ] {
         assert!(
-            matches!(&err, ConfigCmdError::Config { reason, .. } if reason.contains("conf.d")),
+            matches!(&err, ConfigCmdError::Config { reason, .. }
+                if reason.starts_with("Configuration cannot be parsed as TOML document\nCaused by:")),
             "{err}"
         );
         // The CLI's hint names the broken file inside the directory layer.

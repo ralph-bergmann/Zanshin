@@ -118,9 +118,10 @@ fn jj_config_user_layer_handles_files_dirs_missing_entries_and_repo_precedence()
     let Err(RevsetError::Config(err)) = result else {
         panic!("a malformed user config must yield RevsetError::Config, got: {result:?}");
     };
+    let zanshin_jj::ConfigError::Load { hints, .. } = &err;
     assert!(
-        err.to_string().contains("broken.toml"),
-        "the context must name the user file, got: {err}"
+        hints[0].ends_with("broken.toml"),
+        "the hint must name the user file, got: {err:?}"
     );
 
     // ── The REPO layer sits above the USER layer ─────────────────────────────
