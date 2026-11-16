@@ -33,6 +33,12 @@ void main() {
   setUpIconRegistry();
   setUpTestWorker();
   late RecordingShell shell;
+  // The menu model follows full screen through the shell; a test that answers the shell installs its own.
+  setUp(() {
+    final fresh = RecordingShell();
+    ZanshinShellPlatform.instance = fresh;
+    addTearDown(fresh.close);
+  });
 
   /// Pumps the app over persisted [settingsJson] in a 1440 × 900 window, answers the shell with [theme] (or leaves it
   /// pending when null) and the window's chrome watch with [chrome], and returns a context below the app root (the

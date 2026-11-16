@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show ProjectEntry, SettingsStore;
+import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../features/graph/active_graph.dart';
@@ -25,8 +26,8 @@ import '../../links.dart';
 
 final _log = Logger('zanshin.menu');
 
-/// The channel the menu bar sends what the engine cannot express over (Story 11.17): checkmarks and the system items'
-/// enabled state; the runner applies it to `NSApp.mainMenu`.
+/// The channel the menu bar sends what the engine cannot express over (Story 11.17): checkmarks, the system items'
+/// enabled state and the full-screen item's title (Story 11.28); the runner applies it to `NSApp.mainMenu`.
 const menuStateChannel = MethodChannel('zanshin/menu_state');
 
 /// The AppKit selectors of Window › Minimize, Window › Zoom and View › Enter Full Screen.
@@ -73,8 +74,25 @@ class AppMenuModel extends ChangeNotifier {
     ZsSheet.openViews.addListener(_changed);
     graph.addListener(_graphChanged);
     FocusManager.instance.addListener(_changed);
+    _chromeChanges = ZanshinShell.onWindowChromeChanged.listen(_chromeChanged);
     // The injected graph may hold a binding already.
     _graphChanged();
+  }
+
+  /// The views whose windows are in full screen, after the shell's chrome reports. Each window root watches its view
+  /// before anyone can enter full screen, and the model is made before the first window opens (`main.dart` builds
+  /// `component.application` before `app.start()`), so the change stream alone sees every entry and exit. The engine
+  /// never reuses a view id, so a closed window's id left here is harmless.
+  final _fullScreenViews = <int>{};
+  late final StreamSubscription<WindowChromeChange> _chromeChanges;
+
+  void _chromeChanged(WindowChromeChange change) {
+    final bool changed = change.chrome.fullScreen
+        ? _fullScreenViews.add(change.viewId)
+        : _fullScreenViews.remove(change.viewId);
+    if (changed) {
+      _changed();
+    }
   }
 
   final ActiveWindowTracker _tracker;
@@ -638,16 +656,26 @@ class AppMenuModel extends ChangeNotifier {
 
   /// Whether Minimize, Zoom and Enter Full Screen act on the window [key] (epics.md 11.13 scope 3), by selector: all
   /// grey with no key window and for Settings, Zoom only for Projects and Configurations, all for the project window.
-  static Map<String, bool> windowItemsEnabled(String? key) {
+  /// While that window is in [fullScreen], Minimize and Zoom are grey too, as AppKit greys them there (Story 11.28).
+  static Map<String, bool> windowItemsEnabled(String? key, {bool fullScreen = false}) {
     final bool all = key != null && key != settingsWindowKey;
     final bool resizableDialog = key == projectsWindowKey || key == revsetConfigsWindowKey;
-    return <String, bool>{_minimize: all && !resizableDialog, _zoom: all, _fullScreen: all && !resizableDialog};
+    return <String, bool>{
+      _minimize: all && !resizableDialog && !fullScreen,
+      _zoom: all && !fullScreen,
+      _fullScreen: all && !resizableDialog,
+    };
   }
 
   /// What `zanshin/menu_state`'s `apply` gets: the toggles' checked state, by top-menu and item title in [s]'s strings,
-  /// and [windowItemsEnabled] of the key window.
+  /// [windowItemsEnabled] of the key window, and the full-screen item's title by selector: "Exit Full Screen" while the
+  /// key window is in full screen, else "Enter Full Screen". The engine builds its menus without validation, so AppKit
+  /// never retitles or greys these items itself.
   Map<String, Object> nativeState(AppLocalizations s) {
     final GraphPreferences? preferences = graph.value?.preferences;
+    final String? key = _keyWindow;
+    // A key view without a live window counts as no key window, as for `enabled`.
+    final bool fullScreen = key != null && _fullScreenViews.contains(_tracker.keyView);
     Map<String, Object> toggle(String item, bool checked) => <String, Object>{
       'menu': s.menuView,
       'item': item,
@@ -659,7 +687,8 @@ class AppMenuModel extends ChangeNotifier {
         toggle(s.menuGroupStacks, preferences?.groupStacks ?? false),
         toggle(s.menuShowMinimap, preferences?.showMinimap ?? false),
       ],
-      'enabled': windowItemsEnabled(_keyWindow),
+      'enabled': windowItemsEnabled(key, fullScreen: fullScreen),
+      'titles': <String, String>{_fullScreen: fullScreen ? s.menuExitFullScreen : s.menuEnterFullScreen},
     };
   }
 
@@ -689,6 +718,7 @@ class AppMenuModel extends ChangeNotifier {
     _session.removeListener(_changed);
     ZsSheet.openViews.removeListener(_changed);
     FocusManager.instance.removeListener(_changed);
+    unawaited(_chromeChanges.cancel());
     _settings.removeListener(_changed);
     graph.removeListener(_graphChanged);
     _bound?.model.removeListener(_changed);

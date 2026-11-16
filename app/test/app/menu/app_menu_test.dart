@@ -30,11 +30,13 @@ import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
+import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_projects.dart';
 import '../../helpers/fake_remote_sync.dart';
 import '../../helpers/fake_windows.dart';
+import '../../helpers/recording_shell.dart';
 import '../../helpers/scripted_graph_source.dart';
 import '../../helpers/settle_settings.dart';
 
@@ -196,6 +198,7 @@ class _Rig {
   late final ActiveWindowTracker tracker;
   late final AppMenuModel menu;
   final graph = ActiveGraph();
+  final shell = RecordingShell();
   final projectsSearch = ProjectsSearchFocus();
   final factory = FakeWindowFactory();
   final actions = _WindowActions();
@@ -239,6 +242,8 @@ class _Rig {
     addTearDown(session.dispose);
     windows = AppWindows(createController: factory.call, exitProcess: () async {});
     tracker = ActiveWindowTracker();
+    ZanshinShellPlatform.instance = shell;
+    addTearDown(shell.close);
     menu = AppMenuModel(tracker, session, store, graph, projectsSearch, windows, actions, openUrl);
     addTearDown(() {
       menu.dispose();
@@ -272,6 +277,10 @@ class _Rig {
     await tester.pump();
     windows.setCloseHandler(mainWindowKey, () async => closes.add(mainWindowKey));
   }
+
+  /// Reports the window [key] in or out of full screen, as the shell's chrome stream does.
+  void fullScreen(String key, {required bool on}) =>
+      shell.chromeChanges.add((viewId: windows.viewIdOf(key)!, chrome: WindowChrome(fullScreen: on)));
 
   /// Makes the window [key] the key window.
   void focus(String key) => tracker.didChangeViewFocus(
@@ -975,6 +984,72 @@ void main() {
       AppMenuModel.windowItemsEnabled(revsetConfigsWindowKey),
       e(minimize: false, zoom: true, fullScreen: false),
     );
+
+    // Story 11.28: in full screen Minimize and Zoom are grey; the full-screen item keeps its rule.
+    expect(
+      AppMenuModel.windowItemsEnabled(mainWindowKey, fullScreen: true),
+      e(minimize: false, zoom: false, fullScreen: true),
+    );
+    expect(AppMenuModel.windowItemsEnabled(null, fullScreen: true), e(minimize: false, zoom: false, fullScreen: false));
+    expect(
+      AppMenuModel.windowItemsEnabled(settingsWindowKey, fullScreen: true),
+      e(minimize: false, zoom: false, fullScreen: false),
+    );
+  });
+
+  testWidgets("nativeState titles and greys the window items after the key window's full screen (Story 11.28)", (
+    tester,
+  ) async {
+    final rig = _Rig();
+    await rig.setUp(tester);
+    await tester.pump();
+    // The key window's revset-configs entry comes from a window the rig opens on demand.
+    await rig.windows.openOrActivate(
+      key: revsetConfigsWindowKey,
+      title: 'Configurations',
+      builder: (_) => const SizedBox(),
+      dialog: revsetConfigsWindowSpec,
+    );
+    addTearDown(() => rig.windows.controllerOf(revsetConfigsWindowKey)?.destroy());
+    await tester.pump();
+    Map<String, Object> state() => rig.menu.nativeState(platformStrings());
+    void expectState({required String title, required bool minimize, required bool zoom, required bool full}) {
+      expect(state()['titles'], <String, String>{'toggleFullScreen:': title});
+      expect(state()['enabled'], <String, bool>{
+        'performMiniaturize:': minimize,
+        'performZoom:': zoom,
+        'toggleFullScreen:': full,
+      });
+    }
+
+    expectState(title: 'Enter Full Screen', minimize: false, zoom: false, full: false);
+
+    rig.focus(mainWindowKey);
+    expectState(title: 'Enter Full Screen', minimize: true, zoom: true, full: true);
+
+    rig.fullScreen(mainWindowKey, on: true);
+    await tester.pump();
+    expectState(title: 'Exit Full Screen', minimize: false, zoom: false, full: true);
+
+    // A dialog key over the full-screen project window: the dialog's own rules and title.
+    rig.focus(revsetConfigsWindowKey);
+    expectState(title: 'Enter Full Screen', minimize: false, zoom: true, full: false);
+
+    rig.focus(mainWindowKey);
+    expectState(title: 'Exit Full Screen', minimize: false, zoom: false, full: true);
+
+    rig.fullScreen(mainWindowKey, on: false);
+    await tester.pump();
+    expectState(title: 'Enter Full Screen', minimize: true, zoom: true, full: true);
+
+    // A key view without a live window (a closed full-screen window's id stays in the set): no key window.
+    const gone = 999;
+    rig.shell.chromeChanges.add((viewId: gone, chrome: const WindowChrome(fullScreen: true)));
+    await tester.pump();
+    rig.tracker.didChangeViewFocus(
+      const ViewFocusEvent(viewId: gone, state: ViewFocusState.focused, direction: ViewFocusDirection.undefined),
+    );
+    expectState(title: 'Enter Full Screen', minimize: false, zoom: false, full: false);
   });
 
   testWidgets("nativeState checks the View toggles after the bound graph's preferences", (tester) async {
@@ -1042,6 +1117,42 @@ void main() {
       await tester.pump();
       expect(detailedCards(), on);
     }
+
+    // Story 11.28: the full-screen item's title and the greyed items follow the key window's full screen, and every
+    // apply after a new setMenus carries them again.
+    Object? titles() => applied.last['titles'];
+    expect(titles(), <String, String>{'toggleFullScreen:': 'Enter Full Screen'});
+    rig
+      ..focus(mainWindowKey)
+      ..fullScreen(mainWindowKey, on: true);
+    await tester.pump();
+    await tester.pump();
+    expect(titles(), <String, String>{'toggleFullScreen:': 'Exit Full Screen'});
+    expect(enabled(), <String, bool>{'performMiniaturize:': false, 'performZoom:': false, 'toggleFullScreen:': true});
+
+    final int sets = rig.delegate!.sets.length;
+    rig.preferences!.setShowMinimap(!rig.preferences!.showMinimap);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    await tester.pump();
+    expect(rig.delegate!.sets.length, greaterThan(sets), reason: 'the toggle rebuilt the menus');
+    expect(rig.events.lastIndexOf('apply'), greaterThan(rig.events.lastIndexOf('setMenus')), reason: 'after setMenus');
+    expect(titles(), <String, String>{'toggleFullScreen:': 'Exit Full Screen'});
+
+    // Reports that leave the full-screen set as it is rebuild nothing.
+    final int unchanged = rig.delegate!.sets.length;
+    rig
+      ..fullScreen(mainWindowKey, on: true)
+      ..fullScreen(projectsWindowKey, on: false);
+    await tester.pump();
+    await tester.pump();
+    expect(rig.delegate!.sets.length, unchanged);
+
+    rig.fullScreen(mainWindowKey, on: false);
+    await tester.pump();
+    await tester.pump();
+    expect(titles(), <String, String>{'toggleFullScreen:': 'Enter Full Screen'});
+    expect(enabled(), <String, bool>{'performMiniaturize:': true, 'performZoom:': true, 'toggleFullScreen:': true});
     rig.unbindGraph();
   });
 }

@@ -73,7 +73,9 @@ final class WindowingBootstrap {
 /// The engine gives its items no stable id (`tag` is a per-build serial), so
 /// a toggle is found by its top menu's and its own title (the Dart labels), a
 /// system item by its selector. Its submenus have `autoenablesItems = NO`, so
-/// an `isEnabled` set here stays until the next build replaces the menu.
+/// an `isEnabled` or `title` set here stays until the next build replaces the
+/// menu; AppKit never validates, so it never retitles Enter Full Screen
+/// itself. Every title comes from Dart (its strings).
 final class MenuStateChannel {
     private let channel: FlutterMethodChannel
 
@@ -93,7 +95,8 @@ final class MenuStateChannel {
             result(
                 FlutterError(
                     code: "bad-args",
-                    message: "expected checked: [{menu, item, checked}] and enabled: {selector: bool}",
+                    message:
+                        "expected checked: [{menu, item, checked}], enabled: {selector: bool} and titles: {selector: string}",
                     details: nil))
             return
         }
@@ -110,11 +113,13 @@ final class MenuStateChannel {
     struct Payload {
         let checked: [(menu: String, item: String, on: Bool)]
         let enabled: [String: Bool]
+        let titles: [String: String]
 
         init?(_ arguments: Any?) {
             guard let args = arguments as? [String: Any],
                 let checkedArgs = args["checked"] as? [[String: Any]],
-                let enabled = args["enabled"] as? [String: Bool]
+                let enabled = args["enabled"] as? [String: Bool],
+                let titles = args["titles"] as? [String: String]
             else { return nil }
             var checked: [(menu: String, item: String, on: Bool)] = []
             for entry in checkedArgs {
@@ -125,24 +130,32 @@ final class MenuStateChannel {
             }
             self.checked = checked
             self.enabled = enabled
+            self.titles = titles
         }
     }
 
-    /// Sets the toggles' `state` and the selector items' `isEnabled` in
-    /// `mainMenu` (an item not found is skipped) and returns the submenu
-    /// holding `arrangeInFront:`, the menu `NSApp.windowsMenu` should be.
+    /// Sets the toggles' `state` and the selector items' `isEnabled` and
+    /// `title` in `mainMenu` (an item not found is skipped) and returns the
+    /// submenu holding `arrangeInFront:`, the menu `NSApp.windowsMenu` should
+    /// be.
     static func apply(_ payload: Payload, to mainMenu: NSMenu) -> NSMenu? {
         for toggle in payload.checked {
             mainMenu.item(withTitle: toggle.menu)?.submenu?.item(withTitle: toggle.item)?.state =
                 toggle.on ? .on : .off
         }
         let submenus = mainMenu.items.compactMap(\.submenu)
-        for (selector, isEnabled) in payload.enabled {
+        func items(for selector: String) -> [NSMenuItem] {
             let action = NSSelectorFromString(selector)
-            for menu in submenus {
-                for item in menu.items where item.action == action {
-                    item.isEnabled = isEnabled
-                }
+            return submenus.flatMap { $0.items.filter { $0.action == action } }
+        }
+        for (selector, isEnabled) in payload.enabled {
+            for item in items(for: selector) {
+                item.isEnabled = isEnabled
+            }
+        }
+        for (selector, title) in payload.titles {
+            for item in items(for: selector) {
+                item.title = title
             }
         }
         let arrange = #selector(NSApplication.arrangeInFront(_:))

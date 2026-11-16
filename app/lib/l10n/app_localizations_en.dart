@@ -1818,6 +1818,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuActualSize => 'Actual Size';
 
   @override
+  String get menuEnterFullScreen => 'Enter Full Screen';
+
+  @override
+  String get menuExitFullScreen => 'Exit Full Screen';
+
+  @override
   String get menuNewChange => 'New Change';
 
   @override

@@ -2696,6 +2696,18 @@ abstract class AppLocalizations {
   /// **'Actual Size'**
   String get menuActualSize;
 
+  /// View menu: the full-screen item's title while the key window is not in full screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter Full Screen'**
+  String get menuEnterFullScreen;
+
+  /// View menu: the full-screen item's title while the key window is in full screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit Full Screen'**
+  String get menuExitFullScreen;
+
   /// Change menu: jj new on the target change.
   ///
   /// In en, this message translates to:

@@ -35,25 +35,41 @@ class RunnerTests: XCTestCase {
           ["menu": "View", "item": "Group Stacks", "checked": false],
           ["menu": "View", "item": "Missing", "checked": true],
         ],
-        "enabled": ["performMiniaturize:": false, "performZoom:": true, "toggleFullScreen:": false],
+        "enabled": ["performMiniaturize:": false, "performZoom:": false, "toggleFullScreen:": true],
+        "titles": ["toggleFullScreen:": "Exit Full Screen", "missingSelector:": "Missing"],
       ]))
-    let windows = MenuStateChannel.apply(payload, to: bar)
-
     let view = try XCTUnwrap(bar.item(withTitle: "View")?.submenu)
     let window = try XCTUnwrap(bar.item(withTitle: "Window")?.submenu)
+    let fullScreen = try XCTUnwrap(view.items.first { $0.action == #selector(NSWindow.toggleFullScreen(_:)) })
+    // NSMenuItem starts enabled: disabled first, so `true` below proves the write.
+    fullScreen.isEnabled = false
+
+    let windows = MenuStateChannel.apply(payload, to: bar)
+
     XCTAssertEqual(view.item(withTitle: "Detailed Cards")?.state, .on)
     XCTAssertEqual(view.item(withTitle: "Group Stacks")?.state, .off)
-    XCTAssertEqual(view.item(withTitle: "Enter Full Screen")?.isEnabled, false)
+    XCTAssertEqual(fullScreen.title, "Exit Full Screen")
+    XCTAssertEqual(fullScreen.isEnabled, true)
     XCTAssertEqual(window.item(withTitle: "Minimize")?.isEnabled, false)
-    XCTAssertEqual(window.item(withTitle: "Zoom")?.isEnabled, true)
+    XCTAssertEqual(window.item(withTitle: "Zoom")?.isEnabled, false)
+    XCTAssertFalse(
+      bar.items.compactMap(\.submenu).flatMap(\.items).contains { $0.title == "Missing" },
+      "a title for a selector no item has is skipped")
     XCTAssertTrue(windows === window)
   }
 
   func testAMalformedPayloadIsRejected() {
     XCTAssertNil(MenuStateChannel.Payload(nil))
-    XCTAssertNil(MenuStateChannel.Payload(["checked": [], "enabled": ["performZoom:": "yes"]]))
-    XCTAssertNil(MenuStateChannel.Payload(["checked": [["menu": "View", "item": "Group Stacks"]], "enabled": [:]]))
-    XCTAssertNotNil(MenuStateChannel.Payload(["checked": [], "enabled": [:]]))
+    XCTAssertNil(MenuStateChannel.Payload(["checked": [], "enabled": ["performZoom:": "yes"], "titles": [:]]))
+    XCTAssertNil(
+      MenuStateChannel.Payload([
+        "checked": [["menu": "View", "item": "Group Stacks"]], "enabled": [:], "titles": [:],
+      ]))
+    XCTAssertNil(MenuStateChannel.Payload(["checked": [], "enabled": [:]]), "titles is required")
+    XCTAssertNil(
+      MenuStateChannel.Payload(["checked": [], "enabled": [:], "titles": ["toggleFullScreen:": true]]),
+      "a title must be a string")
+    XCTAssertNotNil(MenuStateChannel.Payload(["checked": [], "enabled": [:], "titles": [:]]))
   }
 
   // MARK: - Traffic-light position (Story 11.26)

@@ -20,10 +20,12 @@ import 'package:zanshin/src/features/projects/projects_search_focus.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
+import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart' show ZanshinShellPlatform;
 
 import '../../helpers/fake_projects.dart';
 import '../../helpers/fake_window_actions.dart';
 import '../../helpers/fake_windows.dart';
+import '../../helpers/recording_shell.dart';
 
 const _projectsContent = SizedBox(key: ValueKey<String>('projects content'));
 const _projectContent = SizedBox(key: ValueKey<String>('project content'));
@@ -113,6 +115,10 @@ void main() {
     addTearDown(tracker.dispose);
     final graph = ActiveGraph();
     addTearDown(graph.dispose);
+    // The menu follows the windows' full screen through the shell.
+    final shell = RecordingShell();
+    ZanshinShellPlatform.instance = shell;
+    addTearDown(shell.close);
     final model = AppMenuModel(
       tracker,
       session,
