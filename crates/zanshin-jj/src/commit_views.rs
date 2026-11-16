@@ -231,6 +231,9 @@ pub enum CommitViewError {
     Config {
         /// Human-readable reason the effective config could not be used.
         reason: String,
+        /// The jj CLI's hint lines — "Check the config file: <path>" for a fault in a known
+        /// file; empty otherwise.
+        hints: Vec<String>,
     },
     /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes the
     /// public API (FR-JJ-16).
@@ -258,6 +261,9 @@ fn rev(e: crate::RevsetError) -> CommitViewError {
         },
         crate::RevsetError::Config(inner) => CommitViewError::Config {
             reason: inner.to_string(),
+            hints: match inner {
+                crate::ConfigError::Load { hints, .. } => hints,
+            },
         },
         crate::RevsetError::JjLibError(reason) => CommitViewError::Backend(reason),
         crate::RevsetError::Precondition(inner) => CommitViewError::Precondition(inner),
@@ -723,9 +729,9 @@ mod tests {
         assert!(matches!(
             rev(RevsetError::Config(ConfigError::Load {
                 reason: "not a table".to_owned(),
-                hints: Vec::new(),
+                hints: vec!["h".to_owned()],
             })),
-            CommitViewError::Config { reason } if reason.contains("not a table")
+            CommitViewError::Config { reason, hints } if reason.contains("not a table") && hints == ["h"]
         ));
         assert!(matches!(
             rev(RevsetError::JjLibError("index read failed".to_owned())),

@@ -42,7 +42,7 @@ fn map_commit_view_err(e: CommitViewError) -> FfiErrorObj {
         CommitViewError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason, Vec::new()),
         CommitViewError::RevsetParseError { reason, hints } => (JJ_REVSET_PARSE_ERROR, reason, hints),
         CommitViewError::RevsetResolutionError { reason, hints } => (JJ_REVSET_RESOLUTION_ERROR, reason, hints),
-        CommitViewError::Config { reason } => (JJ_CONFIG_ERROR, reason, Vec::new()),
+        CommitViewError::Config { reason, hints } => (JJ_CONFIG_ERROR, reason, hints),
         CommitViewError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason, Vec::new()),
     };
     FfiErrorObj {
@@ -558,6 +558,7 @@ mod tests {
             (
                 map_commit_view_err(CommitViewError::Config {
                     reason: "not a table".to_owned(),
+                    hints: Vec::new(),
                 }),
                 JJ_CONFIG_ERROR,
                 "not a table",
@@ -597,6 +598,12 @@ mod tests {
             hints: hints(),
         });
         assert_eq!(resolution.hints, hints());
+        // A config fault's "Check the config file" hint rides along too.
+        let config = map_commit_view_err(CommitViewError::Config {
+            reason: "r".to_owned(),
+            hints: vec!["Check the config file: /r/config.toml".to_owned()],
+        });
+        assert_eq!(config.hints, ["Check the config file: /r/config.toml"]);
     }
 
     #[test]

@@ -33,16 +33,16 @@ use crate::graph::map_topology_err;
 /// `jj.operation_not_found` with the CLI's text; `find_changes`' own revset error maps exactly as
 /// the topology's (code, hints, `FfiError.revset`).
 fn map_search_err(e: RevsetSearchError) -> FfiErrorObj {
-    let (code, context) = match e {
-        RevsetSearchError::InvalidInput(reason) => (JJ_INVALID_INPUT, reason),
-        e @ RevsetSearchError::OperationNotFound(_) => (JJ_OPERATION_NOT_FOUND, e.to_string()),
-        RevsetSearchError::Config(ConfigError::Load { reason, .. }) => (JJ_CONFIG_ERROR, reason),
-        RevsetSearchError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
+    let (code, context, hints) = match e {
+        RevsetSearchError::InvalidInput(reason) => (JJ_INVALID_INPUT, reason, Vec::new()),
+        e @ RevsetSearchError::OperationNotFound(_) => (JJ_OPERATION_NOT_FOUND, e.to_string(), Vec::new()),
+        RevsetSearchError::Config(ConfigError::Load { reason, hints }) => (JJ_CONFIG_ERROR, reason, hints),
+        RevsetSearchError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason, Vec::new()),
         RevsetSearchError::Revset(e) => return map_topology_err(e),
     };
     FfiErrorObj {
         report: None,
-        hints: Vec::new(),
+        hints,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -455,6 +455,11 @@ mod tests {
             assert_eq!((mapped.code.as_str(), mapped.context.as_deref()), (code, Some(context)));
             assert!(mapped.report.is_none() && mapped.hints.is_empty());
         }
+        let hinted = map_search_err(RevsetSearchError::Config(ConfigError::Load {
+            reason: "c".to_owned(),
+            hints: vec!["Check the config file: /r/config.toml".to_owned()],
+        }));
+        assert_eq!(hinted.hints, ["Check the config file: /r/config.toml"]);
         let revset = map_search_err(RevsetSearchError::Revset(RevsetError::ParseError {
             reason: "p".to_owned(),
             detail: Box::new(detail(RevsetErrorKind::SyntaxError)),

@@ -165,9 +165,11 @@ fn reads_and_repair(tmp: &Path, first: &Path, hand: &Path) {
         config_set(None, &file(first), "a", "1").result.map(|_| ()).unwrap_err(),
     ] {
         assert!(
-            matches!(&err, ConfigCmdError::Config { reason } if reason.contains("conf.d")),
+            matches!(&err, ConfigCmdError::Config { reason, .. } if reason.contains("conf.d")),
             "{err}"
         );
+        // The CLI's hint names the broken file inside the directory layer.
+        assert_eq!(err.hints(), [format!("Check the config file: {}", hand.display())]);
     }
     let read = config_file_read(None, &file(hand))
         .result

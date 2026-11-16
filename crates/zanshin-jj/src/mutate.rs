@@ -198,7 +198,8 @@ pub enum MutateError {
     Config {
         /// Human-readable reason, naming the offending file or alias.
         reason: String,
-        /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint; empty otherwise.
+        /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint, or "Check the
+        /// config file: <path>" for a fault in a known file; empty otherwise.
         hints: Vec<String>,
     },
     /// [`crate::Repo::undo`]'s target is the op-store root operation — there is no parent
@@ -618,10 +619,19 @@ pub(crate) fn be<E: std::fmt::Display>(e: E) -> MutateError {
     MutateError::Backend(e.to_string())
 }
 
-/// Converts a config-or-alias failure to [`MutateError::Config`]. `pub(crate)` so
-/// [`crate::op_support`] can classify the immutable expression's own failures without
-/// them landing in the unclassified [`MutateError::Backend`] bucket.
-pub(crate) fn cfg<E: std::fmt::Display>(e: E) -> MutateError {
+/// Converts a config failure to [`MutateError::Config`]: the reason is its Display (with the
+/// `config error: ` label), its hints are kept. `pub(crate)` so [`crate::op_support`] can
+/// classify the immutable expression's own failures without them landing in the unclassified
+/// [`MutateError::Backend`] bucket.
+pub(crate) fn cfg(e: crate::ConfigError) -> MutateError {
+    let reason = e.to_string();
+    let crate::ConfigError::Load { hints, .. } = e;
+    MutateError::Config { reason, hints }
+}
+
+/// A config fault that is not a [`crate::ConfigError`] (a message, a template or revset
+/// failure) as [`MutateError::Config`], with no hint.
+pub(crate) fn cfg_text<E: std::fmt::Display>(e: E) -> MutateError {
     MutateError::Config {
         reason: e.to_string(),
         hints: Vec::new(),
@@ -2232,6 +2242,27 @@ mod tests {
     use crate::op_support::ResolveError;
     use crate::{ChangeId, RevsetError};
 
+    /// `cfg` renders a config error's Display (its `config error: ` label included) and keeps its
+    /// hints, `rev` keeps a revset config fault's hints, and `cfg_text` renders any other error's
+    /// Display, hint-less.
+    #[test]
+    fn config_conversions_keep_a_config_faults_hints() {
+        let carried = vec!["Check the config file: /r/config.toml".to_owned()];
+        let load = || ConfigError::Load {
+            reason: "k".to_owned(),
+            hints: carried.clone(),
+        };
+        let typed = super::cfg(load());
+        assert!(
+            matches!(&typed, MutateError::Config { reason, hints } if reason == "config error: k" && *hints == carried),
+            "{typed:?}"
+        );
+        assert_eq!(rev(RevsetError::Config(load())).hints(), carried);
+        assert!(
+            matches!(super::cfg_text("x"), MutateError::Config { reason, hints } if reason == "x" && hints.is_empty())
+        );
+    }
+
     /// Story 9.56: `hints()` is the site's list where the variant carries one, the CLI's constant
     /// or data-derived hint for the others (a name the CLI quotes as a symbol is quoted), the
     /// precondition's own for a wrapped precondition, and empty for everything else.
@@ -2275,7 +2306,7 @@ mod tests {
             assert_eq!(e.hints(), carried, "{e:?}");
         }
         // A config fault converts with its reason as is (no second `config error: ` label) and its
-        // hints; `cfg` renders any error's Display, hint-less.
+        // hints.
         let from = MutateError::from(crate::ConfigError::Load {
             reason: "Invalid `remotes.o.fetch-tags`: k".to_owned(),
             hints: carried.clone(),
@@ -2285,7 +2316,6 @@ mod tests {
                 if reason == "Invalid `remotes.o.fetch-tags`: k" && *hints == carried),
             "{from:?}"
         );
-        assert!(matches!(super::cfg("x"), MutateError::Config { reason, hints } if reason == "x" && hints.is_empty()));
         assert_eq!(
             MutateError::invalid_hinted("r", "h").hints(),
             ["h"],

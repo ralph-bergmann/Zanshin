@@ -294,8 +294,10 @@ pub enum ConfigError {
     Load {
         /// Human-readable failure, naming the file or the config key.
         reason: String,
-        /// The jj CLI's hint lines for this fault, verbatim and in the CLI's order — only a
-        /// `remotes.<name>.*` pattern that does not parse carries one; empty otherwise.
+        /// The jj CLI's hint lines for this fault, verbatim and in the CLI's order: a
+        /// `remotes.<name>.*` pattern that does not parse, and a fault in a known config file
+        /// (a wrong-typed value, a TOML parse error, a failed migration, a non-table alias
+        /// table — "Check the config file: <path>"); empty otherwise.
         hints: Vec<String>,
     },
 }
@@ -334,16 +336,47 @@ fn describe(err: &(dyn std::error::Error + 'static)) -> String {
     out
 }
 
-/// A load/parse failure, prefixed with the file it came from.
+/// The CLI's hint for a config fault whose file is known: `Check the config file: <path>`
+/// (`cli/src/command_error.rs:415-447,1000-1007` @ v0.47.0); none without a path.
+pub(crate) fn check_file_hint(source_path: Option<&Path>) -> Vec<String> {
+    source_path
+        .map(|path| format!("Check the config file: {}", path.display()))
+        .into_iter()
+        .collect()
+}
+
+/// A load/parse failure, prefixed with the file it came from. A parse error carries the CLI's
+/// hint naming the file it is in (for a directory layer, the file inside it); a read error none.
 fn file_error(path: &Path, err: &ConfigLoadError) -> ConfigError {
+    let source_path = match err {
+        ConfigLoadError::Parse { source_path, .. } => source_path.as_deref(),
+        ConfigLoadError::Read(_) => None,
+    };
     ConfigError::Load {
         reason: format!("{}: {}", path.display(), describe(err)),
-        hints: Vec::new(),
+        hints: check_file_hint(source_path),
     }
 }
 
-/// A lookup failure. `ConfigGetError`'s Display already names the config key.
+/// A lookup failure. `ConfigGetError`'s Display already names the config key; a wrong-typed
+/// value from a file carries the CLI's hint naming that file.
 pub(crate) fn value_error(err: &ConfigGetError) -> ConfigError {
+    let source_path = match err {
+        ConfigGetError::Type { source_path, .. } => source_path.as_deref(),
+        ConfigGetError::NotFound { .. } => None,
+    };
+    ConfigError::Load {
+        reason: describe(err),
+        hints: check_file_hint(source_path),
+    }
+}
+
+/// A lookup failure jj-lib hit while loading or creating a workspace, with no hint: the CLI
+/// reports its own failure there — "Internal error: …" on load (`cli/src/cli_util.rs:3026`
+/// `map_workspace_load_error`), "Failed to access the repository" on creation
+/// (`cli/src/command_error.rs:520-522`, `From<WorkspaceInitError>`) @ v0.47.0 — never "Check the
+/// config file".
+fn workspace_value_error(err: &ConfigGetError) -> ConfigError {
     ConfigError::Load {
         reason: describe(err),
         hints: Vec::new(),
@@ -1061,17 +1094,12 @@ pub(crate) type Deprecations = Vec<(ConfigSource, String)>;
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — a layer could not be rewritten, or a `line-range-arg` is not a
-///   string: the CLI's config error "Migration failed" with its cause, then the file it is in.
+///   string: the CLI's config error "Migration failed" with its cause, and its hint naming the
+///   file it is in.
 fn migrate(config: &mut StackedConfig) -> Result<Deprecations, ConfigError> {
-    jj_lib::config::migrate(config, &[line_range_arg_rule()]).map_err(|e| {
-        let reason = match &e.source_path {
-            Some(path) => format!("{}\nCheck the config file: {}", describe(&e), path.display()),
-            None => describe(&e),
-        };
-        ConfigError::Load {
-            reason,
-            hints: Vec::new(),
-        }
+    jj_lib::config::migrate(config, &[line_range_arg_rule()]).map_err(|e| ConfigError::Load {
+        reason: describe(&e),
+        hints: check_file_hint(e.source_path.as_deref()),
     })
 }
 
@@ -1341,7 +1369,7 @@ pub(crate) fn user_settings_for_new_workspace(
 fn config_get_error(err: &(dyn std::error::Error + 'static)) -> Option<ConfigError> {
     std::iter::successors(Some(err), |e| e.source())
         .find_map(|e| e.downcast_ref::<ConfigGetError>())
-        .map(value_error)
+        .map(workspace_value_error)
 }
 
 /// The config fault behind a failed workspace LOAD, if that is what it was.
@@ -1352,8 +1380,8 @@ fn config_get_error(err: &(dyn std::error::Error + 'static)) -> Option<ConfigErr
 /// factory (`UserSettings::git_backend_settings`: `git.executable-path` and its siblings) wraps
 /// it TRANSPARENTLY (`StoreLoadError::Backend` → `BackendLoadError(ConfigGetError)`,
 /// `default_backend_factories.rs` @ jj-lib 0.47.0), which hides it from the chain, so that one is
-/// dug out by type. Either way the result is the same `ConfigError` — naming the key — as a fault
-/// [`settings_from`] catches.
+/// dug out by type. Either way the result names the key, as a fault [`settings_from`] catches,
+/// but carries no hint: the CLI reports its own load failure there.
 pub(crate) fn load_config_fault(err: &WorkspaceLoadError) -> Option<ConfigError> {
     let git = match err {
         WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(inner))) => {
@@ -1361,7 +1389,7 @@ pub(crate) fn load_config_fault(err: &WorkspaceLoadError) -> Option<ConfigError>
         }
         _ => None,
     };
-    git.map(value_error).or_else(|| config_get_error(err))
+    git.map(workspace_value_error).or_else(|| config_get_error(err))
 }
 
 /// The config fault behind a failed workspace CREATION, if that is what it was — the
@@ -1372,7 +1400,7 @@ pub(crate) fn init_config_fault(err: &WorkspaceInitError) -> Option<ConfigError>
         WorkspaceInitError::Backend(BackendInitError(inner)) => inner.downcast_ref::<ConfigGetError>(),
         _ => None,
     };
-    git.map(value_error).or_else(|| config_get_error(err))
+    git.map(workspace_value_error).or_else(|| config_get_error(err))
 }
 
 /// The effective `user.email` of a loaded stack — the `mine()` revset's input.
@@ -1543,7 +1571,10 @@ pub(crate) fn log_defaults(config: &StackedConfig) -> Result<LogDefaults, Config
 pub(crate) fn conflict_marker_style(
     config: &StackedConfig,
 ) -> Result<jj_lib::conflicts::ConflictMarkerStyle, ConfigError> {
-    config.get("ui.conflict-marker-style").map_err(|e| value_error(&e))
+    // WHY no hint: jj-lib reads this key at workspace load, where the CLI gives none.
+    config
+        .get("ui.conflict-marker-style")
+        .map_err(|e| workspace_value_error(&e))
 }
 
 /// How the color-words diff shows a conflicted side (`diff.color-words.conflict`, Story 5.10) —
@@ -3670,6 +3701,63 @@ mod tests {
             .contains("working-copy.exec-bit-change"));
     }
 
+    /// The CLI's "Check the config file" hint: a wrong-typed value and a TOML parse error from a
+    /// file carry it; a missing value, an unreadable file, a fault without a path and every
+    /// workspace load/creation fault do not (the CLI reports its own load failure there).
+    #[test]
+    fn a_config_fault_in_a_known_file_carries_the_cli_check_the_config_file_hint() {
+        use jj_lib::backend::{BackendInitError, BackendLoadError};
+        use jj_lib::config::{ConfigGetError, ConfigLoadError};
+        use jj_lib::repo::StoreLoadError;
+        use jj_lib::working_copy::WorkingCopyStateError;
+        use jj_lib::workspace::{WorkspaceInitError, WorkspaceLoadError};
+
+        let hints = |err: super::ConfigError| {
+            let super::ConfigError::Load { hints, .. } = err;
+            hints
+        };
+        let wrong_type = |source_path: Option<&str>| ConfigGetError::Type {
+            name: "snapshot.auto-track".to_owned(),
+            error: "invalid type".into(),
+            source_path: source_path.map(PathBuf::from),
+        };
+        assert_eq!(
+            hints(super::value_error(&wrong_type(Some("/r/config.toml")))),
+            ["Check the config file: /r/config.toml"]
+        );
+        assert!(hints(super::value_error(&wrong_type(None))).is_empty());
+        let not_found = ConfigGetError::NotFound { name: "x".to_owned() };
+        assert!(hints(super::value_error(&not_found)).is_empty());
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("config.toml");
+        std::fs::write(&file, "a = \n").expect("write");
+        let parse = StackedConfig::empty()
+            .load_file(ConfigSource::Repo, &file)
+            .expect_err("not TOML");
+        assert_eq!(
+            hints(super::file_error(&file, &parse)),
+            [format!("Check the config file: {}", file.display())]
+        );
+        let read = ConfigLoadError::Read(jj_lib::file_util::PathError {
+            path: file.clone(),
+            source: std::io::Error::other("x"),
+        });
+        assert!(hints(super::file_error(&file, &read)).is_empty());
+
+        let load = WorkspaceLoadError::StoreLoadError(StoreLoadError::Backend(BackendLoadError(Box::new(wrong_type(
+            Some("/r/config.toml"),
+        )))));
+        assert!(hints(super::load_config_fault(&load).expect("git fault")).is_empty());
+        let chain = WorkspaceLoadError::WorkingCopyState(WorkingCopyStateError {
+            message: "Failed to read the tree state settings".to_owned(),
+            err: Box::new(wrong_type(Some("/r/config.toml"))),
+        });
+        assert!(hints(super::load_config_fault(&chain).expect("chain fault")).is_empty());
+        let init = WorkspaceInitError::Backend(BackendInitError(Box::new(wrong_type(Some("/r/config.toml")))));
+        assert!(hints(super::init_config_fault(&init).expect("init fault")).is_empty());
+    }
+
     #[test]
     fn user_email_reads_the_stack_and_refuses_a_wrong_type() {
         assert_eq!(user_email(&StackedConfig::with_defaults()).unwrap(), "");
@@ -4668,19 +4756,21 @@ fetch-bookmarks = \"main\"
         broken.add_layer(layer(ConfigSource::User, "fix.tools.t.line-range-arg = 1\n"));
         let err = super::migrate(&mut broken).expect_err("a non-string refuses");
         assert!(
-            matches!(&err, crate::ConfigError::Load { reason, .. }
-                if reason.starts_with("Migration failed: Invalid type or value for fix.tools.t.line-range-arg")),
-            "{err:?}"
+            matches!(&err, crate::ConfigError::Load { reason, hints }
+                if reason.starts_with("Migration failed: Invalid type or value for fix.tools.t.line-range-arg")
+                    && hints.is_empty()),
+            "no file, no hint: {err:?}"
         );
         let mut from_file = StackedConfig::empty();
         let mut file_layer = layer(ConfigSource::Repo, "fix.tools.t.line-range-arg = 1\n");
         file_layer.path = Some(std::path::PathBuf::from("/x/config.toml"));
         from_file.add_layer(file_layer);
-        let err = super::migrate(&mut from_file).expect_err("refuses");
+        let crate::ConfigError::Load { reason, hints } = super::migrate(&mut from_file).expect_err("refuses");
         assert!(
-            matches!(&err, crate::ConfigError::Load { reason, .. } if reason.ends_with("\nCheck the config file: /x/config.toml")),
-            "{err:?}"
+            reason.starts_with("Migration failed: ") && !reason.contains('\n'),
+            "the file moved to the hint: {reason}"
         );
+        assert_eq!(hints, ["Check the config file: /x/config.toml"]);
 
         // A table-valued `line-range-arg`: `delete_value` refuses a (non-inline) table, so the
         // CLI's rule skips that tool — an empty description, the table left in place.

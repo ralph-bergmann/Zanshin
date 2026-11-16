@@ -1020,6 +1020,11 @@ mod tests {
                 "the report is attached by precondition_envelope"
             );
         }
+        let config = map_topology_err(RevsetError::Config(ConfigError::Load {
+            reason: "r".to_owned(),
+            hints: vec!["Check the config file: /r/config.toml".to_owned()],
+        }));
+        assert_eq!(config.hints, ["Check the config file: /r/config.toml"]);
     }
 
     // ── Request reader ladder ────────────────────────────────────────────────

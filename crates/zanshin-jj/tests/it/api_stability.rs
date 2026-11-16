@@ -730,7 +730,10 @@ fn file_reads_surface_resolves() {
     _ = zanshin_jj::FileError::PathNotFound { path: String::new() };
     _ = zanshin_jj::FileError::NotAFile { path: String::new() };
     _ = zanshin_jj::FileError::InvalidInput { reason: String::new() };
-    _ = zanshin_jj::FileError::Config { reason: String::new() };
+    _ = zanshin_jj::FileError::Config {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
     _ = zanshin_jj::FileError::Backend(String::new());
 
     // Every `FileType` member — the wire discriminant order is pinned by the schema.
@@ -879,6 +882,7 @@ fn commit_views_surface_resolves() {
     assert_eq!(resolution.to_string(), "cannot resolve revset: no such bookmark");
     let config = zanshin_jj::CommitViewError::Config {
         reason: "not a table".to_owned(),
+        hints: Vec::new(),
     };
     assert_eq!(config.to_string(), "config error: not a table");
     assert_eq!(
@@ -2347,8 +2351,7 @@ fn snapshot_precondition_surface_resolves() {
         as fn(&zanshin_jj::Repo) -> Result<zanshin_jj::LogDefaults, zanshin_jj::ConfigError>;
 }
 
-/// Story 9.28: the config surface — nine free functions (no `Repo` handle), their types, and the
-/// `Display` of every `ConfigCmdError` arm.
+/// Story 9.28: the config surface — nine free functions (no `Repo` handle) and their types.
 #[test]
 fn story_9_28_surface_resolves() {
     use std::path::{Path, PathBuf};
@@ -2423,8 +2426,22 @@ fn story_9_28_surface_resolves() {
             reason: String::new(),
         }],
     };
+}
+
+/// Story 9.28: the `Display` of every `ConfigCmdError` arm; the Story 9.60 closing run adds the
+/// config arm's `hints`.
+#[test]
+fn story_9_28_config_cmd_error_display() {
+    use zanshin_jj::ConfigCmdError as E;
+
     for (err, text) in [
-        (E::Config { reason: "r".into() }, "config error: r"),
+        (
+            E::Config {
+                reason: "r".into(),
+                hints: Vec::new(),
+            },
+            "config error: r",
+        ),
         (E::PathNotFound { path: "/p".into() }, "path not found: /p"),
         (E::NotARepo { path: "/p".into() }, "not a jj repository: /p"),
         (E::NotFound { reason: "n".into() }, "n"),

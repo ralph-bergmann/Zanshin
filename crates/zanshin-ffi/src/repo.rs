@@ -2072,7 +2072,7 @@ mod tests {
         });
         assert_eq!(e.code, JJ_CONFIG_ERROR);
         assert_eq!(e.context.unwrap(), "/cfg/config.toml: invalid TOML");
-        assert!(e.hints.is_empty(), "a plain config fault has no hint");
+        assert!(e.hints.is_empty(), "an error built without hints maps to none");
         // Story 9.60: a `remotes.<name>.*` pattern's parse hint rides along.
         let e = map_repo_err(RepoError::Config {
             reason: "Invalid `remotes.origin.fetch-tags`: k".to_owned(),
@@ -2199,7 +2199,7 @@ mod tests {
             "a bad immutable_heads() alias is the SAME fault the read side reports"
         );
         assert_eq!(e.context.unwrap(), "config.toml: invalid TOML");
-        assert!(e.hints.is_empty(), "a plain config fault has no hint");
+        assert!(e.hints.is_empty(), "an error built without hints maps to none");
         // Story 9.60: a `remotes.<name>.*` pattern's parse hint rides along, and so does a wrapped
         // precondition's.
         let carried = vec!["h".to_owned()];

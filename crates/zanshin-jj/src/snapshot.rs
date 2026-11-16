@@ -203,7 +203,8 @@ pub enum PreconditionError {
     Config {
         /// Human-readable failure, naming the file or the config key.
         reason: String,
-        /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint; empty otherwise.
+        /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint, or "Check the
+        /// config file: <path>" for a fault in a known file; empty otherwise.
         hints: Vec<String>,
     },
     /// The stale-working-copy recovery found the working copy's recorded tree differing from
@@ -246,8 +247,8 @@ impl PreconditionError {
     }
 
     /// The jj CLI's hint lines for this refusal, verbatim and in the CLI's order (Story 9.56):
-    /// a stale working copy's remedy (`cli/src/cli_util.rs:3046-3074` @ v0.46.0) and a
-    /// `remotes.<name>.*` pattern's parse hint; none otherwise.
+    /// a stale working copy's remedy (`cli/src/command_error.rs:292-323` @ v0.47.0) and a config
+    /// fault's hints; none otherwise.
     #[must_use]
     pub fn hints(&self) -> Vec<String> {
         const SEE: &str = "See https://docs.jj-vcs.dev/latest/working-copy/#stale-working-copy for more information.";

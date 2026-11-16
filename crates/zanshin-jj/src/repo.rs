@@ -105,7 +105,9 @@ pub enum RepoError {
     Config {
         /// Human-readable failure, naming the offending file path or config key.
         reason: String,
-        /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint; empty otherwise.
+        /// The jj CLI's hint lines — a `remotes.<name>.*` pattern's parse hint, or "Check the
+        /// config file: <path>" for a fault in a known file; empty otherwise (a workspace load
+        /// fault included, as the CLI reports its own load failure there).
         hints: Vec<String>,
     },
     /// Underlying `jj_lib` failure, flattened to its Display so no `jj_lib` type escapes the public API.
@@ -115,11 +117,11 @@ pub enum RepoError {
 
 impl RepoError {
     /// The jj CLI's hint lines for this refusal, verbatim and in the CLI's order (Story 9.56) —
-    /// `init`'s existing-Git-repo hint (`cli/src/commands/git/init.rs:233-236` @ v0.46.0), a
-    /// clone's fetch hints, a clone pattern parse failure's hint and a `remotes.<name>.*` config
-    /// pattern's parse hint (Story 9.60); empty otherwise. `NotARepo` carries none: it does not
-    /// tell a `.git` directory apart, so the CLI's "It looks like this is a git repo." hint is not
-    /// ported.
+    /// `init`'s existing-Git-repo hint (`cli/src/commands/git/init.rs:233-240` @ v0.47.0), a
+    /// clone's fetch hints, a clone pattern parse failure's hint and a config fault's hints (a
+    /// `remotes.<name>.*` pattern's parse hint, "Check the config file: <path>"); empty
+    /// otherwise. `NotARepo` carries none: it does not tell a `.git` directory apart, so the CLI's
+    /// "It looks like this is a git repo." hint is not ported.
     #[must_use]
     pub fn hints(&self) -> Vec<String> {
         match self {

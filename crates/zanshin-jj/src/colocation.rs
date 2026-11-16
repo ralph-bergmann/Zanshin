@@ -31,7 +31,7 @@ use jj_lib::op_store::{OperationId, RefTarget};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, Workspace, WorkspaceLoaderFactory as _};
 
-use crate::mutate::{self, be, cfg, flatten_chain, MutateError, MutationResult};
+use crate::mutate::{self, be, cfg_text, flatten_chain, MutateError, MutationResult};
 use crate::op_diff::{ref_target, OpRefTarget};
 use crate::op_support::start_repo_transaction;
 use crate::snapshot::{self, VerbContext};
@@ -223,7 +223,7 @@ pub(crate) fn enable(workspace: &mut Workspace, ctx: &mut VerbContext) -> Result
     let op_id = repo.op_id().clone();
 
     if is_child_workspace(&root) {
-        let options = crate::environment::git_subprocess_options(workspace.settings(), None).map_err(cfg)?;
+        let options = crate::environment::git_subprocess_options(workspace.settings(), None).map_err(cfg_text)?;
         git::create_worktree(repo.store(), options, &root).map_err(|e| MutateError::GitWorktree(flatten_chain(&e)))?;
     } else {
         let repo_path = workspace.repo_path().to_owned();

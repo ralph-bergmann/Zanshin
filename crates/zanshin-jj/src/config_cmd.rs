@@ -281,6 +281,9 @@ pub enum ConfigCmdError {
     Config {
         /// Human-readable failure, naming the file or key.
         reason: String,
+        /// The jj CLI's hint lines — "Check the config file: <path>" for a fault in a known
+        /// file; empty otherwise.
+        hints: Vec<String>,
     },
     /// The workspace root does not exist.
     #[error("path not found: {path}")]
@@ -340,7 +343,8 @@ pub enum ConfigCmdError {
 
 impl ConfigCmdError {
     /// The jj CLI's hint lines for this refusal, verbatim (Story 9.56): where config files may
-    /// live, for an unrecognized `--file` (`cli/src/config.rs:737-741` @ v0.46.0); none otherwise.
+    /// live, for an unrecognized `--file` (`cli/src/config.rs:745-749` @ v0.47.0), and a config
+    /// fault's own hints; none otherwise.
     #[must_use]
     pub fn hints(&self) -> Vec<String> {
         match self {
@@ -349,6 +353,7 @@ impl ConfigCmdError {
                  repo/workspace configs, or files loaded with the global flag `--config-file <PATH>`."
                     .to_owned(),
             ],
+            Self::Config { hints, .. } => hints.clone(),
             _ => Vec::new(),
         }
     }
@@ -356,8 +361,8 @@ impl ConfigCmdError {
 
 impl From<crate::ConfigError> for ConfigCmdError {
     fn from(e: crate::ConfigError) -> Self {
-        let crate::ConfigError::Load { reason, .. } = e;
-        Self::Config { reason }
+        let crate::ConfigError::Load { reason, hints } = e;
+        Self::Config { reason, hints }
     }
 }
 
@@ -603,6 +608,7 @@ fn toml_error(err: ConfigLoadError) -> ConfigCmdError {
         },
         other @ ConfigLoadError::Read(_) => ConfigCmdError::Config {
             reason: other.to_string(),
+            hints: Vec::new(),
         },
     }
 }
@@ -846,6 +852,7 @@ fn new_user_config_file(env: &ConfigEnv) -> Option<PathBuf> {
 fn io_error(path: &Path, e: &dyn std::fmt::Display) -> ConfigCmdError {
     ConfigCmdError::Config {
         reason: format!("{}: {e}", path.display()),
+        hints: Vec::new(),
     }
 }
 
@@ -1150,6 +1157,7 @@ fn gc_missing(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<Vec
 fn find_configs_with_missing_paths(root: &Path, kind: ConfigGcKind) -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
     let failed = |verb: &str, e: std::io::Error| ConfigCmdError::Config {
         reason: format!("Failed to {verb} {}: {e}", root.display()),
+        hints: Vec::new(),
     };
     if !root.try_exists().map_err(|e| failed("check", e))? {
         return Ok(Vec::new());
@@ -1235,11 +1243,23 @@ mod tests {
 
     const HEADER: &str = "#:schema https://docs.jj-vcs.dev/latest/config-schema.json\n\n";
 
-    /// Story 9.56: only an unrecognized `--file` carries a hint.
+    /// Story 9.56: an unrecognized `--file` carries a hint; a config fault carries its own
+    /// ("Check the config file", converted from a `ConfigError` with them).
     #[test]
-    fn only_an_unrecognized_file_carries_a_hint() {
+    fn an_unrecognized_file_and_a_config_fault_carry_their_hints() {
         assert_eq!(ConfigCmdError::UnrecognizedFile { path: "x".into() }.hints().len(), 1);
-        assert!(ConfigCmdError::Config { reason: String::new() }.hints().is_empty());
+        assert!(ConfigCmdError::Config {
+            reason: String::new(),
+            hints: Vec::new()
+        }
+        .hints()
+        .is_empty());
+        let converted = ConfigCmdError::from(crate::ConfigError::Load {
+            reason: "r".to_owned(),
+            hints: vec!["h".to_owned()],
+        });
+        assert_eq!(converted.hints(), ["h"]);
+        assert!(ConfigCmdError::NotFound { reason: String::new() }.hints().is_empty());
     }
 
     // The verb bodies take the call's warning sink (Story 9.37); these adapters keep the rows
@@ -1491,9 +1511,10 @@ mod tests {
             gc_delete_with(&env, &[], &mut Vec::new()).map(|_| ()).unwrap_err(),
         ] {
             assert!(
-                matches!(&err, ConfigCmdError::Config { reason } if reason.contains("config.toml")),
+                matches!(&err, ConfigCmdError::Config { reason, .. } if reason.contains("config.toml")),
                 "{err}"
             );
+            assert_eq!(err.hints(), [format!("Check the config file: {}", file.display())]);
         }
         let read = file_read_with(&env, None, &ConfigTarget::Scope(ConfigScope::User)).expect("read");
         assert_eq!(
@@ -1819,7 +1840,7 @@ mod tests {
         // …and, as in the CLI, a wrong-typed start-up key then fails every stack verb.
         assert!(matches!(
             get_with(&env, Some(&root), "user.name"),
-            Err(ConfigCmdError::Config { reason }) if reason.contains("user.name")
+            Err(ConfigCmdError::Config { reason, .. }) if reason.contains("user.name")
         ));
     }
 
@@ -2062,7 +2083,7 @@ mod tests {
         write(&tmp.path().join("cfg").join("jj").join("repos"), "a file, not a dir");
         assert!(matches!(
             gc_list_with(&env, &mut Vec::new()),
-            Err(ConfigCmdError::Config { reason }) if reason.starts_with("Failed to read")
+            Err(ConfigCmdError::Config { reason, .. }) if reason.starts_with("Failed to read")
         ));
     }
 
@@ -2079,7 +2100,7 @@ mod tests {
         fs::set_permissions(&jj, fs::Permissions::from_mode(0o700)).unwrap();
         assert!(matches!(
             result,
-            Err(ConfigCmdError::Config { reason }) if reason.starts_with("Failed to check")
+            Err(ConfigCmdError::Config { reason, .. }) if reason.starts_with("Failed to check")
         ));
     }
 
@@ -2185,7 +2206,7 @@ mod tests {
         fs::write(root.join(".jj").join("repo").join("config-id"), "not-hex").unwrap();
         assert!(matches!(
             file_write_with(&env, Some(&root), &legacy, ""),
-            Err(ConfigCmdError::Config { reason }) if reason.contains("config-id")
+            Err(ConfigCmdError::Config { reason, .. }) if reason.contains("config-id")
         ));
     }
 }

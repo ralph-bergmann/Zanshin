@@ -259,10 +259,7 @@ fn view_err(e: CommitViewError) -> MutateError {
         CommitViewError::RevsetResolutionError { reason, hints } => {
             MutateError::RevsetResolutionError { reason, hints }
         }
-        CommitViewError::Config { reason } => MutateError::Config {
-            reason,
-            hints: Vec::new(),
-        },
+        CommitViewError::Config { reason, hints } => MutateError::Config { reason, hints },
         CommitViewError::Backend(reason) => MutateError::Backend(reason),
     }
 }
@@ -920,10 +917,13 @@ mod tests {
                 },
             ),
             (
-                CommitViewError::Config { reason: r() },
+                CommitViewError::Config {
+                    reason: r(),
+                    hints: vec![r()],
+                },
                 MutateError::Config {
                     reason: r(),
-                    hints: Vec::new(),
+                    hints: vec![r()],
                 },
             ),
             (CommitViewError::Backend(r()), MutateError::Backend(r())),

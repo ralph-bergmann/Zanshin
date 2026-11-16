@@ -5,7 +5,8 @@
 //! not-found "Working copy parent: …" render `templates.commit_summary`. Each witness refuses
 //! through Zanshin and through the pinned `jj` on the SAME repo (a refusal writes no operation, so
 //! both see one state) and compares Zanshin's hint with the CLI's `Hint: ` stderr line verbatim.
-//! The name-pattern witnesses (Story 9.59 closing run) compare the whole error text too.
+//! The name-pattern witnesses (Story 9.59 closing run) compare the whole error text too. The
+//! config-file witnesses (Story 9.60 closing run) compare the "Check the config file" hint only.
 
 use std::ops::ControlFlow;
 use std::path::Path;
@@ -505,4 +506,109 @@ fn conversion_lists_the_cli_trackable_remote_bookmarks() {
     let outcome = zanshin_jj::convert_colocated(&root.join("zanshin"));
     assert!(outcome.result.is_ok(), "{:?}", outcome.result);
     assert_eq!(outcome.trackable_remote_bookmarks, cli);
+}
+
+// ── Story 9.60 closing run: "Check the config file: <path>" ──────────────────
+
+/// A BASE repo and its repo-level config file's path, as `jj config path --repo` prints it —
+/// read before a test breaks the config, which can stop that command too.
+fn repo_with_config_path() -> (tempfile::TempDir, std::path::PathBuf, String) {
+    let (dir, root) = fresh_repo(&["git", "init"], &[BASE]);
+    let path = jj(&root, &["config", "path", "--repo"])
+        .ok()
+        .stdout
+        .trim_end()
+        .to_owned();
+    (dir, root, path)
+}
+
+/// The one hint both sides must give for a fault in the repo-level file.
+fn check_file_hint(path: &str) -> Vec<String> {
+    vec![format!("Check the config file: {path}")]
+}
+
+/// A wrong-typed snapshot knob: `jj status` and Zanshin's snapshot refuse with the same hint.
+#[test]
+fn wrong_typed_snapshot_key_carries_the_cli_check_the_config_file_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root, path) = repo_with_config_path();
+    jj(
+        &root,
+        &["config", "set", "--repo", "snapshot.max-new-file-size", "true"],
+    )
+    .ok();
+    let (_, cli) = cli_error_labeled("Config error: ", &["status"], &root);
+    let err = Repo::open(&root)
+        .expect("open")
+        .snapshot()
+        .expect_err("the key has the wrong type");
+    assert!(matches!(err, zanshin_jj::PreconditionError::Config { .. }), "{err:?}");
+    assert_eq!(err.hints(), cli);
+    assert_eq!(cli, check_file_hint(&path));
+}
+
+/// A repo-level file that is not TOML: `jj status` and `Repo::open` refuse with the same hint.
+#[test]
+fn toml_parse_error_carries_the_cli_check_the_config_file_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root, path) = repo_with_config_path();
+    jj(&root, &["config", "set", "--repo", "a", "1"]).ok();
+    std::fs::write(&path, "a = \n").expect("break the repo config");
+    let (_, cli) = cli_error_labeled("Config error: ", &["status"], &root);
+    let err = Repo::open(&root).map(|_| ()).expect_err("not TOML");
+    assert!(matches!(err, zanshin_jj::RepoError::Config { .. }), "{err:?}");
+    assert_eq!(err.hints(), cli);
+    assert_eq!(cli, check_file_hint(&path));
+}
+
+/// A failed `line-range-arg` migration: the hint, not a second reason line, names the file.
+#[test]
+fn failed_migration_carries_the_cli_check_the_config_file_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root, path) = repo_with_config_path();
+    jj(&root, &["config", "set", "--repo", "fix.tools.t.line-range-arg", "1"]).ok();
+    let (_, cli) = cli_error_labeled("Config error: ", &["status"], &root);
+    let err = Repo::open(&root).map(|_| ()).expect_err("the migration fails");
+    let zanshin_jj::RepoError::Config { reason, hints } = &err else {
+        panic!("a config refusal: {err:?}");
+    };
+    assert!(
+        reason.starts_with("Migration failed: ") && !reason.contains("Check the config file"),
+        "{reason}"
+    );
+    assert_eq!(hints, &cli);
+    assert_eq!(cli, check_file_hint(&path));
+}
+
+/// A non-table `revset-aliases`: `jj log` and Zanshin's revset read refuse with the same hint. The
+/// read's start-up environment builds the alias table, so the fault arrives as its precondition's.
+#[test]
+fn non_table_revset_aliases_carries_the_cli_check_the_config_file_hint() {
+    test_helpers::pin_test_env();
+    let (_dir, root, path) = repo_with_config_path();
+    jj(&root, &["config", "set", "--repo", "revset-aliases", "1"]).ok();
+    let (_, cli) = cli_error_labeled("Config error: ", &["log"], &root);
+    let mut repo = Repo::open(&root).expect("open");
+    let err = repo
+        .eval_revset("@", |_| ControlFlow::Break(()))
+        .expect_err("the alias table is not a table");
+    let zanshin_jj::RevsetError::Precondition(inner @ zanshin_jj::PreconditionError::Config { .. }) = &err else {
+        panic!("a start-up config refusal: {err:?}");
+    };
+    assert_eq!(inner.hints(), cli);
+    assert_eq!(cli, check_file_hint(&path));
+}
+
+/// A key jj-lib reads while loading the workspace: the CLI reports its own load failure with no
+/// hint, and so does Zanshin's `Repo::open`.
+#[test]
+fn workspace_load_fault_carries_no_hint_like_the_cli() {
+    test_helpers::pin_test_env();
+    let (_dir, root, _) = repo_with_config_path();
+    jj(&root, &["config", "set", "--repo", "ui.conflict-marker-style", "1"]).ok();
+    let (_, cli) = cli_error_labeled("Internal error: ", &["status"], &root);
+    let err = Repo::open(&root).map(|_| ()).expect_err("the workspace does not load");
+    assert!(matches!(err, zanshin_jj::RepoError::Config { .. }), "{err:?}");
+    assert!(cli.is_empty(), "{cli:?}");
+    assert!(err.hints().is_empty(), "{err:?}");
 }

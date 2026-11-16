@@ -215,7 +215,10 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
     let mut repo = Repo::open(&fx.path).expect("open");
     let head = |repo: &mut Repo| repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0;
     let before = head(&mut repo);
-    set_jj_config(&config_file(tmp, "broken-verbs.toml", "not = = toml\n"));
+    let broken = config_file(tmp, "broken-verbs.toml", "not = = toml\n");
+    set_jj_config(&broken);
+    // The CLI's hint names the file that does not parse (Story 9.60 closing run).
+    let hint = [format!("Check the config file: {}", broken.display())];
 
     let id = || ChangeId("zzzzzzzzzzzz".to_owned());
     let progress = |_: zanshin_jj::ProgressEvent| {};
@@ -247,7 +250,8 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
     ];
     for (verb, result) in results {
         assert!(
-            matches!(&result, Err(MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, .. })) if reason.contains("broken-verbs.toml")),
+            matches!(&result, Err(MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason, hints }))
+                if reason.contains("broken-verbs.toml") && *hints == hint),
             "{verb} must refuse in the pre-verb snapshot (Story 9.26), got: {result:?}"
         );
     }

@@ -32,7 +32,7 @@ fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
         BookmarkError::InvalidInput { reason, hints } => (JJ_INVALID_INPUT, reason, hints),
         BookmarkError::RevsetParseError { reason, hints } => (JJ_REVSET_PARSE_ERROR, reason, hints),
         BookmarkError::RevsetResolutionError { reason, hints } => (JJ_REVSET_RESOLUTION_ERROR, reason, hints),
-        BookmarkError::Config(ConfigError::Load { reason, .. }) => (JJ_CONFIG_ERROR, reason, Vec::new()),
+        BookmarkError::Config(ConfigError::Load { reason, hints }) => (JJ_CONFIG_ERROR, reason, hints),
         BookmarkError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason, Vec::new()),
     };
     FfiErrorObj {
@@ -375,10 +375,10 @@ mod tests {
             (
                 BookmarkError::Config(ConfigError::Load {
                     reason: "r".into(),
-                    hints: Vec::new(),
+                    hints: vec!["Check the config file: /r/config.toml".into()],
                 }),
                 JJ_CONFIG_ERROR,
-                vec![],
+                vec!["Check the config file: /r/config.toml".into()],
             ),
         ] {
             let obj = map_bookmarks_err(e);

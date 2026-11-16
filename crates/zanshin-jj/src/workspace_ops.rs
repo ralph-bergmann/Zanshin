@@ -30,7 +30,7 @@ use jj_lib::store::Store;
 use jj_lib::view::RenameWorkspaceError;
 use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, Workspace, WorkspaceLoadError, WorkspaceLoaderFactory as _};
 
-use crate::mutate::{self, be, cfg, flatten_chain, MutateError, MutationResult};
+use crate::mutate::{self, be, cfg_text, flatten_chain, MutateError, MutationResult};
 use crate::op_support::start_repo_transaction;
 use crate::snapshot::{self, CommandEnv, VerbContext};
 use crate::warning::{self, WarningKind, Warnings};
@@ -101,7 +101,7 @@ pub(crate) fn unlink_worktrees(
     paths: &[PathBuf],
     sink: &mut Warnings,
 ) -> Result<Vec<PathBuf>, MutateError> {
-    let options = crate::environment::git_subprocess_options(workspace.settings(), None).map_err(cfg)?;
+    let options = crate::environment::git_subprocess_options(workspace.settings(), None).map_err(cfg_text)?;
     let mut unlinked = Vec::new();
     for path in paths {
         match git::unlink_worktree(store, options.clone(), path) {

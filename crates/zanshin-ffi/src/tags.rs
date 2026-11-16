@@ -97,14 +97,14 @@ fn read_tag_track_request(
 /// Maps a [`ViewError`] of the tag list onto its registered code, the reason in `context`; a failed
 /// pre-verb snapshot goes through the shared [`map_precondition_err`].
 fn map_view_err(e: ViewError) -> FfiErrorObj {
-    let (code, reason) = match e {
+    let (code, reason, hints) = match e {
         ViewError::Precondition(e) => return map_precondition_err(e),
-        ViewError::Config(ConfigError::Load { reason, .. }) => (JJ_CONFIG_ERROR, reason),
-        ViewError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
+        ViewError::Config(ConfigError::Load { reason, hints }) => (JJ_CONFIG_ERROR, reason, hints),
+        ViewError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason, Vec::new()),
     };
     FfiErrorObj {
         report: None,
-        hints: Vec::new(),
+        hints,
         code: code.to_owned(),
         context: Some(reason),
     }
@@ -399,12 +399,13 @@ mod tests {
     fn map_view_err_maps_config_and_backend() {
         let config = map_view_err(ViewError::Config(ConfigError::Load {
             reason: "c".into(),
-            hints: Vec::new(),
+            hints: vec!["Check the config file: /r/config.toml".into()],
         }));
         assert_eq!(
             (config.code.as_str(), config.context.as_deref()),
             (JJ_CONFIG_ERROR, Some("c"))
         );
+        assert_eq!(config.hints, ["Check the config file: /r/config.toml"]);
         let backend = map_view_err(ViewError::Backend("b".into()));
         assert_eq!(
             (backend.code.as_str(), backend.context.as_deref()),

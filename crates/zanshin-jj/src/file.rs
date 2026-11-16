@@ -261,6 +261,9 @@ pub enum FileError {
     Config {
         /// Human-readable reason the effective config could not be used.
         reason: String,
+        /// The jj CLI's hint lines — "Check the config file: <path>" for a fault in a known
+        /// file; empty otherwise.
+        hints: Vec<String>,
     },
     /// An underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes the
     /// public API (FR-JJ-16).
@@ -273,9 +276,11 @@ fn be<E: std::fmt::Display>(e: E) -> FileError {
     FileError::Backend(e.to_string())
 }
 
-/// Converts a config-stack failure to [`FileError::Config`].
-fn cfg<E: std::fmt::Display>(e: E) -> FileError {
-    FileError::Config { reason: e.to_string() }
+/// Converts a config-stack failure to [`FileError::Config`], keeping its hints.
+fn cfg(e: crate::ConfigError) -> FileError {
+    let reason = e.to_string();
+    let crate::ConfigError::Load { hints, .. } = e;
+    FileError::Config { reason, hints }
 }
 
 /// Converts a shared [`ResolveError`] to this module's taxonomy.
@@ -892,8 +897,10 @@ mod tests {
             None,
             &["a.txt".to_owned()],
         );
+        // No hint: jj-lib reads this key at workspace load, where the CLI gives none.
         assert!(
-            matches!(&result, Err(FileError::Config { reason }) if reason.contains("conflict-marker-style")),
+            matches!(&result, Err(FileError::Config { reason, hints })
+                if reason.contains("conflict-marker-style") && hints.is_empty()),
             "{result:?}"
         );
     }

@@ -66,8 +66,8 @@ use regex::Regex;
 use crate::arrange::{commits_of, target_expression};
 use crate::cancel::{self, CancelGuard, GroupSignal, KILL_GRACE, POLL_INTERVAL};
 use crate::mutate::{
-    be, build_matcher, cfg, finish_verb, guard_rewritable, mutation_result, no_op_result, warn_unmatched, MutateError,
-    MutationResult,
+    be, build_matcher, cfg, cfg_text, finish_verb, guard_rewritable, mutation_result, no_op_result, warn_unmatched,
+    MutateError, MutationResult,
 };
 use crate::op_support::start_repo_transaction;
 use crate::snapshot::VerbContext;
@@ -373,7 +373,7 @@ fn get_tools_config(config: &StackedConfig, sink: &mut Warnings) -> Result<Vec<T
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| fileset_parse_error(&e))?;
         if tool.line_range_args.is_empty() && tool.run_tool_if_zero_line_ranges {
-            return Err(cfg(
+            return Err(cfg_text(
                 "run-tool-if-zero-line-ranges can only be set when line-range-args is set",
             ));
         }
@@ -392,11 +392,11 @@ fn get_tools_config(config: &StackedConfig, sink: &mut Warnings) -> Result<Vec<T
         });
     }
     if tools.is_empty() {
-        return Err(cfg("No `fix.tools` are configured"));
+        return Err(cfg_text("No `fix.tools` are configured"));
     }
     tools.retain(|tool| tool.enabled);
     if tools.is_empty() {
-        return Err(cfg("At least one entry of `fix.tools` must be enabled."));
+        return Err(cfg_text("At least one entry of `fix.tools` must be enabled."));
     }
     Ok(tools)
 }

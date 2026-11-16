@@ -83,12 +83,14 @@ pub enum RevsetError {
 
 impl RevsetError {
     /// The CLI's hint lines for a parse or resolution error (`revset_parse_error_hint` /
-    /// `revset_resolution_error_hints`, `cli/src/command_error.rs:892-977` @ v0.46.0), in the
-    /// CLI's order; empty for every other variant.
+    /// `revset_resolution_error_hints`, `cli/src/command_error.rs:1059-1144` @ v0.47.0) and for a
+    /// config fault ([`ConfigError::Load`]'s `hints`), in the CLI's order; empty for every other
+    /// variant.
     #[must_use]
     pub fn hints(&self) -> Vec<String> {
         match self {
             Self::ParseError { detail, .. } | Self::ResolutionError { detail, .. } => detail.hints.clone(),
+            Self::Config(ConfigError::Load { hints, .. }) => hints.clone(),
             _ => Vec::new(),
         }
     }
@@ -1063,7 +1065,8 @@ pub(crate) fn evaluate_revset<'r>(
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — a config layer's `<table_name>` key is not a table.
+/// - [`ConfigError::Load`] — a config layer's `<table_name>` key is not a table; a layer read
+///   from a file carries the CLI's hint naming it.
 pub(crate) fn build_aliases_map<P>(
     config: &StackedConfig,
     table_name: &'static str,
@@ -1086,7 +1089,7 @@ where
                         path.display(),
                         item.type_name()
                     ),
-                    hints: Vec::new(),
+                    hints: crate::config::check_file_hint(layer.path.as_deref()),
                 });
             }
         };
@@ -1294,6 +1297,37 @@ mod tests {
         assert!(
             reason.contains("bogus_function"),
             "the broken body's own error closes the chain: {reason}"
+        );
+    }
+
+    /// A non-table alias table refuses with the CLI's "Check the config file" hint when its layer
+    /// came from a file (`load_aliases_map`'s `source_path`), and `RevsetError::hints` forwards a
+    /// config fault's hints.
+    #[test]
+    fn a_non_table_alias_table_from_a_file_carries_the_check_the_config_file_hint() {
+        let mut layer = ConfigLayer::parse(ConfigSource::Repo, "revset-aliases = 1\n").expect("toml");
+        let mut pathless = jj_lib::config::StackedConfig::empty();
+        pathless.add_layer(layer.clone());
+        let ConfigError::Load { hints, .. } = revset_config(&pathless, &mut Warnings::default())
+            .err()
+            .expect("no table");
+        assert!(hints.is_empty(), "no file, no hint: {hints:?}");
+
+        layer.path = Some(std::path::PathBuf::from("/r/config.toml"));
+        let mut from_file = jj_lib::config::StackedConfig::empty();
+        from_file.add_layer(layer);
+        let err = revset_config(&from_file, &mut Warnings::default())
+            .err()
+            .expect("no table");
+        let ConfigError::Load { reason, hints } = &err;
+        assert_eq!(
+            reason,
+            "/r/config.toml: revset-aliases: Expected a table, but is integer"
+        );
+        assert_eq!(hints, &["Check the config file: /r/config.toml"]);
+        assert_eq!(
+            super::RevsetError::Config(err).hints(),
+            ["Check the config file: /r/config.toml"]
         );
     }
 

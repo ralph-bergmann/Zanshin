@@ -258,7 +258,7 @@ fn read_gc_delete_request(data: *const u8, len: usize) -> Result<Vec<PathBuf>, F
 pub(crate) fn map_config_cmd_err(e: ConfigCmdError) -> FfiErrorObj {
     let hints = e.hints();
     let (code, context) = match e {
-        ConfigCmdError::Config { reason } => (JJ_CONFIG_ERROR, reason),
+        ConfigCmdError::Config { reason, .. } => (JJ_CONFIG_ERROR, reason),
         ConfigCmdError::PathNotFound { path } => (JJ_PATH_NOT_FOUND, path.to_string_lossy().into_owned()),
         ConfigCmdError::NotARepo { path } => (JJ_REPO_NOT_FOUND, path.to_string_lossy().into_owned()),
         ConfigCmdError::NotFound { reason } => (JJ_CONFIG_NOT_FOUND, reason),
@@ -793,7 +793,14 @@ mod tests {
     #[test]
     fn every_error_arm_maps_to_its_code_and_context() {
         for (err, code, context) in [
-            (E::Config { reason: "r".into() }, "jj.config_error", "r"),
+            (
+                E::Config {
+                    reason: "r".into(),
+                    hints: Vec::new(),
+                },
+                "jj.config_error",
+                "r",
+            ),
             (E::PathNotFound { path: "/p".into() }, "jj.path_not_found", "/p"),
             (E::NotARepo { path: "/p".into() }, "jj.repo_not_found", "/p"),
             (E::NotFound { reason: "n".into() }, "jj.config_not_found", "n"),
@@ -833,6 +840,11 @@ mod tests {
             let obj = map_config_cmd_err(err);
             assert_eq!((obj.code.as_str(), obj.context.as_deref()), (code, Some(context)));
         }
+        let hinted = map_config_cmd_err(E::Config {
+            reason: "r".into(),
+            hints: vec!["Check the config file: /r/config.toml".into()],
+        });
+        assert_eq!(hinted.hints, ["Check the config file: /r/config.toml"]);
     }
 
     /// Exactly one of `scope` and `path` — the CLI's `--user|--repo|--workspace|--file` group.

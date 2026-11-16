@@ -61,7 +61,7 @@ use jj_lib::str_util::{StringExpression, StringMatcher};
 use jj_lib::transaction::Transaction;
 use jj_lib::view::View;
 
-use crate::mutate::{be, cfg, rev, MutateError};
+use crate::mutate::{be, cfg, cfg_text, rev, MutateError};
 use crate::revset::RevsetConfig;
 use crate::snapshot::VerbContext;
 use crate::template::{TemplateStartup, Templates};
@@ -591,8 +591,8 @@ impl<'r, 't> CommitsValidator<'r, 't> {
         // The CLI resolves with a bare `.resolve()?` here, no config-error wrapping, through
         // `attach_revset_evaluator`'s id-prefix context (`cli/src/commands/git/push.rs:803-811` @
         // v0.46.0), as `git.private-commits` below.
-        let immutable_heads =
-            crate::revset::resolve_expression(base, planner.immutable_heads, Some(&planner.prefixes)).map_err(cfg)?;
+        let immutable_heads = crate::revset::resolve_expression(base, planner.immutable_heads, Some(&planner.prefixes))
+            .map_err(cfg_text)?;
         let private_commits = if planner.args.allow_private {
             None
         } else {

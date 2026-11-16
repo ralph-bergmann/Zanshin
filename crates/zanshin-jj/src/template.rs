@@ -56,7 +56,7 @@ use jj_lib::trailer::{parse_description_trailers, parse_trailers, Trailer};
 use jj_lib::ui_path::RepoPathUiConverter;
 use jj_lib::workspace::Workspace;
 
-use crate::mutate::{be, cfg, MutateError};
+use crate::mutate::{be, cfg, cfg_text, MutateError};
 use crate::op_support::{apply_trailers, cleanup_description_lines, complete_newline};
 use crate::revset::RevsetConfig;
 use crate::warning::{self, Load, WarningKind, Warnings};
@@ -486,7 +486,7 @@ fn rendered_trailers(renderer: &TemplateRenderer<'_, Commit>, commit: &Commit) -
         reason: "Trailers should be valid utf-8".to_owned(),
         hints: Vec::new(),
     })?;
-    parse_trailers(&lines).map_err(cfg)
+    parse_trailers(&lines).map_err(cfg_text)
 }
 
 /// One `--change` bookmark name (`push.rs:1328-1335`).

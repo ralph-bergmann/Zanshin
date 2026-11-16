@@ -33,7 +33,7 @@ fn map_file_err(e: FileError) -> FfiErrorObj {
         FileError::PathNotFound { path } => (JJ_PATH_NOT_FOUND, path, Vec::new()),
         FileError::NotAFile { path } => (JJ_NOT_A_FILE, path, Vec::new()),
         FileError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason, Vec::new()),
-        FileError::Config { reason } => (JJ_CONFIG_ERROR, reason, Vec::new()),
+        FileError::Config { reason, hints } => (JJ_CONFIG_ERROR, reason, hints),
         FileError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason, Vec::new()),
     };
     FfiErrorObj {
@@ -611,6 +611,7 @@ mod tests {
             (
                 map_file_err(FileError::Config {
                     reason: "bad marker style".to_owned(),
+                    hints: Vec::new(),
                 }),
                 JJ_CONFIG_ERROR,
                 "bad marker style",
@@ -633,6 +634,12 @@ mod tests {
         assert_eq!(obj.code, JJ_REVSET_RESOLUTION_ERROR);
         assert_eq!(obj.context.as_deref(), Some("Change ID `zk` is divergent"));
         assert_eq!(obj.hints, ["h"]);
+        let obj = map_file_err(FileError::Config {
+            reason: "bad marker style".to_owned(),
+            hints: vec!["Check the config file: /r/config.toml".to_owned()],
+        });
+        assert_eq!(obj.code, JJ_CONFIG_ERROR);
+        assert_eq!(obj.hints, ["Check the config file: /r/config.toml"]);
     }
 
     #[test]

@@ -117,7 +117,7 @@ pub(crate) fn remote_changes(
         &mut Vec::new(),
     )?;
     let (bookmark_matcher, tag_matcher) = (filters.bookmark.to_matcher(), filters.tag.to_matcher());
-    let options = crate::environment::git_subprocess_options(settings, cancel).map_err(mutate::cfg)?;
+    let options = crate::environment::git_subprocess_options(settings, cancel).map_err(mutate::cfg_text)?;
     crate::cancel::watch_store(cancel, store);
     crate::cancel::checkpoint(cancel)?;
     let stdout = ls_remote(backend.git_repo_path(), &options, remote_name).map_err(|e| {
