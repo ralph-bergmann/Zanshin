@@ -148,10 +148,45 @@ void main() {
     );
     expect(await search.files(), contains('a.txt'));
     expect((await search.bookmarks()).map((b) => b.name), contains('feat'));
+    expect(await search.tags(), isEmpty, reason: 'the repository has no tag');
     final BackendGraphLayout layout = await layoutOf(await request());
     final RevsetCounts counts = await search.revsetCounts(layout.operationId!, <String>['all()'], cap: 100);
     expect(counts.single.n, layout.shownCount, reason: 'the shown all() at its operation');
     expect(await search.userEmail(), 'me@example.com');
+  });
+
+  test('Story 10.47: the search source reads untracked remote bookmarks (--all-remotes)', () async {
+    // A Git repository with `main@origin` (an untracked remote bookmark), converted: the fixture repo has no remote.
+    final Directory temp = Directory.systemTemp.createTempSync('zanshin_search_remotes_');
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final String git = temp.resolveSymbolicLinksSync();
+    Future<void> run(List<String> args) async {
+      final ProcessResult result = await Process.run('git', <String>['-C', git, ...args]);
+      if (result.exitCode != 0) {
+        fail('git ${args.join(' ')} failed: ${result.stderr}');
+      }
+    }
+
+    await run(<String>['init', '-b', 'main']);
+    await run(<String>['config', 'user.email', 'test@test.invalid']);
+    await run(<String>['config', 'user.name', 'Test']);
+    File('$git/README.md').writeAsStringSync('hello');
+    await run(<String>['add', '.']);
+    await run(<String>['commit', '-m', 'init', '--no-gpg-sign']);
+    await run(<String>['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    final ProjectCreation creation = await WorkerProjectRepos(worker).convert(git);
+    final ProjectRepo converted = creation.repo;
+    addTearDown(converted.close);
+
+    final search = RepoGraphSearchSource(
+      converted,
+      userEmail: () async => null,
+      content: (_, _) async => const <String, GraphCommitContent>{},
+    );
+    final Bookmark row = (await search.bookmarks()).singleWhere(
+      (b) => b.kind is RemoteBookmark && (b.kind as RemoteBookmark).remoteName == 'origin',
+    );
+    expect((row.name, (row.kind as RemoteBookmark).tracked), ('main', false));
   });
 
   test("a CRLF description's subject drops the \\r, as jj's first_line() does", () {

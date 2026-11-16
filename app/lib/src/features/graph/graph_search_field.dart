@@ -16,7 +16,7 @@ import '../../l10n/strings.dart';
 import '../shell/calm_controller.dart';
 import '../shell/shell_scope.dart';
 import 'graph_card.dart' show graphAuthorShort, graphRelativeDate;
-import 'graph_ports.dart' show jjLogCommand;
+import 'graph_ports.dart' show GraphAction, GraphNew, jjLogCommand;
 import 'graph_search_controller.dart';
 import 'graph_search_index.dart';
 import 'graph_search_model.dart';
@@ -53,7 +53,7 @@ const _builtinLog = 'builtin_log()'; // l10n-ignore: jj revset
 enum _Popup { none, menu, suggestions }
 
 /// What a menu row is (item 3): a jj log variant, a scope, or Edit Configurations….
-enum _MenuKind { variant, change, bookmark, author, file, description, edit }
+enum _MenuKind { variant, change, bookmark, tag, author, file, description, edit }
 
 /// A menu row; a variant row names its variant (`log`, `all` or a configuration id, Story 10.22).
 @immutable
@@ -65,6 +65,7 @@ class _MenuRow {
   static const scopes = <_MenuRow>[
     _MenuRow(_MenuKind.change),
     _MenuRow(_MenuKind.bookmark),
+    _MenuRow(_MenuKind.tag),
     _MenuRow(_MenuKind.author),
     _MenuRow(_MenuKind.file),
     _MenuRow(_MenuKind.description),
@@ -138,6 +139,11 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
   var _hovered = false;
   var _pillHovered = false;
   var _pillPressed = false;
+
+  // The suggestion row under the pointer, or −1; it shows a ref row's buttons until the keyboard row moves (Story
+  // 10.47). [_seenActive] tells a move of the keyboard row from a refresh that keeps it.
+  var _hoverRow = -1;
+  var _seenActive = -1;
 
   // What the open list shows: menu rows, or suggestion rows (with the Recent entries they stand for).
   var _menu = const <_MenuRow>[];
@@ -278,6 +284,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       return;
     }
     _popup = _Popup.none;
+    _hoverRow = -1;
     _hold?.release();
     _hold = null;
     _list.detach();
@@ -329,6 +336,10 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         start = _rows.indexWhere((r) => r is! GraphRefusalRow);
         _wantCounts(-1);
     }
+    // A row that unmounts under a still pointer sends no exit: a new list drops the hover claim.
+    if (reset || _popup != _Popup.suggestions || _hoverRow >= count) {
+      _hoverRow = -1;
+    }
     if (_popup != _Popup.none) {
       _list.attach(
         count: count,
@@ -353,11 +364,13 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     setState(() {});
   }
 
-  /// A Recent row; a bookmark go-to goes where the bookmark points now, else to the change it was recorded on.
+  /// A Recent row; a bookmark or tag go-to goes where the ref points now, else (the ref is gone) to the change it was
+  /// recorded on.
   static GraphSearchRow _recentRow(GraphSearchIndex index, GraphRecent recent) => switch (recent) {
-    GraphRecentGoTo(:final String changeId, :final String bookmark) => () {
-      final String key = index.bookmarks.where((b) => b.name == bookmark).firstOrNull?.key ?? changeId;
-      return GraphBookmarkRow(bookmark, key, change: index.change(key), score: 0);
+    GraphRecentGoTo(:final String changeId, :final String bookmark, :final bool tag) => () {
+      final GraphSearchRef? ref = (tag ? index.tags : index.bookmarks).where((r) => r.display == bookmark).firstOrNull;
+      final String key = ref?.key ?? changeId;
+      return GraphBookmarkRow(bookmark, key, ref: ref, tag: tag, change: index.change(key), score: 0);
     }(),
     GraphRecentGoTo(:final String changeId) => GraphChangeRow(
       index.change(changeId) ?? GraphSearchChange(key: changeId, commitId: '', prefixLength: 2, inView: false),
@@ -384,6 +397,10 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
 
   void _activeChanged() {
     final int active = _list.active;
+    if (active != _seenActive) {
+      _seenActive = active;
+      _hoverRow = -1;
+    }
     if (_popup == _Popup.suggestions && active >= 0 && active < _rows.length) {
       if (_rows[active] case GraphFilterRow(:final filter) when filter.scope == GraphSearchScope.file) {
         _search.wantCounts(<String>[filter.revset]);
@@ -494,6 +511,8 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         _pickScope(GraphSearchScope.change);
       case _MenuKind.bookmark:
         _pickScope(GraphSearchScope.bookmark);
+      case _MenuKind.tag:
+        _pickScope(GraphSearchScope.tag);
       case _MenuKind.author:
         _pickScope(GraphSearchScope.author);
       case _MenuKind.file:
@@ -524,8 +543,8 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         _refresh(reset: true);
       case GraphChangeRow(:final GraphSearchChange change):
         _goTo(change.key, commitId: change.commitId);
-      case GraphBookmarkRow(:final String name, :final String key, :final GraphSearchChange? change):
-        _goTo(key, bookmark: name, commitId: change?.commitId);
+      case GraphBookmarkRow(:final String name, :final String key, :final bool tag, :final GraphSearchChange? change):
+        _goTo(key, bookmark: name, tag: tag, commitId: change?.commitId);
       case GraphFilterRow(:final GraphFilter filter):
         _search.apply(filter);
         _scope = filter.scope;
@@ -536,11 +555,41 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     }
   }
 
-  void _goTo(String key, {String? bookmark, String? commitId}) {
-    _search.goTo(key, bookmark: bookmark, commitId: commitId);
+  void _goTo(String key, {String? bookmark, bool tag = false, String? commitId}) {
+    _search.goTo(key, bookmark: bookmark, tag: tag, commitId: commitId);
     _close();
     _revert();
     _focus.unfocus();
+  }
+
+  /// Runs a ref row's [action] (Story 10.47) and leaves the field as a pick does; the runner's card, toast and
+  /// selection follow do the rest.
+  void _run(GraphAction action) {
+    unawaited(_model.run(action));
+    _close();
+    _revert();
+    _focus.unfocus();
+  }
+
+  /// The keyboard row's "New change here", or null.
+  GraphNew? get _activeNewAction {
+    final int active = _list.active;
+    if (_popup != _Popup.suggestions || active < 0 || active >= _rows.length) {
+      return null;
+    }
+    return switch (_rows[active]) {
+      final GraphBookmarkRow row => row.newAction,
+      _ => null,
+    };
+  }
+
+  /// The row showing a ref row's buttons: the hovered one, else the keyboard row.
+  int get _buttonRow => _hoverRow >= 0 ? _hoverRow : _list.active;
+
+  void _hoverAt(int i) {
+    if (_hoverRow != i) {
+      setState(() => _hoverRow = i);
+    }
   }
 
   void _clear() {
@@ -597,6 +646,13 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
     if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
       if (event is! KeyDownEvent) {
         // A held Enter runs its row once.
+        return KeyEventResult.handled;
+      }
+      if (HardwareKeyboard.instance.isMetaPressed) {
+        // ⌘↩: the keyboard row's "New change here" (Story 10.47); on any other row, or while busy, nothing.
+        if (_activeNewAction case final GraphNew action when _model.actionsEnabled) {
+          _run(action);
+        }
         return KeyEventResult.handled;
       }
       if (_popup != _Popup.none) {
@@ -966,6 +1022,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         _MenuKind.variant => null,
         _MenuKind.change => _scopeIcon(GraphSearchScope.change),
         _MenuKind.bookmark => _scopeIcon(GraphSearchScope.bookmark),
+        _MenuKind.tag => _scopeIcon(GraphSearchScope.tag),
         _MenuKind.author => _scopeIcon(GraphSearchScope.author),
         _MenuKind.file => _scopeIcon(GraphSearchScope.file),
         _MenuKind.description => _scopeIcon(GraphSearchScope.description),
@@ -975,6 +1032,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         _MenuKind.variant => variantRow(r.variant!, shown: shown),
         _MenuKind.change => _scopeRow(colors, s, GraphSearchScope.change, s.graphSearchChangeDetail),
         _MenuKind.bookmark => _scopeRow(colors, s, GraphSearchScope.bookmark, s.graphSearchBookmarkDetail),
+        _MenuKind.tag => _scopeRow(colors, s, GraphSearchScope.tag, s.graphSearchTagDetail),
         _MenuKind.author => _scopeRow(colors, s, GraphSearchScope.author, 'author()'), // l10n-ignore: jj revset
         _MenuKind.file => _scopeRow(colors, s, GraphSearchScope.file, 'files()'), // l10n-ignore: jj revset
         _MenuKind.description => _scopeRow(
@@ -1246,13 +1304,29 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       case GraphBookmarkRow(
         :final String name,
         :final String key,
+        :final GraphSearchRef? ref,
+        :final bool tag,
         :final GraphSearchChange? change,
         :final (int, int)? match,
       ):
-        icon = ZI.bookmark;
-        main = graphSearchHighlight(colors, name, match, base.copyWith(color: colors.text));
+        icon = tag ? ZI.tag : ZI.bookmark;
+        final Widget label = graphSearchHighlight(colors, name, match, base.copyWith(color: colors.text));
+        main = ref != null && !ref.tracked
+            ? Row(
+                spacing: 9,
+                children: <Widget>[
+                  Flexible(child: label),
+                  _Tag(s.graphSearchUntracked),
+                ],
+              )
+            : label;
         if (change == null || !change.inView) {
           metaParts.add(_Tag(s.graphSearchNotInView));
+        }
+        if (i == _buttonRow) {
+          if (_refButtons(s, row, i) case final Widget buttons) {
+            metaParts.add(buttons);
+          }
         }
         metaParts.add(_changeId(colors, key, change?.prefixLength ?? 2, small: true));
       case GraphFilterRow(
@@ -1352,7 +1426,65 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       identifier: 'graph-search-row-$i',
       child: content,
     );
-    return dim ? Opacity(opacity: .5, child: built) : built;
+    // The field tracks the hovered row itself: the row's hover never moves the keyboard row.
+    return MouseRegion(
+      onEnter: (_) => _hoverAt(i),
+      onHover: (_) => _hoverAt(i),
+      onExit: (_) {
+        if (_hoverRow == i) {
+          setState(() => _hoverRow = -1);
+        }
+      },
+      child: dim ? Opacity(opacity: .5, child: built) : built,
+    );
+  }
+
+  /// A ref row's buttons (Story 10.47): Track on an untracked remote ref, then New change here; each tooltip carries
+  /// its command, and while an action runs both are disabled with the reason. Null without either.
+  Widget? _refButtons(AppLocalizations s, GraphBookmarkRow row, int i) {
+    final GraphAction? track = row.trackAction;
+    final GraphNew? add = row.newAction;
+    if (track == null && add == null) {
+      return null;
+    }
+    final String? reason = _model.actionsEnabled ? null : s.bookmarksBusy;
+    // A click on a disabled button must not reach the row's pick.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      excludeFromSemantics: true,
+      onTap: () {},
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 2,
+        children: <Widget>[
+          if (track != null)
+            ZsTooltip(
+              message: reason ?? s.bookmarksTrack,
+              cmd: track.command,
+              child: ZsButton(
+                label: s.bookmarksTrack,
+                onPressed: reason == null ? () => _run(track) : null,
+                disabledReason: reason,
+                identifier: 'graph-search-track-$i',
+              ),
+            ),
+          if (add != null)
+            ZsTooltip(
+              message: reason ?? s.refsNewHere,
+              cmd: add.command,
+              child: ZsIconButton(
+                icon: ZI.plus,
+                label: s.refsNewHere,
+                size: ZsIconButtonSize.sm,
+                tooltip: false,
+                onPressed: reason == null ? () => _run(add) : null,
+                disabledReason: reason,
+                identifier: 'graph-search-new-$i',
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _footer(BuildContext context, GraphSearchRow row) {
@@ -1379,6 +1511,9 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
       case GraphRefusalRow(:final String message):
         lead = _plain(message, text);
     }
+    final TextStyle keyStyle = _weight(text, 500).copyWith(color: colors.textMuted);
+    // A ref row's second key: ⌘↩ runs New change here (Story 10.47).
+    final bool alt = row is GraphBookmarkRow && row.newAction != null && _model.actionsEnabled;
     return _FooterBox(
       child: Row(
         spacing: 16,
@@ -1389,8 +1524,17 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
               mainAxisSize: MainAxisSize.min,
               spacing: 7,
               children: <Widget>[
-                Text(key, style: _weight(text, 500).copyWith(color: colors.textMuted)),
+                Text(key, style: keyStyle),
                 const ZsKbd('↵'), // l10n-ignore: a key glyph
+              ],
+            ),
+          if (alt)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 7,
+              children: <Widget>[
+                Text(s.refsNewHere, style: keyStyle),
+                const ZsKbd('⌘↵'), // l10n-ignore: a key glyph
               ],
             ),
         ],
@@ -1484,6 +1628,7 @@ class _GraphSearchFieldState extends State<GraphSearchField> {
         _MenuKind.variant => _variantName(s, row.variant!),
         _MenuKind.change => s.graphSearchScope(GraphSearchScope.change.name),
         _MenuKind.bookmark => s.graphSearchScope(GraphSearchScope.bookmark.name),
+        _MenuKind.tag => s.graphSearchScope(GraphSearchScope.tag.name),
         _MenuKind.author => s.graphSearchScope(GraphSearchScope.author.name),
         _MenuKind.file => s.graphSearchScope(GraphSearchScope.file.name),
         _MenuKind.description => s.graphSearchScope(GraphSearchScope.description.name),
@@ -1510,6 +1655,7 @@ String _scopeIcon(GraphSearchScope scope) => switch (scope) {
   GraphSearchScope.any => ZI.search,
   GraphSearchScope.change => ZI.change,
   GraphSearchScope.bookmark => ZI.bookmark,
+  GraphSearchScope.tag => ZI.tag,
   GraphSearchScope.author => ZI.user,
   GraphSearchScope.file => ZI.file,
   GraphSearchScope.description => ZI.description,

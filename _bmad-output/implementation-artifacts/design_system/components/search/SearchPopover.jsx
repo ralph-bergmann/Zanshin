@@ -2,9 +2,10 @@ import React from "react";
 import { Icon } from "../brand/Icon.jsx";
 
 // SearchPopover — the suggestions under the graph search, in menu material. Empty field: recent searches (go-tos and filters, with
-// their change counts). While typing: matches grouped by kind (Changes, Bookmarks, Authors, Files, Descriptions).
+// their change counts). While typing: matches grouped by kind (Changes, Bookmarks, Tags, Authors, Files, Descriptions).
 // footer states what Enter does for the KEYBOARD row: { text, verb } — the full `jj log -r '…'` command with "Filter", or
-// "Selects the change — the graph stays as it is" with "Select".
+// "Selects the change — the graph stays as it is" with "Select". alt = a second key on a bookmark or tag row:
+// { verb: "New change here", key: "⌘↵" }.
 // A field-attached list: focus stays in the search field (aria-activedescendant names the keyboard row); the popover never takes it.
 export function SearchPopover({ note, empty, footer, children, listRef, listId = "zs-gs-pop", className = "", style, ...rest }) {
   return (
@@ -18,6 +19,7 @@ export function SearchPopover({ note, empty, footer, children, listRef, listId =
         <div className="zs-gs-ft">
           <span className="zs-gs-ft-t" title={typeof footer.text === "string" ? footer.text : undefined}>{footer.text}</span>
           <span className="zs-gs-ft-k">{footer.verb || "Select"}<kbd className="zs-gs-kbd">↵</kbd></span>
+          {footer.alt && <span className="zs-gs-ft-k">{footer.alt.verb}<kbd className="zs-gs-kbd">{footer.alt.key}</kbd></span>}
         </div>
       )}
     </div>
@@ -35,6 +37,9 @@ export function SearchGroup({ label, note, action, onAction }) {
 // active = the keyboard row (--accent-soft, icon in accent; give it an id for the field's aria-activedescendant). Hover is --fl-hover
 // and does NOT move the keyboard row — ↩ and the footer stay with the keyboard row, a click runs the clicked one.
 // mono = a path (folder part dimmed via SearchMatch split); dim = "(no description set)"; more = "3 more in Files" row with a chevron.
+// A bookmark or tag row puts its actions in meta, before the change id, on the ACTIVE row only — the hovered row while the pointer
+// is over a row, else the keyboard row (a keyboard move ends the hover's claim): Track (an untracked remote ref) as a Button, New
+// change here as a sm IconButton "plus"; each title carries its command (`jj bookmark track main@origin`, `jj new main@origin`).
 export function SearchRow({ icon, label, quote, before, after, sub, mono = false, dim = false, meta, active, highlighted = false, more = false, onClick, onMouseMove, className = "", ...rest }) {
   const on = active != null ? active : highlighted;
   return (

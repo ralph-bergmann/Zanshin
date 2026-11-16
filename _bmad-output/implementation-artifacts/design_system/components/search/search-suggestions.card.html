@@ -1,10 +1,10 @@
-<!-- @dsCard group="Components" viewport="700x670" name="Search suggestions" subtitle="SearchPopover — grouped matches in Any, one scope (Author), the footer says what Enter does" -->
+<!-- @dsCard group="Components" viewport="700x900" name="Search suggestions" subtitle="SearchPopover — grouped matches in Any, one scope (Author), a ref row's actions; the footer says what Enter does" -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="../../styles.css"/>
-<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.col{display:flex;flex-direction:column;gap:12px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}.lbl code{font:11px var(--font-mono);text-transform:none;letter-spacing:0;color:var(--text-muted)}</style>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.col{display:flex;flex-direction:column;gap:12px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}.lbl code{font:11px var(--font-mono);text-transform:none;letter-spacing:0;color:var(--text-muted)}.acts{display:flex;align-items:center;gap:2px}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -14,7 +14,7 @@
 <script src="../../_ds_bundle.js"></script>
 <script type="text/babel">
 (() => {
-  const { SearchPopover, SearchGroup, SearchRow, SearchMatch, SearchTag, SearchAvatar, ChangeId } = window.ZanshinDesignSystem_a33847;
+  const { SearchPopover, SearchGroup, SearchRow, SearchMatch, SearchTag, SearchAvatar, ChangeId, Button, IconButton } = window.ZanshinDesignSystem_a33847;
   const q = "set";
   const anyRows = [
     { g: "Files" },
@@ -34,16 +34,37 @@
     { k: "a2", icon: <SearchAvatar name="Charlie Davis"/>, label: <SearchMatch text="Charlie Davis" match="li"/>, meta: "5 changes", cmd: "jj log -r 'author(exact:\"Charlie Davis\")'" },
     { k: "a3", icon: "user", label: "Authors containing", quote: "li", meta: "7 changes", cmd: "jj log -r 'author(substring-i:\"li\")'" },
   ];
+  // A ref row (name, at): Track on an untracked remote ref, New change here, on the active row only; the footer adds ⌘↵.
+  const selects = "Selects the change — the graph stays as it is";
+  const refRows = [
+    { k: "r1", icon: "bookmark", name: "release/1.4.x@origin", untracked: true, at: "kpqrstvw", go: selects },
+    { k: "r2", icon: "bookmark", name: "release/1.3.x", at: "zxmnoplk", go: selects },
+  ];
+  function refMeta(r, on) {
+    return (
+      <>
+        {on && <span className="acts">
+          {r.untracked && <Button title={"jj bookmark track " + r.name}>Track</Button>}
+          <IconButton size="sm" icon="plus" label="New change here" title={"New change here — jj new " + r.name}/>
+        </span>}
+        <ChangeId id={r.at} length={8}/>
+      </>
+    );
+  }
   function List({ rows, start = 0 }) {
     const nav = rows.filter((r) => !r.g);
     const [hi, setHi] = React.useState(start);
     const cur = nav[hi];
     const footer = cur.more ? { text: "Narrows the search to " + cur.label.split(" in ")[1].toLowerCase(), verb: "Show" }
-      : cur.go ? { text: cur.go, verb: /Not in this view/.test(cur.go) ? "Show" : "Select" } : { text: <code>{cur.cmd}</code>, verb: "Filter" };
+      : cur.go ? { text: cur.go, verb: /Not in this view/.test(cur.go) ? "Show" : "Select", alt: cur.at ? { verb: "New change here", key: "⌘↵" } : undefined }
+      : { text: <code>{cur.cmd}</code>, verb: "Filter" };
     return (
       <SearchPopover footer={footer}>
         {rows.map((r) => r.g ? <SearchGroup key={r.g} label={r.g}/> : (
-          <SearchRow key={r.k} icon={r.icon} before={r.before} label={r.label} quote={r.quote} mono={r.mono} meta={r.meta} more={r.more}
+          <SearchRow key={r.k} icon={r.icon} before={r.before} quote={r.quote} mono={r.mono} more={r.more}
+            label={r.name ? <SearchMatch text={r.name} match="rel"/> : r.label}
+            after={r.untracked ? <SearchTag>untracked</SearchTag> : undefined}
+            meta={r.at ? refMeta(r, nav[hi] === r) : r.meta}
             active={nav[hi] === r}/>
         ))}
       </SearchPopover>
@@ -55,6 +76,8 @@
       <List rows={anyRows}/>
       <div className="lbl">Author · typing <code>li</code></div>
       <List rows={authorRows}/>
+      <div className="lbl">Bookmark · typing <code>rel</code> — an untracked remote ref, its actions on the active row</div>
+      <List rows={refRows}/>
     </div>
   );
   ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);

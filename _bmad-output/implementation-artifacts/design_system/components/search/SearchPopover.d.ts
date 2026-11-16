@@ -6,8 +6,9 @@ export interface SearchPopoverProps extends React.HTMLAttributes<HTMLDivElement>
   note?: React.ReactNode;
   /** shown when nothing matches, e.g. 'Nothing matches “xyz” — in any scope.' */
   empty?: React.ReactNode;
-  /** what Enter does for the keyboard row: the command (Filter) or the go-to sentence (Select / Show) */
-  footer?: { text: React.ReactNode; verb?: string };
+  /** what Enter does for the keyboard row: the command (Filter) or the go-to sentence (Select / Show); alt = a second key on a
+   * bookmark or tag row, e.g. { verb: "New change here", key: "⌘↵" } */
+  footer?: { text: React.ReactNode; verb?: string; alt?: { verb: string; key: string } };
   listRef?: React.Ref<HTMLDivElement>;
   /** id of the listbox (the field's aria-controls); rows are listId-<index> by convention */
   listId?: string;
@@ -20,7 +21,7 @@ export declare function SearchGroup(props: { label: React.ReactNode; note?: Reac
 
 /** One 34px suggestion row. States: rest · hover (--fl-hover) · pressed (--fl-on) · keyboard row (active: --accent-soft, icon in accent). */
 export interface SearchRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick" | "onMouseMove"> {
-  /** Icon name (change, bookmark, user, file, folder, description, search) or a node (SearchAvatar) */
+  /** Icon name (change, bookmark, tag, user, file, folder, description, search) or a node (SearchAvatar) */
   icon?: string | React.ReactNode;
   /** main text (or a SearchMatch) */
   label?: React.ReactNode;
@@ -36,7 +37,8 @@ export interface SearchRowProps extends Omit<React.HTMLAttributes<HTMLDivElement
   mono?: boolean;
   /** "(no description set)" */
   dim?: boolean;
-  /** right column: counts (tabular), author · date, "not in view" */
+  /** right column: counts (tabular), author · date, "not in view"; on a bookmark or tag row the actions before the change id
+   * (Track on an untracked remote ref, New change here) — on the active row only: the hovered row, else the keyboard row */
   meta?: React.ReactNode;
   /** the keyboard row: --accent-soft, icon in accent (give it an id for the field's aria-activedescendant). Hover is --fl-hover and does not move it. */
   active?: boolean;

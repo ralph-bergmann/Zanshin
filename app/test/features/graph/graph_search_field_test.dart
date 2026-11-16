@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +23,7 @@ import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../helpers/fake_bookmark_list.dart' show RecordingGraphActions;
 import '../../helpers/fake_graph_search_source.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/scripted_graph_source.dart';
@@ -59,8 +61,11 @@ class _Rig {
     source.respond = respond;
     store = MemoryGraphSearchStore(view: view, recent: recent);
     search = GraphSearchController(model: model, source: searchSource, store: store, settings: settings);
-    model.init(source, clock: () => DateTime.utc(2026, 10, 31), revset: search.revset);
+    model.init(source, actions: actions, clock: () => DateTime.utc(2026, 10, 31), revset: search.revset);
   }
+
+  /// The runner's actions; [_GatedActions.gate] holds one running (Story 10.47).
+  final actions = _GatedActions();
 
   /// The jj log configurations (Story 10.22), or none.
   final ValueNotifier<AppSettings>? settings;
@@ -104,6 +109,17 @@ class _Rig {
     shell.dispose();
     other.dispose();
     plain.dispose();
+  }
+}
+
+/// [RecordingGraphActions] whose runs wait on [gate] while it is set.
+class _GatedActions extends RecordingGraphActions {
+  Completer<void>? gate;
+
+  @override
+  Future<MutationResult> run(GraphAction action) async {
+    await gate?.future;
+    return super.run(action);
   }
 }
 
@@ -162,7 +178,7 @@ void main() {
     _testWidgets('the default search: empty, the placeholder and ⌘F, no ✕', (tester) async {
       await _start(tester);
       expect(_fieldText(tester), isEmpty);
-      expect(find.text('Search changes, bookmarks, authors, files…'), findsOneWidget);
+      expect(find.text('Search changes, bookmarks, tags, authors, files…'), findsOneWidget);
       expect(find.text('⌘F'), findsOneWidget);
       expect(
         find.byWidgetPredicate((w) => w is Semantics && w.properties.identifier == 'graph-search-clear'),
@@ -227,7 +243,7 @@ void main() {
         expect(w, input);
         expect(graphSearchInputWidth(width), input);
         expect(find.text('⌘F'), hint ? findsOneWidget : findsNothing);
-        expect(find.text(hint ? 'Search changes, bookmarks, authors, files…' : 'Search…'), findsOneWidget);
+        expect(find.text(hint ? 'Search changes, bookmarks, tags, authors, files…' : 'Search…'), findsOneWidget);
         await tester.enterText(_field(), 'a:');
         await tester.pump();
         expect(find.descendant(of: _pill(), matching: find.text('Author')), label ? findsOneWidget : findsNothing);
@@ -245,6 +261,7 @@ void main() {
         'graph-search-menu-all',
         'graph-search-menu-change',
         'graph-search-menu-bookmark',
+        'graph-search-menu-tag',
         'graph-search-menu-author',
         'graph-search-menu-file',
         'graph-search-menu-description',
@@ -309,6 +326,7 @@ void main() {
         'graph-search-menu-config-c3',
         'graph-search-menu-change',
         'graph-search-menu-bookmark',
+        'graph-search-menu-tag',
         'graph-search-menu-author',
         'graph-search-menu-file',
         'graph-search-menu-description',
@@ -773,6 +791,249 @@ void main() {
       expect(rig.search.focusField(), isTrue);
       await tester.pump();
       expect(find.byType(ZsFieldListRow), findsWidgets);
+    });
+  });
+
+  group('Story 10.47: tags and the actions of a ref row', () {
+    final features = <Bookmark>[
+      localBookmark('feature/auth-flow', 'k1'),
+      localBookmark('feature/search-tags', 'k2'),
+      localBookmark('feature/move-picker-v2', 'k3'),
+    ];
+
+    Finder id(String identifier) =>
+        find.byWidgetPredicate((w) => w is Semantics && w.properties.identifier == identifier);
+
+    /// The identifiers of the shown Track and New buttons.
+    List<String> buttons(WidgetTester tester) => <String>[
+      for (final Semantics s in tester.widgetList<Semantics>(
+        find.byWidgetPredicate(
+          (w) => w is Semantics && (w.properties.identifier?.startsWith(RegExp('graph-search-(track|new)-')) ?? false),
+        ),
+      ))
+        s.properties.identifier!,
+    ];
+
+    Future<void> metaEnter(WidgetTester tester) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+    }
+
+    _testWidgets('t:v1. lists the tags with their icon; Enter selects one and Recent keeps it as a tag', (
+      tester,
+    ) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.tagList = <Tag>[localTag('v1.4.2', 'k1'), localTag('v1.5.0-rc1', 'k2')];
+      await tester.tap(_field());
+      await tester.pump();
+      await _type(tester, 't:v1.');
+      expect(find.descendant(of: _pill(), matching: find.text('Tag')), findsOneWidget);
+      expect(_rows(tester).map((r) => r.icon), <String>[ZI.tag, ZI.tag]);
+      expect(find.text('v1.4.2'), findsOneWidget);
+      expect(find.text('v1.5.0-rc1'), findsOneWidget);
+      await _key(tester, LogicalKeyboardKey.enter);
+      expect(rig.model.selected, 'k1');
+      expect(rig.store.loadRecent().first, const GraphRecentGoTo('k1', bookmark: 'v1.4.2', tag: true));
+      expect(rig.search.recentFor(GraphSearchScope.tag), hasLength(1));
+      expect(rig.search.recentFor(GraphSearchScope.bookmark), isEmpty);
+    });
+
+    _testWidgets('Any: the Tags group shows two and "1 more in Tag", which narrows to Tag', (tester) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.tagList = <Tag>[localTag('v1.4.2', 'k1'), localTag('v1.5.0', 'k2'), localTag('v1.6.0', 'k3')];
+      await tester.tap(_field());
+      await tester.pump();
+      await _type(tester, 'v1');
+      expect(find.text('TAGS'), findsOneWidget);
+      await tester.tap(find.text('1 more in Tag'));
+      await tester.pump();
+      expect(find.descendant(of: _pill(), matching: find.text('Tag')), findsOneWidget);
+      expect(_rows(tester), hasLength(3));
+    });
+
+    _testWidgets('the menu lists Tag after Bookmark; picking it switches the scope', (tester) async {
+      await _start(tester);
+      await tester.tap(_pill());
+      await tester.pump();
+      expect(find.descendant(of: id('graph-search-menu-tag'), matching: find.text('t:')), findsOneWidget);
+      await tester.tap(id('graph-search-menu-tag'));
+      await tester.pump();
+      expect(find.descendant(of: _pill(), matching: find.text('Tag')), findsOneWidget);
+      expect(find.text('Tag name'), findsOneWidget, reason: "the scope's placeholder");
+    });
+
+    _testWidgets('the buttons show on the active row only: the hovered one, else the keyboard row', (tester) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.bookmarkList = features;
+      await tester.tap(_field());
+      await tester.pump();
+      await _type(tester, 'b:feat');
+      expect(_rows(tester).first.active, isTrue);
+      expect(buttons(tester), <String>['graph-search-new-0']);
+
+      final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(id('graph-search-row-2')));
+      await tester.pump();
+      expect(buttons(tester), <String>['graph-search-new-2']);
+      expect(_rows(tester).first.active, isTrue, reason: 'hover never moves the keyboard row');
+
+      await mouse.moveTo(Offset.zero);
+      await tester.pump();
+      expect(buttons(tester), <String>['graph-search-new-0'], reason: 'the pointer left: back to the keyboard row');
+
+      await mouse.moveTo(tester.getCenter(id('graph-search-row-2')));
+      await tester.pump();
+      await _key(tester, LogicalKeyboardKey.arrowDown);
+      expect(buttons(tester), <String>['graph-search-new-1'], reason: 'a keyboard move ends the hover claim');
+
+      await mouse.moveTo(tester.getCenter(id('graph-search-row-2')));
+      await tester.pump();
+      expect(buttons(tester), <String>['graph-search-new-2']);
+      await _type(tester, 'feature/a');
+      expect(_rows(tester), hasLength(1), reason: 'the hovered row is gone, the pointer stayed');
+      expect(buttons(tester), <String>['graph-search-new-0'], reason: 'a new list drops the hover claim');
+    });
+
+    _testWidgets('⌘↩ runs jj new on the keyboard ref row and closes; the footer shows both keys', (tester) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.bookmarkList = features;
+      await tester.tap(_field());
+      await tester.pump();
+      await _type(tester, 'b:feat');
+      expect(find.text('Select'), findsOneWidget);
+      expect(find.text('⌘↵'), findsOneWidget);
+      expect(find.descendant(of: find.byType(ZsMenuMaterial), matching: find.text('New change here')), findsOneWidget);
+      expect(_tooltip('New change here'), findsOneWidget);
+      expect(
+        tester.widget<ZsTooltip>(_tooltip('New change here')).cmd,
+        'jj new feature/auth-flow',
+        reason: "the button's tooltip carries the command",
+      );
+      await metaEnter(tester);
+      final action = rig.actions.ran.single as GraphNew;
+      expect(action.command, 'jj new feature/auth-flow');
+      expect(action.revsets, <String>['feature/auth-flow']);
+      expect(action.revsetTarget, 'k1');
+      expect(find.byType(ZsFieldListRow), findsNothing);
+      expect(tester.widget<TextField>(_field()).focusNode!.hasFocus, isFalse);
+      expect(rig.model.selected, isNull, reason: 'not a pick');
+    });
+
+    _testWidgets('⌘↩ on a row without New does nothing; plain ↩ still picks', (tester) async {
+      final _Rig rig = await _start(tester);
+      await tester.tap(_field());
+      await _type(tester, 'c: k2');
+      expect(find.text('⌘↵'), findsNothing);
+      await metaEnter(tester);
+      expect(rig.actions.ran, isEmpty);
+      expect(find.byType(ZsFieldListRow), findsWidgets, reason: 'the list stays open');
+      await _key(tester, LogicalKeyboardKey.enter);
+      expect(rig.model.selected, 'k2');
+    });
+
+    _testWidgets('an untracked remote ref: the "untracked" pill, Track and New; Track runs jj bookmark track', (
+      tester,
+    ) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.bookmarkList = <Bookmark>[
+        localBookmark('main', 'k1'),
+        remoteBookmark('main', 'git', 'k1'),
+        remoteBookmark('release/1.4.x', 'origin', 'k2', tracked: false),
+      ];
+      await tester.tap(_field());
+      await tester.pump();
+      await _type(tester, 'b:ma');
+      expect(find.text('main@git'), findsNothing, reason: "jj's Git mirror is no remote");
+      expect(buttons(tester), <String>['graph-search-new-0'], reason: 'a local ref has no Track');
+      await _type(tester, 'b:rel');
+      expect(find.text('untracked'), findsOneWidget);
+      expect(buttons(tester), <String>['graph-search-track-0', 'graph-search-new-0']);
+      expect(tester.widget<ZsTooltip>(_tooltip('Track')).cmd, 'jj bookmark track release/1.4.x@origin');
+      await tester.tap(id('graph-search-track-0'));
+      await tester.pump();
+      expect(rig.actions.ran.single.command, 'jj bookmark track release/1.4.x@origin');
+      expect(find.byType(ZsFieldListRow), findsNothing);
+    });
+
+    _testWidgets('an untracked remote tag: Track runs jj tag track; New runs jj new on name@remote', (tester) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.tagList = <Tag>[remoteTag('v1.5.0', 'origin', 'k2', tracked: false)];
+      await tester.tap(_field());
+      await tester.pump();
+      await _type(tester, 't:v1.5');
+      expect(tester.widget<ZsTooltip>(_tooltip('Track')).cmd, 'jj tag track v1.5.0@origin');
+      expect(tester.widget<ZsTooltip>(_tooltip('New change here')).cmd, 'jj new v1.5.0@origin');
+      await tester.tap(id('graph-search-track-0'));
+      await tester.pump();
+      expect(rig.actions.ran.single.command, 'jj tag track v1.5.0@origin');
+    });
+
+    _testWidgets('while an action runs the buttons are disabled with the reason and ⌘↩ runs nothing', (tester) async {
+      final _Rig rig = await _start(tester);
+      rig.searchSource.bookmarkList = features;
+      rig.actions.gate = Completer<void>();
+      unawaited(rig.model.run(const GraphNew(parents: <String>['k0'])));
+      await tester.pump();
+      expect(rig.model.actionsEnabled, isFalse);
+      await tester.tap(_field());
+      await tester.pump();
+      await _type(tester, 'b:feat');
+      final ZsIconButton add = tester.widget(
+        find.ancestor(of: id('graph-search-new-0'), matching: find.byType(ZsIconButton)),
+      );
+      expect(add.onPressed, isNull);
+      expect(add.disabledReason, 'Another action is running');
+      expect(
+        tester.widget<ZsTooltip>(find.byWidgetPredicate((w) => w is ZsTooltip && w.cmd == 'jj new feature/auth-flow')),
+        isA<ZsTooltip>().having((t) => t.message, 'message', 'Another action is running'),
+      );
+      expect(find.text('⌘↵'), findsNothing, reason: '⌘↩ runs nothing while busy: the footer offers no ⌘↵');
+      await metaEnter(tester);
+      expect(rig.actions.ran, isEmpty);
+      expect(find.byType(ZsFieldListRow), findsWidgets, reason: 'nothing ran: the list stays open');
+      final String? selected = rig.model.selected;
+      await tester.tap(id('graph-search-new-0'));
+      await tester.pump();
+      expect(rig.model.selected, selected, reason: "a click on the disabled button does not reach the row's pick");
+      expect(find.byType(ZsFieldListRow), findsWidgets);
+      expect(rig.actions.ran, isEmpty);
+      rig.actions.gate!.complete();
+      await tester.pump();
+    });
+
+    _testWidgets('a Recent tag go-to reopens as a tag: its icon, New, ↩ to where the tag is now, tag kept', (
+      tester,
+    ) async {
+      final _Rig rig = await _start(
+        tester,
+        recent: <GraphRecent>[const GraphRecentGoTo('k3', bookmark: 'v1.4.2', tag: true)],
+      );
+      rig.searchSource.tagList = <Tag>[localTag('v1.4.2', 'k1')];
+      await tester.tap(_field());
+      await tester.pump();
+      await tester.pump();
+      expect(_rows(tester).single.icon, ZI.tag);
+      expect(buttons(tester), <String>['graph-search-new-0']);
+      expect(tester.widget<ZsTooltip>(_tooltip('New change here')).cmd, 'jj new v1.4.2');
+      await _key(tester, LogicalKeyboardKey.enter);
+      expect(rig.model.selected, 'k1');
+      expect(rig.store.loadRecent().first, const GraphRecentGoTo('k1', bookmark: 'v1.4.2', tag: true));
+    });
+
+    _testWidgets('a Recent ref that is gone goes to its recorded change and shows no buttons', (tester) async {
+      final _Rig rig = await _start(tester, recent: <GraphRecent>[const GraphRecentGoTo('k3', bookmark: 'old-name')]);
+      await tester.tap(_field());
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('old-name'), findsOneWidget);
+      expect(buttons(tester), isEmpty);
+      expect(find.text('⌘↵'), findsNothing);
+      await _key(tester, LogicalKeyboardKey.enter);
+      expect(rig.model.selected, 'k3');
     });
   });
 

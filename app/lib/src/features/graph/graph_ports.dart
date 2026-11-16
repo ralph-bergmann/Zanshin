@@ -1342,7 +1342,7 @@ GraphCommitContent graphCommitContentOf(CommitContent content) {
 }
 
 /// What the graph search reads (Story 10.21). Only counts, finds and content are pinned to the shown layout's
-/// operation; `bookmarks()`, `files()` and `userEmail()` read the live repository. A failed call throws
+/// operation; `bookmarks()`, `tags()`, `files()` and `userEmail()` read the live repository. A failed call throws
 /// [ZanshinFfiException].
 abstract interface class GraphSearchSource {
   /// How many commits each of [expressions] denotes at [operationId], at most [cap] each (9.25).
@@ -1356,8 +1356,11 @@ abstract interface class GraphSearchSource {
     required String shortPrefixes,
   });
 
-  /// `jj bookmark list`: the local bookmarks and their tracked remotes.
+  /// `jj bookmark list --all-remotes`: every row, untracked remote ones included (Story 10.47: they offer Track).
   Future<List<Bookmark>> bookmarks();
+
+  /// `jj tag list --all-remotes` without the remote `git` (Story 10.47).
+  Future<List<Tag>> tags();
 
   /// The paths of @'s tree (`jj file list`), as the CLI's `jj log` path completion reads them.
   Future<List<String>> files();
@@ -1392,7 +1395,10 @@ class RepoGraphSearchSource implements GraphSearchSource {
   }) => _repo.handle.findChanges(operationId, expression, limit: limit, shortPrefixes: shortPrefixes);
 
   @override
-  Future<List<Bookmark>> bookmarks() => _repo.handle.bookmarks();
+  Future<List<Bookmark>> bookmarks() => _repo.handle.bookmarks(allRemotes: true);
+
+  @override
+  Future<List<Tag>> tags() => _repo.handle.tags();
 
   @override
   Future<List<String>> files() async => <String>[

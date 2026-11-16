@@ -6,10 +6,12 @@ import 'package:zanshin/src/features/graph/graph_search_controller.dart';
 import 'package:zanshin/src/features/graph/graph_search_model.dart';
 import 'package:zanshin/src/features/graph/graph_search_store.dart';
 import 'package:zanshin/src/features/graph/graph_view_model.dart';
+import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import '../../helpers/fake_graph_search_source.dart';
 import '../../helpers/scripted_graph_source.dart';
+import 'graph_harness.dart';
 
 void main() {
   test('goTo enters Recent by default; recent: false (a rail pick, Story 10.14) leaves it as it was', () async {
@@ -36,6 +38,47 @@ void main() {
     search.goTo('c', bookmark: 'dev');
     expect(search.recent, <GraphRecent>[const GraphRecentGoTo('c', bookmark: 'dev')]);
   });
+
+  test(
+    'Story 10.47: tags read once per operation with the bookmarks; Recent lists a tag go-to in Tag and Any only',
+    () async {
+      final source = ScriptedGraphSource(
+        respond: (_) => handLayout(
+          <(String, int, int)>[('a', 2, 0), ('b', 1, 0), ('c', 0, 0)],
+          edges: <(int, int)>[(0, 1), (1, 2)],
+          operationId: 'op1',
+        ),
+      );
+      final model = GraphViewModel();
+      final searchSource = FakeGraphSearchSource()
+        ..bookmarkList = <Bookmark>[localBookmark('main', 'b')]
+        ..tagList = <Tag>[localTag('v1.4.2', 'c')];
+      final search = GraphSearchController(model: model, source: searchSource, store: MemoryGraphSearchStore());
+      addTearDown(() {
+        search.dispose();
+        model.dispose();
+      });
+      model.init(source, revset: search.revset);
+      await pumpEventQueue();
+
+      await search.prepare();
+      await search.prepare();
+      expect(searchSource.tagReads, 1);
+      expect(searchSource.bookmarkReads, 1);
+      expect(search.index(GraphSearchScope.tag, 'v1').tags.single.display, 'v1.4.2');
+
+      search
+        ..goTo('b', bookmark: 'main')
+        ..goTo('c', bookmark: 'v1.4.2', tag: true)
+        ..goTo('a');
+      expect(search.recentFor(GraphSearchScope.tag), <GraphRecent>[
+        const GraphRecentGoTo('c', bookmark: 'v1.4.2', tag: true),
+      ]);
+      expect(search.recentFor(GraphSearchScope.bookmark), <GraphRecent>[const GraphRecentGoTo('b', bookmark: 'main')]);
+      expect(search.recentFor(GraphSearchScope.change), <GraphRecent>[const GraphRecentGoTo('a')]);
+      expect(search.recentFor(GraphSearchScope.any), hasLength(3));
+    },
+  );
 
   test('Story 10.19: a gap\'s Show in all() reads `\$ all()` and ✕ returns to the default search; a failed show '
       'changes nothing; an active filter is replaced and stays in Recent', () async {

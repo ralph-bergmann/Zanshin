@@ -10,8 +10,9 @@ import 'fake_content.dart';
 
 /// The catalogue's [GraphSearchSource] (Story 10.21) over the `all()` recording [all]: counts are a deterministic
 /// sample of each expression (every fifth one zero, a `files()` count capped), the lookups resolve a change-id prefix
-/// against [all] (two hits are jj's ambiguity refusal), bookmarks are [all]'s refs, @'s paths a fixed tree, and
-/// `user.email` is the design's first author. Each answer takes [latency].
+/// against [all] (two hits are jj's ambiguity refusal), bookmarks and tags are [all]'s refs (a remote one untracked
+/// unless synced, so `b:` and `t:` show Track), @'s paths a fixed tree, and `user.email` is the design's first author.
+/// Each answer takes [latency].
 class FakeGraphSearchSource implements GraphSearchSource {
   /// The search reads over [all].
   FakeGraphSearchSource(this.all, {this.latency = const Duration(milliseconds: 250)});
@@ -97,14 +98,35 @@ class FakeGraphSearchSource implements GraphSearchSource {
     return <Bookmark>[
       for (var node = 0; node < layout.nodeCount; node++)
         for (final GraphRef ref in layout.refsOf(node))
-          if (ref.remote == null)
-            Bookmark(
-              name: ref.name,
-              target: layout.keyOf(node),
-              kind: const LocalBookmark(),
-              conflicted: ref.conflicted,
-              synced: ref.synced,
-            ),
+          Bookmark(
+            name: ref.name,
+            target: layout.keyOf(node),
+            kind: switch (ref.remote) {
+              final String remote => RemoteBookmark(remote, tracked: ref.synced),
+              null => const LocalBookmark(),
+            },
+            conflicted: ref.conflicted,
+            synced: ref.synced,
+          ),
+    ];
+  }
+
+  @override
+  Future<List<Tag>> tags() async {
+    final GraphLayout layout = all();
+    return <Tag>[
+      for (var node = 0; node < layout.nodeCount; node++)
+        for (final GraphRef ref in layout.tagsOf(node))
+          Tag(
+            name: ref.name,
+            target: layout.keyOf(node),
+            kind: switch (ref.remote) {
+              final String remote => RemoteTag(remote, tracked: ref.synced),
+              null => const LocalTag(),
+            },
+            conflicted: ref.conflicted,
+            synced: ref.synced,
+          ),
     ];
   }
 

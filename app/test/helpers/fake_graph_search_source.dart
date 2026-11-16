@@ -60,6 +60,18 @@ class FakeGraphSearchSource implements GraphSearchSource {
   /// How many times `bookmarks()` was read.
   var bookmarkReads = 0;
 
+  /// The tags.
+  var tagList = <Tag>[];
+
+  /// How many times `tags()` was read.
+  var tagReads = 0;
+
+  @override
+  Future<List<Tag>> tags() async {
+    tagReads++;
+    return tagList;
+  }
+
   @override
   Future<List<String>> files() async => paths;
 
@@ -83,11 +95,27 @@ class FakeGraphSearchSource implements GraphSearchSource {
 Bookmark localBookmark(String name, String? target) =>
     Bookmark(name: name, target: target, kind: const LocalBookmark(), conflicted: false, synced: true);
 
-/// A tracked remote bookmark [name]@[remote] on [target].
-Bookmark remoteBookmark(String name, String remote, String target) => Bookmark(
+/// A remote bookmark [name]@[remote] on [target], tracked unless [tracked] is false; [synced]: tracked and where the
+/// local one is.
+Bookmark remoteBookmark(String name, String remote, String target, {bool tracked = true, bool synced = false}) =>
+    Bookmark(
+      name: name,
+      target: target,
+      kind: RemoteBookmark(remote, tracked: tracked),
+      conflicted: false,
+      synced: synced,
+    );
+
+/// A local tag [name] on [target].
+Tag localTag(String name, String? target) =>
+    Tag(name: name, target: target, kind: const LocalTag(), conflicted: false, synced: true);
+
+/// A remote tag [name]@[remote] on [target], tracked unless [tracked] is false; [synced]: tracked and where the local
+/// one is.
+Tag remoteTag(String name, String remote, String target, {bool tracked = true, bool synced = false}) => Tag(
   name: name,
   target: target,
-  kind: RemoteBookmark(remote, tracked: true),
+  kind: RemoteTag(remote, tracked: tracked),
   conflicted: false,
-  synced: true,
+  synced: synced,
 );

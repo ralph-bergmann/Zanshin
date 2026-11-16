@@ -726,7 +726,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get graphSearchSuggestions => 'Suggestions';
 
   @override
-  String get graphSearchPlaceholder => 'Search changes, bookmarks, authors, files…';
+  String get graphSearchPlaceholder => 'Search changes, bookmarks, tags, authors, files…';
 
   @override
   String get graphSearchPlaceholderShort => 'Search…';
@@ -738,6 +738,7 @@ class AppLocalizationsEn extends AppLocalizations {
       {
         'change': 'Change',
         'bookmark': 'Bookmark',
+        'tag': 'Tag',
         'author': 'Author',
         'file': 'File',
         'description': 'Description',
@@ -754,6 +755,7 @@ class AppLocalizationsEn extends AppLocalizations {
       {
         'change': 'changes',
         'bookmark': 'bookmarks',
+        'tag': 'tags',
         'author': 'authors',
         'file': 'files',
         'description': 'descriptions',
@@ -770,6 +772,7 @@ class AppLocalizationsEn extends AppLocalizations {
       {
         'change': 'Changes',
         'bookmark': 'Bookmarks',
+        'tag': 'Tags',
         'author': 'Authors',
         'file': 'Files',
         'description': 'Descriptions',
@@ -786,10 +789,11 @@ class AppLocalizationsEn extends AppLocalizations {
       {
         'change': 'Change ID, commit ID or description',
         'bookmark': 'Bookmark name',
+        'tag': 'Tag name',
         'author': 'Author name',
         'file': 'Path, folder or glob',
         'description': 'Text in descriptions',
-        'other': 'Search changes, bookmarks, authors, files…',
+        'other': 'Search changes, bookmarks, tags, authors, files…',
       },
     );
     return '$_temp0';
@@ -802,6 +806,7 @@ class AppLocalizationsEn extends AppLocalizations {
       {
         'change': 'Change ID or hash',
         'bookmark': 'Bookmark name',
+        'tag': 'Tag name',
         'author': 'Author name',
         'file': 'Path or glob',
         'description': 'Text',
@@ -816,6 +821,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get graphSearchBookmarkDetail => 'name';
+
+  @override
+  String get graphSearchTagDetail => 'name';
+
+  @override
+  String get graphSearchUntracked => 'untracked';
 
   @override
   String graphSearchBackToDefault(String name) {

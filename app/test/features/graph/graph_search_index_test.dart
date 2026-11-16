@@ -23,9 +23,7 @@ List<GraphSearchChange> _changes(int n, {String subject = 'fix cache'}) => <Grap
 
 GraphSearchIndex _index({int changes = 5, List<String> paths = const <String>[], String? email}) => GraphSearchIndex(
   changes: _changes(changes),
-  bookmarks: <({String name, String key})>[
-    for (var i = 0; i < 4; i++) (name: 'feat/cache-$i', key: 'kxkzzzzzz'),
-  ],
+  bookmarks: <GraphSearchRef>[for (var i = 0; i < 4; i++) GraphSearchRef('feat/cache-$i', 'kxkzzzzzz')],
   authors: <String, String>{for (var i = 0; i < 4; i++) 'Author $i': 'a$i@x.org', 'Lena König': 'lena@x.org'},
   paths: paths,
   userEmail: email,
@@ -39,6 +37,10 @@ void main() {
       expect(parseGraphSearchPrefix('Commit:ab'), (scope: GraphSearchScope.change, rest: 'ab'));
       expect(parseGraphSearchPrefix('desc: x')?.scope, GraphSearchScope.description);
       expect(parseGraphSearchPrefix('bookmark:')?.scope, GraphSearchScope.bookmark);
+      expect(parseGraphSearchPrefix('t:v1.'), (scope: GraphSearchScope.tag, rest: 'v1.'));
+      expect(parseGraphSearchPrefix('Tag: v1'), (scope: GraphSearchScope.tag, rest: 'v1'));
+      expect(GraphSearchScope.tag.prefix, 't:');
+      expect(GraphSearchScope.tag.isGoTo, isTrue);
       expect(parseGraphSearchPrefix('lib/a: b'), isNull);
     });
   });
@@ -72,32 +74,125 @@ void main() {
       );
       for (final recent in <GraphRecent>[
         const GraphRecentGoTo('kx', bookmark: 'main'),
+        const GraphRecentGoTo('kx', bookmark: 'v1.4.2', tag: true),
         const GraphRecentGoTo('kx'),
         GraphRecentFilter(GraphFilter.files('a/b')),
       ]) {
         expect(GraphRecent.decode(recent.encode()), recent);
       }
+      expect(const GraphRecentGoTo('kx', bookmark: 'main').encode(), isNot(contains('tag')));
+      expect(const GraphRecentGoTo('kx', bookmark: 'v1', tag: true).encode(), contains('"tag":true'));
       expect(GraphRecent.decode('[]'), isNull);
     });
   });
 
-  test('build: local bookmarks by name, remote ones as name@remote, a null target skipped', () {
+  test('build: local refs by name, remote ones as name@remote; a null target and @git skipped, each shown once', () {
     final index = GraphSearchIndex.build(
       bookmarks: <Bookmark>[
         localBookmark('main', 'k1'),
         remoteBookmark('main', 'origin', 'k2'),
+        remoteBookmark('main', 'git', 'k1'),
+        remoteBookmark('rel', 'origin', 'k3', tracked: false),
+        remoteBookmark('rel', 'origin', 'k3', tracked: false),
         localBookmark('gone', null),
       ],
+      tags: <Tag>[
+        localTag('v1.4.2', 'k1'),
+        remoteTag('v1.5.0', 'origin', 'k2', tracked: false),
+        remoteTag('v1.4.2', 'git', 'k1'),
+        localTag('deleted', null),
+      ],
     );
-    expect(index.bookmarks, <({String name, String key})>[(name: 'main', key: 'k1'), (name: 'main@origin', key: 'k2')]);
+    expect(index.bookmarks, <GraphSearchRef>[
+      const GraphSearchRef('main', 'k1'),
+      const GraphSearchRef('main', 'k2', remote: 'origin'),
+      const GraphSearchRef('rel', 'k3', remote: 'origin', tracked: false),
+    ]);
+    expect(index.bookmarks.map((r) => r.display), <String>['main', 'main@origin', 'rel@origin']);
+    expect(index.tags, <GraphSearchRef>[
+      const GraphSearchRef('v1.4.2', 'k1'),
+      const GraphSearchRef('v1.5.0', 'k2', remote: 'origin', tracked: false),
+    ]);
+  });
+
+  test('build: a synced remote row is left out, as plain jj bookmark list leaves it; ahead or untracked ones stay', () {
+    final index = GraphSearchIndex.build(
+      bookmarks: <Bookmark>[
+        localBookmark('main', 'k1'),
+        remoteBookmark('main', 'origin', 'k1', synced: true),
+        localBookmark('dev', 'k2'),
+        remoteBookmark('dev', 'origin', 'k1'),
+        remoteBookmark('rel', 'origin', 'k3', tracked: false),
+      ],
+      tags: <Tag>[localTag('v1', 'k1'), remoteTag('v1', 'origin', 'k1', synced: true)],
+    );
+    expect(index.bookmarks.map((r) => r.display), <String>['main', 'dev', 'dev@origin', 'rel@origin']);
+    expect(index.tags.map((r) => r.display), <String>['v1']);
+  });
+
+  group('Story 10.47: tags and the actions of a ref row', () {
+    const index = GraphSearchIndex(
+      bookmarks: <GraphSearchRef>[
+        GraphSearchRef('feature/auth-flow', 'k1'),
+        GraphSearchRef('main', 'k2', remote: 'origin'),
+        GraphSearchRef('release/1.4.x', 'k3', remote: 'origin', tracked: false),
+      ],
+      tags: <GraphSearchRef>[
+        GraphSearchRef('v1.4.2', 'k1'),
+        GraphSearchRef('v1.5.0-rc1', 'k2'),
+        GraphSearchRef('v1.5.0', 'k3', remote: 'origin', tracked: false),
+      ],
+    );
+
+    GraphBookmarkRow row(GraphSearchScope scope, String q) =>
+        suggestGraphSearch(index, scope, q).rows.whereType<GraphBookmarkRow>().first;
+
+    test('t:v1. lists the tags with the match; Any groups 2 + "1 more in Tag"', () {
+      final List<GraphBookmarkRow> tags = suggestGraphSearch(
+        index,
+        GraphSearchScope.tag,
+        'v1.',
+      ).rows.whereType<GraphBookmarkRow>().toList();
+      expect(tags.map((r) => r.name), <String>['v1.4.2', 'v1.5.0-rc1', 'v1.5.0@origin']);
+      expect(tags.every((r) => r.tag), isTrue);
+      expect(tags.first.match, (0, 3));
+      final GraphSearchGroup any = suggestGraphSearch(
+        index,
+        GraphSearchScope.any,
+        'v1',
+      ).groups.singleWhere((g) => g.scope == GraphSearchScope.tag);
+      expect(any.rows.whereType<GraphBookmarkRow>(), hasLength(2));
+      expect((any.rows.last as GraphMoreRow).count, 1);
+      expect((any.rows.last as GraphMoreRow).scope, GraphSearchScope.tag);
+    });
+
+    test('New runs jj new on the ref; Track only on an untracked remote ref', () {
+      final GraphBookmarkRow local = row(GraphSearchScope.bookmark, 'feature/auth');
+      expect(local.newAction!.command, 'jj new feature/auth-flow');
+      expect(local.newAction!.revsets, <String>['feature/auth-flow']);
+      expect(local.newAction!.revsetTarget, 'k1');
+      expect(local.trackAction, isNull, reason: 'a local ref');
+      final GraphBookmarkRow tracked = row(GraphSearchScope.bookmark, 'main');
+      expect(tracked.newAction!.command, 'jj new main@origin');
+      expect(tracked.trackAction, isNull, reason: 'already tracked');
+      final GraphBookmarkRow untracked = row(GraphSearchScope.bookmark, 'rel');
+      expect(untracked.trackAction!.command, 'jj bookmark track release/1.4.x@origin');
+      final GraphBookmarkRow tag = row(GraphSearchScope.tag, 'v1.5.0@');
+      expect(tag.newAction!.command, 'jj new v1.5.0@origin');
+      expect(tag.trackAction!.command, 'jj tag track v1.5.0@origin');
+      const gone = GraphBookmarkRow('old-name', 'k9', score: 0);
+      expect(gone.newAction, isNull, reason: 'a Recent entry whose ref is gone');
+      expect(gone.trackAction, isNull);
+    });
   });
 
   group('suggestions', () {
-    test('Any: Changes 3, Bookmarks 2, Authors 2, Files 3, Descriptions 1, each with "N more"', () {
+    test('Any: Changes 3, Bookmarks 2, Tags 2, Authors 2, Files 3, Descriptions 1, each with "N more"', () {
       final GraphSuggestions s = suggestGraphSearch(
         GraphSearchIndex(
           changes: _changes(5, subject: 'a'),
-          bookmarks: <({String name, String key})>[for (var i = 0; i < 4; i++) (name: 'a$i', key: 'k')],
+          bookmarks: <GraphSearchRef>[for (var i = 0; i < 4; i++) GraphSearchRef('a$i', 'k')],
+          tags: <GraphSearchRef>[for (var i = 0; i < 3; i++) GraphSearchRef('va$i', 'k')],
           authors: <String, String>{for (var i = 0; i < 4; i++) 'a$i': 'e$i'},
           paths: const <String>['a1.txt', 'a2.txt', 'a3.txt', 'a4.txt'],
         ),
@@ -109,6 +204,8 @@ void main() {
       expect((groups[GraphSearchScope.change]!.last as GraphMoreRow).count, 2);
       expect(groups[GraphSearchScope.bookmark]!.whereType<GraphBookmarkRow>(), hasLength(2));
       expect((groups[GraphSearchScope.bookmark]!.last as GraphMoreRow).count, 2);
+      expect(groups[GraphSearchScope.tag]!.whereType<GraphBookmarkRow>().map((r) => r.tag), <bool>[true, true]);
+      expect((groups[GraphSearchScope.tag]!.last as GraphMoreRow).count, 1);
       expect(groups[GraphSearchScope.author]!.whereType<GraphFilterRow>(), hasLength(2));
       expect((groups[GraphSearchScope.author]!.last as GraphMoreRow).count, 2);
       expect(groups[GraphSearchScope.file]!.whereType<GraphFilterRow>(), hasLength(3));

@@ -10,8 +10,8 @@ import 'graph_ports.dart';
 // The graph search's view state (Story 10.21 item 1): the scopes and their prefixes, a typed filter, what the graph
 // shows and the Recent entries — with the revset and the command each derives, all through zanshin_core's builder.
 
-/// A search scope (DS design/graph-search.jsx:42-50): Any, the go-to scopes (Change, Bookmark) and the filter scopes
-/// (Author, File, Description).
+/// A search scope (DS design/graph-search.jsx:42-50): Any, the go-to scopes (Change, Bookmark, Tag) and the filter
+/// scopes (Author, File, Description).
 enum GraphSearchScope {
   /// Every scope at once.
   any,
@@ -21,6 +21,9 @@ enum GraphSearchScope {
 
   /// Bookmark names: selects a change.
   bookmark,
+
+  /// Tag names: selects a change (Story 10.47).
+  tag,
 
   /// `author()`: redraws the graph.
   author,
@@ -32,7 +35,7 @@ enum GraphSearchScope {
   description;
 
   /// Whether the scope selects a change and leaves the graph as it is.
-  bool get isGoTo => this == change || this == bookmark;
+  bool get isGoTo => this == change || this == bookmark || this == tag;
 
   /// Whether the scope redraws the graph.
   bool get isFilter => this == author || this == file || this == description;
@@ -42,6 +45,7 @@ enum GraphSearchScope {
     any => null,
     change => 'c:',
     bookmark => 'b:',
+    tag => 't:',
     author => 'a:',
     file => 'f:',
     description => 'd:',
@@ -49,7 +53,10 @@ enum GraphSearchScope {
 }
 
 // SR:51-52: the prefixes and their long forms.
-final _prefix = RegExp(r'^(c|change|commit|b|bookmark|a|author|f|files?|d|desc|description):\s*', caseSensitive: false);
+final _prefix = RegExp(
+  r'^(c|change|commit|b|bookmark|t|tag|a|author|f|files?|d|desc|description):\s*',
+  caseSensitive: false,
+);
 
 /// [text]'s leading scope prefix (`c:`, `author:`, …) and the text after it; null when it starts with none.
 ({GraphSearchScope scope, String rest})? parseGraphSearchPrefix(String text) {
@@ -60,6 +67,7 @@ final _prefix = RegExp(r'^(c|change|commit|b|bookmark|a|author|f|files?|d|desc|d
   final GraphSearchScope scope = switch (match[1]!.toLowerCase()) {
     'c' || 'change' || 'commit' => GraphSearchScope.change,
     'b' || 'bookmark' => GraphSearchScope.bookmark,
+    't' || 'tag' => GraphSearchScope.tag,
     'a' || 'author' => GraphSearchScope.author,
     'f' || 'file' || 'files' => GraphSearchScope.file,
     _ => GraphSearchScope.description,
@@ -307,7 +315,7 @@ sealed class GraphRecent {
       }
       if (json['change'] case final String change) {
         final Object? bookmark = json['bookmark'];
-        return GraphRecentGoTo(change, bookmark: bookmark is String ? bookmark : null);
+        return GraphRecentGoTo(change, bookmark: bookmark is String ? bookmark : null, tag: json['tag'] == true);
       }
       if (GraphFilter.fromJson(json['filter']) case final GraphFilter filter) {
         return GraphRecentFilter(filter);
@@ -319,26 +327,30 @@ sealed class GraphRecent {
   }
 }
 
-/// A go-to of [changeId] (the node key); a bookmark go-to keeps the bookmark's [bookmark] name.
+/// A go-to of [changeId] (the node key); a bookmark or tag go-to keeps the ref's [bookmark] name (`name` or
+/// `name@remote`), and [tag] tells a tag's from a bookmark's.
 final class GraphRecentGoTo extends GraphRecent {
   /// A go-to.
-  const GraphRecentGoTo(this.changeId, {this.bookmark});
+  const GraphRecentGoTo(this.changeId, {this.bookmark, this.tag = false});
 
   /// The change's key.
   final String changeId;
 
-  /// The bookmark it went to, or null.
+  /// The bookmark or tag it went to, or null.
   final String? bookmark;
 
+  /// Whether [bookmark] names a tag (Story 10.47).
+  final bool tag;
+
   @override
-  String encode() => jsonEncode(<String, Object?>{'change': changeId, 'bookmark': ?bookmark});
+  String encode() => jsonEncode(<String, Object?>{'change': changeId, 'bookmark': ?bookmark, if (tag) 'tag': true});
 
   @override
   bool operator ==(Object other) =>
-      other is GraphRecentGoTo && other.changeId == changeId && other.bookmark == bookmark;
+      other is GraphRecentGoTo && other.changeId == changeId && other.bookmark == bookmark && other.tag == tag;
 
   @override
-  int get hashCode => Object.hash(changeId, bookmark);
+  int get hashCode => Object.hash(changeId, bookmark, tag);
 }
 
 /// An applied [filter].

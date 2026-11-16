@@ -5,11 +5,12 @@ import 'package:zanshin_core/zanshin_core.dart';
 
 import 'graph_content.dart';
 import 'graph_layout.dart';
+import 'graph_ports.dart';
 import 'graph_search_model.dart';
 
 // The graph search's candidates and its suggestions (Story 10.21 item 4; DS design/graph-search.jsx:94-172): the
-// index gathers what is in memory — the shown topology, the content cache, `bookmarks()`, @'s paths and the changes
-// `findChanges` found beyond the view — and [suggestGraphSearch] scores and groups the rows as the design does.
+// index gathers what is in memory — the shown topology, the content cache, the bookmarks and tags, @'s paths and the
+// changes `findChanges` found beyond the view — and [suggestGraphSearch] scores and groups the rows as the design does.
 
 /// One change a go-to can reach.
 @immutable
@@ -63,24 +64,72 @@ class GraphSearchChange {
   final bool bodyMatch;
 }
 
+/// jj's mirror of the colocated Git refs (`default_ignored_remote_name`, `../jj` cli/src/cli_util.rs): not a remote, so
+/// its rows are left out, as the Bookmarks view leaves them out.
+const _gitRemote = 'git'; // l10n-ignore: jj's remote name
+
+/// A bookmark or tag the search can go to (Story 10.47): its bare [name], its target's [key], its [remote] (null for
+/// the local ref) and whether a remote ref is [tracked].
+@immutable
+class GraphSearchRef {
+  /// A ref.
+  const GraphSearchRef(this.name, this.key, {this.remote, this.tracked = true});
+
+  /// The ref's name, without the remote.
+  final String name;
+
+  /// Its target's key.
+  final String key;
+
+  /// The remote, or null for the local ref.
+  final String? remote;
+
+  /// Whether a remote ref is tracked; true for a local one.
+  final bool tracked;
+
+  /// How the search shows it: `name`, or `name@remote`.
+  String get display => switch (remote) {
+    final String remote => '$name@$remote', // l10n-ignore: jj's symbol
+    null => name,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is GraphSearchRef &&
+      other.name == name &&
+      other.key == key &&
+      other.remote == remote &&
+      other.tracked == tracked;
+
+  @override
+  int get hashCode => Object.hash(name, key, remote, tracked);
+
+  @override
+  String toString() => 'GraphSearchRef($display → $key${tracked ? '' : ', untracked'})';
+}
+
 /// What the suggestions search (Story 10.21 item 4).
 @immutable
 class GraphSearchIndex {
   /// An index.
   const GraphSearchIndex({
     this.changes = const <GraphSearchChange>[],
-    this.bookmarks = const <({String name, String key})>[],
+    this.bookmarks = const <GraphSearchRef>[],
+    this.tags = const <GraphSearchRef>[],
     this.authors = const <String, String>{},
     this.paths = const <String>[],
     this.userEmail,
   });
 
-  /// The index of [layout] (its non-stack, non-root nodes, their content from [content]), [bookmarks] (local rows by
-  /// name, remote rows as `name@remote`), [paths] (@'s files) and the [found] changes beyond the view.
+  /// The index of [layout] (its non-stack, non-root nodes, their content from [content]), [bookmarks] and [tags]
+  /// (each row with a target, once per `name` or `name@remote`; no row of the remote `git`, and no synced remote row —
+  /// tracked and where the local ref is — as plain `jj bookmark list` leaves those out), [paths] (@'s files) and the
+  /// [found] changes beyond the view.
   factory GraphSearchIndex.build({
     GraphLayout? layout,
     GraphContent? content,
     List<Bookmark> bookmarks = const <Bookmark>[],
+    List<Tag> tags = const <Tag>[],
     List<String> paths = const <String>[],
     List<GraphSearchChange> found = const <GraphSearchChange>[],
     String? userEmail,
@@ -128,30 +177,53 @@ class GraphSearchIndex {
         authors.putIfAbsent(change.authorName, () => change.authorEmail);
       }
     }
-    final names = <String>{};
     return GraphSearchIndex(
       changes: changes.values.toList(),
-      bookmarks: <({String name, String key})>[
+      bookmarks: _refs(<GraphSearchRef?>[
         for (final Bookmark b in bookmarks)
           if (b.target case final String target)
-            if (names.add(_bookmarkName(b))) (name: _bookmarkName(b), key: target),
-      ],
+            switch (b.kind) {
+              RemoteBookmark(:final String remoteName, :final bool tracked) =>
+                remoteName == _gitRemote || b.synced
+                    ? null
+                    : GraphSearchRef(b.name, target, remote: remoteName, tracked: tracked),
+              LocalBookmark() => GraphSearchRef(b.name, target),
+            },
+      ]),
+      tags: _refs(<GraphSearchRef?>[
+        for (final Tag t in tags)
+          if (t.target case final String target)
+            switch (t.kind) {
+              RemoteTag(:final String remoteName, :final bool tracked) =>
+                remoteName == _gitRemote || t.synced
+                    ? null
+                    : GraphSearchRef(t.name, target, remote: remoteName, tracked: tracked),
+              LocalTag() => GraphSearchRef(t.name, target),
+            },
+      ]),
       authors: authors,
       paths: paths,
       userEmail: userEmail,
     );
   }
 
-  static String _bookmarkName(Bookmark b) => switch (b.kind) {
-    RemoteBookmark(:final String remoteName) => '${b.name}@$remoteName',
-    LocalBookmark() => b.name,
-  };
+  /// [refs] without the left-out ones (null), each `display` once.
+  static List<GraphSearchRef> _refs(List<GraphSearchRef?> refs) {
+    final shown = <String>{};
+    return <GraphSearchRef>[
+      for (final GraphSearchRef? r in refs)
+        if (r != null && shown.add(r.display)) r,
+    ];
+  }
 
   /// The changes.
   final List<GraphSearchChange> changes;
 
-  /// The bookmarks: name and target key.
-  final List<({String name, String key})> bookmarks;
+  /// The bookmarks.
+  final List<GraphSearchRef> bookmarks;
+
+  /// The tags (Story 10.47).
+  final List<GraphSearchRef> tags;
 
   /// The authors: name → email.
   final Map<String, String> authors;
@@ -235,22 +307,58 @@ final class GraphChangeRow extends GraphSearchRow {
   final (int, int)? match;
 }
 
-/// A go-to of the bookmark [name], on [key].
+/// A go-to of the bookmark (or [tag]) [name], on [key].
 final class GraphBookmarkRow extends GraphSearchRow {
-  /// A bookmark row.
-  const GraphBookmarkRow(this.name, this.key, {required super.score, this.change, this.match});
+  /// A bookmark or tag row.
+  const GraphBookmarkRow(
+    this.name,
+    this.key, {
+    required super.score,
+    this.ref,
+    this.tag = false,
+    this.change,
+    this.match,
+  });
 
-  /// The bookmark's name.
+  /// The ref's name as shown: `name` or `name@remote`.
   final String name;
 
   /// Its target's key.
   final String key;
+
+  /// The ref; null for a Recent entry whose ref is gone.
+  final GraphSearchRef? ref;
+
+  /// Whether the ref is a tag (Story 10.47).
+  final bool tag;
 
   /// The target, when the index has it.
   final GraphSearchChange? change;
 
   /// The input's range in [name].
   final (int, int)? match;
+
+  /// `jj new <name>` (or `<name>@<remote>`): jj resolves the symbol, as the CLI does; null without a [ref].
+  GraphNew? get newAction => switch (ref) {
+    final GraphSearchRef ref => GraphNew(
+      revsets: <String>[
+        switch (ref.remote) {
+          final String remote => remoteBookmarkSymbol(ref.name, remote),
+          null => revsetSymbol(ref.name),
+        },
+      ],
+      // The layout key: a divergent change's nodes are keyed by commit id, not by the change id.
+      revsetTarget: change?.key ?? key,
+    ),
+    null => null,
+  };
+
+  /// `jj bookmark|tag track <name>@<remote>` for an untracked remote ref; null otherwise.
+  GraphAction? get trackAction => switch (ref) {
+    GraphSearchRef(:final String name, :final String remote, tracked: false) =>
+      tag ? GraphTagTrack(name, remote) : GraphBookmarkTrack(name, remote),
+    _ => null,
+  };
 }
 
 /// A filter.
@@ -331,6 +439,7 @@ class GraphSuggestions {
 const graphSearchAnyLimits = <GraphSearchScope, int>{
   GraphSearchScope.change: 3,
   GraphSearchScope.bookmark: 2,
+  GraphSearchScope.tag: 2,
   GraphSearchScope.author: 2,
   GraphSearchScope.file: 3,
   GraphSearchScope.description: 1,
@@ -412,13 +521,19 @@ Map<GraphSearchScope, List<GraphSearchRow>> _suggest(
       return (b.change.timestampMs ?? 0).compareTo(a.change.timestampMs ?? 0);
     });
   }
-  if (want(GraphSearchScope.bookmark)) {
-    final List<GraphSearchRow> rows = g[GraphSearchScope.bookmark]!;
-    for (final (:String name, :String key) in ix.bookmarks) {
+  void refs(GraphSearchScope s, List<GraphSearchRef> refs, {required bool tag}) {
+    if (!want(s)) {
+      return;
+    }
+    final List<GraphSearchRow> rows = g[s]!;
+    for (final ref in refs) {
+      final String name = ref.display;
       final (int, int)? r = _at(name, q);
       if (r != null) {
         final double score = r.$1 == 0 ? 86 : (_wordAt(name, r.$1) ? 74 : 60);
-        rows.add(GraphBookmarkRow(name, key, change: ix.change(key), match: r, score: score));
+        rows.add(
+          GraphBookmarkRow(name, ref.key, ref: ref, tag: tag, change: ix.change(ref.key), match: r, score: score),
+        );
       }
     }
     rows.sort((a, b) {
@@ -428,6 +543,9 @@ Map<GraphSearchScope, List<GraphSearchRow>> _suggest(
           : (a as GraphBookmarkRow).name.length.compareTo((b as GraphBookmarkRow).name.length);
     });
   }
+
+  refs(GraphSearchScope.bookmark, ix.bookmarks, tag: false);
+  refs(GraphSearchScope.tag, ix.tags, tag: true);
   if (want(GraphSearchScope.author)) {
     final List<GraphSearchRow> rows = g[GraphSearchScope.author]!;
     final String? me = ix.userEmail?.toLowerCase();

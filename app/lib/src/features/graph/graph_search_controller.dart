@@ -30,8 +30,9 @@ typedef GraphSearchFinds = ({List<GraphSearchChange> found, String? refusal});
 /// [GraphSearchStore]) and drives [model] — `setRevset` for the default search, `all()` and a filter, `goTo` for a
 /// visible go-to target, `goToHidden` for one beyond the view — and keeps Recent (10 stored, 6 shown per scope).
 ///
-/// It also feeds the suggestions: `bookmarks()`, @'s paths and `user.email`, read once per operation ([prepare]);
-/// `findChanges` lookups and op-pinned counts, cached per (operation, expression) and batched per [pause] in typing.
+/// It also feeds the suggestions: the bookmarks, the tags, @'s paths and `user.email`, read once per operation
+/// ([prepare]); `findChanges` lookups and op-pinned counts, cached per (operation, expression) and batched per [pause]
+/// in typing.
 class GraphSearchController extends ChangeNotifier {
   /// The search of [model] over [_source], its state in [_store].
   GraphSearchController({
@@ -200,10 +201,11 @@ class GraphSearchController extends ChangeNotifier {
 
   /// Goes to [key] (item 5): a shown one is selected, revealed and pulsed without a request; one beyond the view
   /// switches to `all()` in one request that lands it ([commitId] is its key there when `all()` keys it by commit id).
-  /// A bookmark go-to keeps the [bookmark]'s name in Recent; with [recent] false (a rail pick, 10.14) nothing enters it.
-  void goTo(String key, {String? bookmark, String? commitId, bool recent = true}) {
+  /// A bookmark or [tag] go-to keeps the ref's [bookmark] name in Recent; with [recent] false (a rail pick, 10.14)
+  /// nothing enters it.
+  void goTo(String key, {String? bookmark, bool tag = false, String? commitId, bool recent = true}) {
     if (recent) {
-      _addRecent(GraphRecentGoTo(key, bookmark: bookmark));
+      _addRecent(GraphRecentGoTo(key, bookmark: bookmark, tag: tag));
     }
     if (model.layout?.indexOfKey(key) != null) {
       model.goTo(key);
@@ -258,10 +260,11 @@ class GraphSearchController extends ChangeNotifier {
     return _recent
         .where(
           (r) => switch (r) {
-            GraphRecentGoTo(:final String changeId, :final String? bookmark) =>
+            GraphRecentGoTo(:final String changeId, :final String? bookmark, :final bool tag) =>
               (scope == GraphSearchScope.any ||
                       (scope == GraphSearchScope.change && bookmark == null) ||
-                      (scope == GraphSearchScope.bookmark && bookmark != null)) &&
+                      (scope == GraphSearchScope.bookmark && bookmark != null && !tag) ||
+                      (scope == GraphSearchScope.tag && bookmark != null && tag)) &&
                   !(all && layout.indexOfKey(changeId) == null),
             GraphRecentFilter(:final GraphFilter filter) => scope == GraphSearchScope.any || scope == filter.scope,
           },
@@ -274,11 +277,13 @@ class GraphSearchController extends ChangeNotifier {
 
   String? _preparedOp;
   var _bookmarks = const <Bookmark>[];
+  var _tags = const <Tag>[];
   var _files = const <String>[];
   String? _email;
   var _emailRead = false;
 
-  /// Reads `bookmarks()` and @'s paths once per operation, and `user.email` once it answers (the field opened).
+  /// Reads the bookmarks, the tags and @'s paths once per operation, and `user.email` once it answers (the field
+  /// opened).
   Future<void> prepare() async {
     final String? op = model.layout?.operationId;
     // No layout yet: nothing to pin the reads to; the landing layout's notify asks again.
@@ -286,8 +291,9 @@ class GraphSearchController extends ChangeNotifier {
       return;
     }
     _preparedOp = op;
-    final (List<Bookmark>, List<String>, String?) read = await (
+    final (List<Bookmark>, List<Tag>, List<String>, String?) read = await (
       _read(_source.bookmarks, const <Bookmark>[]),
+      _read(_source.tags, const <Tag>[]),
       _read(_source.files, const <String>[]),
       _emailRead ? Future<String?>.value(_email) : _read<String?>(_source.userEmail, null),
     ).wait;
@@ -295,10 +301,11 @@ class GraphSearchController extends ChangeNotifier {
       return;
     }
     _bookmarks = read.$1;
-    _files = read.$2;
-    _email = read.$3;
+    _tags = read.$2;
+    _files = read.$3;
+    _email = read.$4;
     // An unset or failed read is asked again with the next operation.
-    _emailRead = read.$3 != null;
+    _emailRead = read.$4 != null;
     notifyListeners();
   }
 
@@ -314,7 +321,7 @@ class GraphSearchController extends ChangeNotifier {
   /// `user.email`, once [prepare] read it.
   String? get userEmail => _email;
 
-  /// The suggestions' index for [scope] and [query]: the shown layout and its content, the bookmarks and paths of
+  /// The suggestions' index for [scope] and [query]: the shown layout and its content, the bookmarks, tags and paths of
   /// [prepare], and what the lookups for them found.
   GraphSearchIndex index(GraphSearchScope scope, String query) {
     final GraphLayout? layout = model.layout;
@@ -322,6 +329,7 @@ class GraphSearchController extends ChangeNotifier {
       layout: layout,
       content: layout == null ? null : model.content,
       bookmarks: _bookmarks,
+      tags: _tags,
       paths: _files,
       found: finds(scope, query)?.found ?? const <GraphSearchChange>[],
       userEmail: _email,

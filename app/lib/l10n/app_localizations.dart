@@ -1175,7 +1175,7 @@ abstract class AppLocalizations {
   /// The graph search field's placeholder while it searches every scope.
   ///
   /// In en, this message translates to:
-  /// **'Search changes, bookmarks, authors, files…'**
+  /// **'Search changes, bookmarks, tags, authors, files…'**
   String get graphSearchPlaceholder;
 
   /// The graph search field's placeholder in a narrow window.
@@ -1187,31 +1187,31 @@ abstract class AppLocalizations {
   /// A search scope's label (pill, menu rows, more rows).
   ///
   /// In en, this message translates to:
-  /// **'{scope, select, change{Change} bookmark{Bookmark} author{Author} file{File} description{Description} other{Any}}'**
+  /// **'{scope, select, change{Change} bookmark{Bookmark} tag{Tag} author{Author} file{File} description{Description} other{Any}}'**
   String graphSearchScope(String scope);
 
   /// A search scope in lower-case plural ("Recent changes", "Narrows the search to files").
   ///
   /// In en, this message translates to:
-  /// **'{scope, select, change{changes} bookmark{bookmarks} author{authors} file{files} description{descriptions} other{results}}'**
+  /// **'{scope, select, change{changes} bookmark{bookmarks} tag{tags} author{authors} file{files} description{descriptions} other{results}}'**
   String graphSearchScopePlural(String scope);
 
   /// The heading of a suggestion group.
   ///
   /// In en, this message translates to:
-  /// **'{scope, select, change{Changes} bookmark{Bookmarks} author{Authors} file{Files} description{Descriptions} other{Results}}'**
+  /// **'{scope, select, change{Changes} bookmark{Bookmarks} tag{Tags} author{Authors} file{Files} description{Descriptions} other{Results}}'**
   String graphSearchScopeGroup(String scope);
 
   /// The search field's placeholder in a scope.
   ///
   /// In en, this message translates to:
-  /// **'{scope, select, change{Change ID, commit ID or description} bookmark{Bookmark name} author{Author name} file{Path, folder or glob} description{Text in descriptions} other{Search changes, bookmarks, authors, files…}}'**
+  /// **'{scope, select, change{Change ID, commit ID or description} bookmark{Bookmark name} tag{Tag name} author{Author name} file{Path, folder or glob} description{Text in descriptions} other{Search changes, bookmarks, tags, authors, files…}}'**
   String graphSearchScopePlaceholder(String scope);
 
   /// The search field's placeholder in a scope, in a narrow window.
   ///
   /// In en, this message translates to:
-  /// **'{scope, select, change{Change ID or hash} bookmark{Bookmark name} author{Author name} file{Path or glob} description{Text} other{Search…}}'**
+  /// **'{scope, select, change{Change ID or hash} bookmark{Bookmark name} tag{Tag name} author{Author name} file{Path or glob} description{Text} other{Search…}}'**
   String graphSearchScopePlaceholderShort(String scope);
 
   /// The menu's Change row: what it searches.
@@ -1225,6 +1225,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'name'**
   String get graphSearchBookmarkDetail;
+
+  /// The menu's Tag row: what it searches.
+  ///
+  /// In en, this message translates to:
+  /// **'name'**
+  String get graphSearchTagDetail;
+
+  /// Tag on a bookmark or tag suggestion whose remote ref no local ref tracks.
+  ///
+  /// In en, this message translates to:
+  /// **'untracked'**
+  String get graphSearchUntracked;
 
   /// Tooltip of the search field's ✕: it shows the default search again; name is jj's command (jj log).
   ///
