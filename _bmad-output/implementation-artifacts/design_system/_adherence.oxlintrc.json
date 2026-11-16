@@ -103,8 +103,8 @@
         "message": "<Callout> doesn't accept that prop. Declared props: icon, title, count, arrow, className, style, children."
       },
       {
-        "selector": "JSXOpeningElement[name.name='ChangeCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|subject|author|date|bookmarks|workspaces|ownWorkspace|workingCopy|selected|hover|immutable|empty|root|conflict|merge|detailed|width|dim|drop|dragging|flash|menuOpen|onMenu|onBookmark|children|key|ref|className|style|children)$/]",
-        "message": "<ChangeCard> doesn't accept that prop. Declared props: id, subject, author, date, bookmarks, workspaces, ownWorkspace, workingCopy, selected, hover, immutable, empty, root, conflict, merge, detailed, width, dim, drop, dragging, flash, menuOpen, onMenu, onBookmark, children."
+        "selector": "JSXOpeningElement[name.name='ChangeCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|subject|author|date|bookmarks|tags|workspaces|ownWorkspace|workingCopy|selected|hover|immutable|empty|root|conflict|merge|detailed|width|dim|drop|dragging|flash|menuOpen|onBookmark|onTags|children|key|ref|className|style|children)$/]",
+        "message": "<ChangeCard> doesn't accept that prop. Declared props: id, subject, author, date, bookmarks, tags, workspaces, ownWorkspace, workingCopy, selected, hover, immutable, empty, root, conflict, merge, detailed, width, dim, drop, dragging, flash, menuOpen, onBookmark, onTags, children."
       },
       {
         "selector": "JSXOpeningElement[name.name='ChangeCard'] > JSXAttribute[name.name='dragging'] > Literal[value!=/^(?:src|from)$/]",

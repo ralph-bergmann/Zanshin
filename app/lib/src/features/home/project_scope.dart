@@ -323,6 +323,9 @@ class ProjectScope {
   /// The bookmark popover's `jj bookmark list --all-remotes`.
   Future<List<Bookmark>> remoteBookmarks() => _repo.handle.bookmarks(allRemotes: true);
 
+  /// The tag popover's `jj tag list --all-remotes`, as bookmark-shaped rows (Story 10.45).
+  Future<List<Bookmark>> remoteTags() => RepoTagListSource(_repo).bookmarks();
+
   /// What the menu bar, Settings and jj log Configurations use of this graph.
   late final binding = GraphMenuBinding(
     model: model,

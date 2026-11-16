@@ -488,7 +488,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get cardActionsTooltip => 'Actions (or right-click the card)';
+  String get cardShowMenu => 'Show menu';
+
+  @override
+  String cardTags(String names) {
+    return 'Tags: $names';
+  }
 
   @override
   String get peekImmutable => 'Immutable';
@@ -1649,6 +1654,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String toastTagSet(String names, String target) {
+    return 'Set tag $names on $target';
+  }
+
+  @override
   String toastTagDeleted(String names) {
     return 'Deleted tag $names';
   }
@@ -1920,6 +1930,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String menuBookmarkForget(String name) {
     return 'Forget Bookmark $name';
+  }
+
+  @override
+  String menuTagSet(String names) {
+    return 'Set Tag $names';
   }
 
   @override
@@ -2285,6 +2300,41 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cardMenuNoDescription => '(no description set)';
+
+  @override
+  String get cardMenuCreateBookmark => 'Create bookmark here…';
+
+  @override
+  String get cardMenuCreateTag => 'Create tag here…';
+
+  @override
+  String get tagMenuLabel => 'Tags';
+
+  @override
+  String tagMenuOnRemotes(String remotes) {
+    return 'on $remotes';
+  }
+
+  @override
+  String get tagMenuLocalOnly => 'local only';
+
+  @override
+  String get tagMenuReading => 'Reading tags…';
+
+  @override
+  String get tagMenuReadFailed => 'Couldn\'t read the tags';
+
+  @override
+  String get tagMenuMoveHere => 'Move existing here…';
+
+  @override
+  String get nameSheetCreateTagTitle => 'Create tag here';
+
+  @override
+  String get nameSheetMoveTagHereTitle => 'Move a tag here';
+
+  @override
+  String get nameSheetTagNameLabel => 'Tag name';
 
   @override
   String get bookmarkMenuLabel => 'Bookmarks';

@@ -44,6 +44,7 @@ RecordedGraphLayout one({
   bool root = false,
   int flags = 0,
   List<GraphRef> refs = const <GraphRef>[],
+  List<GraphRef> tags = const <GraphRef>[],
   List<String> workspaces = const <String>[],
   String? workspaceName,
   GraphCommitContent? content = _content,
@@ -55,6 +56,7 @@ RecordedGraphLayout one({
   root: root ? 0 : null,
   timestamps: <int?>[ts],
   refs: <List<GraphRef>>[refs],
+  tags: <List<GraphRef>>[tags],
   contents: <GraphCommitContent?>[content],
   flags: <int>[flags],
   prefixLengths: <int>[prefix],
@@ -84,6 +86,9 @@ class RecordingController extends GraphCardController {
 
   @override
   void openBookmarks(String key, Rect anchor) => calls.add(('bookmarks', key, anchor));
+
+  @override
+  void openTags(String key, Rect anchor) => calls.add(('tags', key, anchor));
 }
 
 /// Where a standalone card's box sits on screen.
@@ -670,10 +675,18 @@ void main() {
       expectNoOverflow(card);
     });
 
-    testWidgets('the root: root() in mono, no bookmark control, ••• kept', (tester) async {
+    testWidgets('the root: root() in mono, no ref controls, no •••', (tester) async {
       final RenderGraphCard card = await pumpCard(
         tester,
-        one(id: 'zzzzzzzzzzzz', prefix: 1, root: true, flags: _imm, content: null, ts: null),
+        one(
+          id: 'zzzzzzzzzzzz',
+          prefix: 1,
+          root: true,
+          flags: _imm,
+          content: null,
+          ts: null,
+          tags: const <GraphRef>[GraphRef('v0')],
+        ),
         GraphCardController(now: _now),
       );
       final ({GraphCardSlot kind, Rect rect, TextStyle? style, String? text}) subject = card.debugSlots.firstWhere(
@@ -686,7 +699,7 @@ void main() {
       final all = <GraphCardSlot>[for (final slot in card.debugSlots) slot.kind];
       expect(all, isNot(contains(GraphCardSlot.legend)));
       expect(all, isNot(contains(GraphCardSlot.addBookmark)));
-      expect(all, contains(GraphCardSlot.more));
+      expect(all, isNot(contains(GraphCardSlot.tagLegend)));
     });
 
     for (final (String name, GraphRef ref, int more, List<String> texts) in <(String, GraphRef, int, List<String>)>[
@@ -722,6 +735,116 @@ void main() {
         }
       });
     }
+
+    testWidgets('a bookmark and two tags: the bookmark pill top-right, the tag pill bottom-right, right of centre', (
+      tester,
+    ) async {
+      final RenderGraphCard card = await pumpCard(
+        tester,
+        one(
+          refs: const <GraphRef>[GraphRef('release/1.5.x')],
+          tags: const <GraphRef>[GraphRef('v1.5.0-rc1'), GraphRef('v1.5.0-rc2')],
+        ),
+        GraphCardController(now: _now),
+        width: 400,
+      );
+      final Rect legend = rectOf(card, GraphCardSlot.legend);
+      final Rect tags = rectOf(card, GraphCardSlot.tagLegend);
+      expect(legend.top, card.cardRect.top - 11);
+      expect(tags.bottom, card.cardRect.bottom + 11);
+      expect(tags.height, 20);
+      expect(tags.right, card.cardRect.right - 10);
+      expect(tags.left, greaterThan(card.cardRect.center.dx));
+      expect(card.debugTagLegendTexts, <String>['v1.5.0-rc1', '+1']);
+      expect(card.debugSlots.map((slot) => slot.kind), isNot(contains(GraphCardSlot.addBookmark)));
+    });
+
+    testWidgets('a long tag shrinks its prefix first and stays at most W/2 − 34, right of centre', (tester) async {
+      for (final width in <double>[160, 240]) {
+        final RenderGraphCard card = await pumpCard(
+          tester,
+          one(tags: const <GraphRef>[GraphRef('nightly/2026-11-14-very-long')]),
+          GraphCardController(now: _now),
+          width: width,
+        );
+        final Rect tags = rectOf(card, GraphCardSlot.tagLegend);
+        expect(tags.width, lessThanOrEqualTo(width / 2 - 34 + 1e-6), reason: '$width');
+        expect(tags.left, greaterThan(card.cardRect.center.dx), reason: '$width');
+        expect(card.debugTagLegendTexts.last, '2026-11-14-very-long', reason: 'the main part stays, the prefix goes');
+      }
+    });
+
+    testWidgets('the tag pill is calm: dim regular text and a plain border, hovered, selected and on @', (
+      tester,
+    ) async {
+      final RenderGraphCard card = await pumpCard(
+        tester,
+        one(
+          workingCopy: true,
+          tags: const <GraphRef>[GraphRef('ZAN-12-fix'), GraphRef('v2')],
+        ),
+        GraphCardController(now: _now)
+          ..selected.value = 'kxwsnptmqrvl'
+          ..hovered.value = 'kxwsnptmqrvl',
+      );
+      for (final TextStyle style in card.debugTagLegendStyles) {
+        expect(style.color, GraphTheme.night.cardTextDim);
+        expect(style.fontWeight, FontWeight.w400);
+      }
+      final pill = RRect.fromRectAndRadius(rectOf(card, GraphCardSlot.tagLegend), const Radius.circular(10));
+      final List<(RRect, int)> painted = rrects(paintCalls(card));
+      expect(painted, contains((pill, GraphTheme.night.cardFillHover.toARGB32())));
+      expect(painted, contains((pill.deflate(.5), GraphTheme.night.cardBorder.toARGB32())));
+    });
+
+    testWidgets('compact and immutable cards show the tag pill too', (tester) async {
+      for (final (bool detailed, int flags) in <(bool, int)>[(false, 0), (true, _imm), (false, _imm)]) {
+        final RenderGraphCard card = await pumpCard(
+          tester,
+          one(flags: flags, tags: const <GraphRef>[GraphRef('v1.4.2')]),
+          GraphCardController(now: _now),
+          detailed: detailed,
+        );
+        expect(rectOf(card, GraphCardSlot.tagLegend).bottom, card.cardRect.bottom + 11);
+        expect(card.debugTagLegendTexts, <String>['v1.4.2']);
+      }
+    });
+
+    testWidgets('a tap on the tag pill opens the tag popover at the pill; ignored while the actions are disabled', (
+      tester,
+    ) async {
+      final controller = RecordingController();
+      final RenderGraphCard card = await pumpCard(tester, one(tags: const <GraphRef>[GraphRef('v1')]), controller);
+      final Rect pill = rectOf(card, GraphCardSlot.tagLegend);
+      await tester.tapAt(_at + pill.center);
+      expect(controller.calls.single, ('tags', 'kxwsnptmqrvl', (_at + pill.topLeft) & pill.size));
+      controller.actionsEnabled.value = false;
+      await tester.pump();
+      await tester.tapAt(_at + pill.center);
+      expect(controller.calls, hasLength(1));
+    });
+
+    test('the controller: openMenu, openBookmarks and openTags close each other; closeMenus closes all', () {
+      final controller = GraphCardController(now: _now);
+      addTearDown(controller.dispose);
+      controller.openTags('a', Rect.zero);
+      expect(controller.tagsOpen.value, 'a');
+      controller.openMenu('a', Rect.zero);
+      expect((controller.menuOpen.value, controller.tagsOpen.value), ('a', null));
+      controller.openTags('a', const Rect.fromLTWH(1, 2, 3, 4));
+      expect((controller.menuOpen.value, controller.tagsOpen.value), (null, 'a'));
+      expect(controller.tagsAnchor, const Rect.fromLTWH(1, 2, 3, 4));
+      controller.openBookmarks('a', Rect.zero);
+      expect((controller.bookmarksOpen.value, controller.tagsOpen.value), ('a', null));
+      controller
+        ..openTags('a', Rect.zero)
+        ..openTags('a', Rect.zero);
+      expect(controller.tagsOpen.value, isNull, reason: 'a second open closes it');
+      controller
+        ..openTags('a', Rect.zero)
+        ..closeMenus();
+      expect(controller.tagsOpen.value, isNull);
+    });
   });
 
   group('paint', () {
@@ -851,7 +974,7 @@ void main() {
       expect(neutral.color, isNot(ZsElevation.night.ringSelect.boxShadows.single.color));
       expect(rrects(calls).first, (rrect.inflate(neutral.spreadRadius), neutral.color.toARGB32()));
       final result = BoxHitTestResult();
-      expect(card.hitTest(result, position: rectOf(card, GraphCardSlot.more).center), isFalse);
+      expect(card.hitTest(result, position: rectOf(card, GraphCardSlot.addBookmark).center), isFalse);
     });
 
     testWidgets('a drop target paints the drop border, ring and hover fill; clearing it repaints the normal look', (
@@ -877,38 +1000,41 @@ void main() {
     });
 
     for (final reduce in <bool>[false, true]) {
-      testWidgets('reduce motion $reduce: ••• ${reduce ? 'only fades, at scale 1' : 'fades and scales in'}', (
-        tester,
-      ) async {
-        final controller = GraphCardController(now: _now);
-        final RenderGraphCard card = await pumpCard(
+      testWidgets(
+        'reduce motion $reduce: the add circle ${reduce ? 'only fades, at scale 1' : 'fades and scales in'}',
+        (
           tester,
-          one(),
-          controller,
-          appearance: ZsAppearance(reduceMotion: reduce),
-        );
-        controller.hovered.value = 'kxwsnptmqrvl';
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 40));
-        final List<(Symbol, List<dynamic>)> calls = paintCalls(card);
-        final scales = <double>[
-          for (final (Symbol method, List<dynamic> args) in calls)
-            if (method == #scale) args[0] as double,
-        ];
-        final ovals = <Color>[
-          for (final (Symbol method, List<dynamic> args) in calls)
-            if (method == #drawOval) (args[1] as Paint).color,
-        ];
-        expect(ovals, isNotEmpty);
-        expect(ovals.first.a, inExclusiveRange(0, 1), reason: 'mid-fade');
-        final Iterable<double> affordance = scales.where((s) => s != 12 / 16);
-        if (reduce) {
-          expect(affordance.every((s) => s == 1), isTrue);
-        } else {
-          expect(affordance.any((s) => s > .85 && s < 1), isTrue);
-        }
-        await tester.pumpAndSettle();
-      });
+        ) async {
+          final controller = GraphCardController(now: _now);
+          final RenderGraphCard card = await pumpCard(
+            tester,
+            one(),
+            controller,
+            appearance: ZsAppearance(reduceMotion: reduce),
+          );
+          controller.hovered.value = 'kxwsnptmqrvl';
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 40));
+          final List<(Symbol, List<dynamic>)> calls = paintCalls(card);
+          final scales = <double>[
+            for (final (Symbol method, List<dynamic> args) in calls)
+              if (method == #scale) args[0] as double,
+          ];
+          final ovals = <Color>[
+            for (final (Symbol method, List<dynamic> args) in calls)
+              if (method == #drawOval) (args[1] as Paint).color,
+          ];
+          expect(ovals, isNotEmpty);
+          expect(ovals.first.a, inExclusiveRange(0, 1), reason: 'mid-fade');
+          final Iterable<double> affordance = scales.where((s) => s != 12 / 16);
+          if (reduce) {
+            expect(affordance.every((s) => s == 1), isTrue);
+          } else {
+            expect(affordance.any((s) => s > .85 && s < 1), isTrue);
+          }
+          await tester.pumpAndSettle();
+        },
+      );
     }
 
     testWidgets('the affordances fade out when the hover ends', (tester) async {
@@ -922,7 +1048,7 @@ void main() {
         for (final (Symbol method, List<dynamic> args) in paintCalls(card))
           if (method == #drawOval) (args[1] as Paint).color,
       ];
-      expect(ovals, hasLength(4), reason: '••• and the add-bookmark circle, fill and border each');
+      expect(ovals, hasLength(2), reason: 'the add-bookmark circle, fill and border; no •••');
       expect(ovals.first.a, inExclusiveRange(0, 1), reason: 'mid-fade');
       await tester.pumpAndSettle();
       expect(paintCalls(card).where((call) => call.$1 == #drawOval), isEmpty);
@@ -939,21 +1065,19 @@ void main() {
           if (method == #drawOval) (args[1] as Paint).color,
       ];
       expect(ovals.first.a, closeTo(GraphTheme.night.cardFillHover.a * .4, 1e-6));
-      await tester.tapAt(_at + rectOf(card, GraphCardSlot.more).center);
+      await tester.tapAt(_at + rectOf(card, GraphCardSlot.addBookmark).center);
       expect(controller.calls, isEmpty);
     });
   });
 
   group('input and semantics', () {
     testWidgets(
-      'affordances reveal on hover, are hit in the overhang and keep the hover; not hovered, a tap there misses',
+      'the add circle reveals on hover, is hit in the overhang and keeps the hover; not hovered, a tap there misses',
       (tester) async {
         final controller = RecordingController();
         final RenderGraphCard card = await pumpCard(tester, one(), controller);
-        final Offset more = _at + rectOf(card, GraphCardSlot.more).center;
         final Offset add = _at + rectOf(card, GraphCardSlot.addBookmark).center;
-        expect(card.cardRect.contains(more - _at), isFalse, reason: 'in the overhang');
-        await tester.tapAt(more);
+        expect(card.cardRect.contains(add - _at), isFalse, reason: 'in the overhang');
         await tester.tapAt(add);
         expect(controller.calls, isEmpty);
 
@@ -962,18 +1086,16 @@ void main() {
         addTearDown(mouse.removePointer);
         await tester.pump();
         expect(controller.hovered.value, 'kxwsnptmqrvl');
-        await mouse.moveTo(more);
-        await tester.pump();
-        expect(controller.hovered.value, 'kxwsnptmqrvl', reason: 'on ••• the card stays hovered');
-        await mouse.down(more);
-        await mouse.up();
-        expect(controller.calls.single.$1, 'menu');
-        expect(controller.calls.single.$3, (_at + rectOf(card, GraphCardSlot.more).topLeft) & const Size(20, 20));
         await mouse.moveTo(add);
         await tester.pump();
+        expect(controller.hovered.value, 'kxwsnptmqrvl', reason: 'on the add circle the card stays hovered');
         await mouse.down(add);
         await mouse.up();
-        expect(controller.calls.last.$1, 'bookmarks');
+        expect(controller.calls.single.$1, 'bookmarks');
+        expect(
+          controller.calls.single.$3,
+          (_at + rectOf(card, GraphCardSlot.addBookmark).topLeft) & const Size(20, 20),
+        );
         await mouse.moveTo(const Offset(700, 500));
         await tester.pump();
         expect(controller.hovered.value, 'kxwsnptmqrvl', reason: 'the hover intent keeps it for 140 ms');
@@ -1026,7 +1148,7 @@ void main() {
       expect(data.flagsCollection.isButton, isTrue);
       expect(
         <String>[for (final int id in data.customSemanticsActionIds!) CustomSemanticsAction.getAction(id)!.label!],
-        <String>['Actions', 'Bookmarks: main, dev*'],
+        <String>['Show menu', 'Bookmarks: main, dev*'],
       );
       final RenderGraphCard card = tester.renderObject(find.byType(GraphCard));
       expect(node.rect, card.cardRect);
@@ -1035,7 +1157,24 @@ void main() {
       final SemanticsData plain = tester.getSemantics(find.byType(GraphCard)).getSemanticsData();
       expect(
         <String>[for (final int id in plain.customSemanticsActionIds!) CustomSemanticsAction.getAction(id)!.label!],
-        <String>['Actions', 'Add bookmark'],
+        <String>['Show menu', 'Add bookmark'],
+      );
+
+      await pumpCard(
+        tester,
+        one(
+          refs: const <GraphRef>[GraphRef('main')],
+          tags: const <GraphRef>[
+            GraphRef('v1'),
+            GraphRef('v2', remote: 'origin'),
+          ],
+        ),
+        controller,
+      );
+      final SemanticsData tagged = tester.getSemantics(find.byType(GraphCard)).getSemanticsData();
+      expect(
+        <String>[for (final int id in tagged.customSemanticsActionIds!) CustomSemanticsAction.getAction(id)!.label!],
+        <String>['Show menu', 'Bookmarks: main', 'Tags: v1, v2@origin'],
       );
 
       await pumpCard(tester, one(root: true, flags: _imm, content: null), controller);
@@ -1043,8 +1182,24 @@ void main() {
       expect(root.label, startsWith('root(), '));
       expect(
         <String>[for (final int id in root.customSemanticsActionIds!) CustomSemanticsAction.getAction(id)!.label!],
-        <String>['Actions'],
+        <String>['Show menu'],
       );
+      semantics.dispose();
+    });
+
+    testWidgets('VoiceOver: Show menu opens the menu at the card, Tags: … the tag popover at the pill', (tester) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      final controller = RecordingController();
+      final RenderGraphCard card = await pumpCard(tester, one(tags: const <GraphRef>[GraphRef('v1')]), controller);
+      final SemanticsNode node = tester.getSemantics(find.byType(GraphCard));
+      int action(String label) => node.getSemanticsData().customSemanticsActionIds!.firstWhere(
+        (id) => CustomSemanticsAction.getAction(id)!.label == label,
+      );
+      node.owner!.performAction(node.id, SemanticsAction.customAction, action('Show menu'));
+      expect(controller.calls.last, ('menu', 'kxwsnptmqrvl', (_at + card.cardRect.topLeft) & card.cardRect.size));
+      node.owner!.performAction(node.id, SemanticsAction.customAction, action('Tags: v1'));
+      final Rect pill = rectOf(card, GraphCardSlot.tagLegend);
+      expect(controller.calls.last, ('tags', 'kxwsnptmqrvl', (_at + pill.topLeft) & pill.size));
       semantics.dispose();
     });
   });
@@ -1123,11 +1278,17 @@ void main() {
     }, variant: macOS);
 
     /// A node of [layout] whose card is fully on screen at scroll 0.
-    int onScreen(Host host) => <int>[
-      for (var i = 0; i < host.layout.nodeCount; i++) i,
-    ].firstWhere((i) => (Offset.zero & surface).deflate(40).contains(host.rectOf(i).bottomRight + const Offset(0, 11)));
+    int onScreen(Host host) =>
+        <int>[
+          for (var i = 0; i < host.layout.nodeCount; i++) i,
+        ].firstWhere((i) {
+          final Rect screen = (Offset.zero & surface).deflate(40);
+          final Rect card = host.rectOf(i);
+          return screen.contains(card.bottomRight + const Offset(0, 11)) &&
+              screen.contains(card.topRight - const Offset(0, 11));
+        });
 
-    testWidgets('a viewport card: its box is the inflated card rect, and hover then ••• reaches openMenu', (
+    testWidgets('a viewport card: its box is the inflated card rect, and a right-click reaches openMenu', (
       tester,
     ) async {
       final RecordedGraphLayout layout = chainLayout(60, cols: 2);
@@ -1145,19 +1306,13 @@ void main() {
       addTearDown(mouse.removePointer);
       await tester.pump();
       expect(controller.hovered.value, layout.keyOf(node));
-      final Offset more = card.localToGlobal(rectOf(card, GraphCardSlot.more).center);
-      await mouse.moveTo(more);
-      await tester.pump();
-      await mouse.down(more);
-      await mouse.up();
-      expect(controller.calls.last.$1, 'menu');
-      expect(
-        controller.calls.last.$3,
-        card.localToGlobal(rectOf(card, GraphCardSlot.more).topLeft) & const Size(20, 20),
-      );
+      final Offset at = host.rectOf(node).center;
+      await tester.tapAt(at, buttons: kSecondaryMouseButton, kind: PointerDeviceKind.mouse);
+      expect(controller.calls.last, ('menu', layout.keyOf(node), Rect.fromLTWH(at.dx, at.dy, 0, 0)));
+      expect(card.debugSlots.map((slot) => slot.kind), isNot(contains(GraphCardSlot.tagLegend)));
     }, variant: macOS);
 
-    testWidgets('a press on the overhang half of ••• never arms the pan', (tester) async {
+    testWidgets('a press on the overhang half of the add circle never arms the pan', (tester) async {
       // Two columns: a card fully on screen at scroll 0, and the plane scrolls vertically.
       final RecordedGraphLayout layout = chainLayout(60, cols: 2);
       final controller = RecordingController();
@@ -1170,27 +1325,27 @@ void main() {
       await mouse.addPointer(location: host.rectOf(node).center);
       addTearDown(mouse.removePointer);
       await tester.pump();
-      // The lower half of •••: outside the card rect, in the overhang.
-      final Offset below = card.localToGlobal(rectOf(card, GraphCardSlot.more).center + const Offset(0, 5));
-      expect(host.rectOf(node).contains(below), isFalse);
-      await mouse.moveTo(below);
+      // The upper half of the add circle: outside the card rect, in the overhang.
+      final Offset above = card.localToGlobal(rectOf(card, GraphCardSlot.addBookmark).center - const Offset(0, 5));
+      expect(host.rectOf(node).contains(above), isFalse);
+      await mouse.moveTo(above);
       await tester.pump();
 
       // 3 px is past the mouse's pan slop (2 px): an armed pan would scroll.
-      await mouse.down(below);
-      await mouse.moveBy(const Offset(-3, -3));
+      await mouse.down(above);
+      await mouse.moveBy(const Offset(3, 3));
       await mouse.up();
       await tester.pump();
       expect(Offset(host.h.offset, host.v.offset), Offset.zero);
 
-      // Within the drag threshold (4 px) the press opens the menu, still without a scroll.
-      await mouse.moveTo(below);
-      await mouse.down(below);
+      // Within the drag threshold (4 px) the press opens the popover, still without a scroll.
+      await mouse.moveTo(above);
+      await mouse.down(above);
       await mouse.moveBy(const Offset(-1, 0));
       await mouse.up();
       await tester.pump();
       expect(Offset(host.h.offset, host.v.offset), Offset.zero);
-      expect(controller.calls.last.$1, 'menu');
+      expect(controller.calls.last.$1, 'bookmarks');
     }, variant: macOS);
 
     testWidgets('a click that wobbles up to the drag threshold (4 px) still clicks; past it nothing opens or pans', (
@@ -1207,7 +1362,6 @@ void main() {
       await mouse.addPointer(location: host.rectOf(node).center);
       addTearDown(mouse.removePointer);
       await tester.pump();
-      final Offset more = card.localToGlobal(rectOf(card, GraphCardSlot.more).center);
       final Offset add = card.localToGlobal(rectOf(card, GraphCardSlot.addBookmark).center);
 
       Future<void> press(Offset at, Offset wobble) async {
@@ -1219,7 +1373,7 @@ void main() {
         await tester.pump();
       }
 
-      for (final (Offset at, String call) in <(Offset, String)>[(more, 'menu'), (add, 'bookmarks')]) {
+      for (final (Offset at, String call) in <(Offset, String)>[(add, 'bookmarks')]) {
         for (final wobble in const <Offset>[Offset(2, 0), Offset(0, -3), Offset(-2, 2)]) {
           controller.calls.clear();
           await press(at, wobble);
@@ -1361,7 +1515,9 @@ void main() {
       expect(controller.hovered.value, isNull, reason: 'hover is off');
     }, variant: macOS);
 
-    testWidgets('the hover area names •••, the bookmark control and the +N tag with their tooltips', (tester) async {
+    testWidgets('the hover area names the bookmark control, the tag pill and the +N tag with their tooltips', (
+      tester,
+    ) async {
       final controller = GraphCardController(now: _now);
       final RenderGraphCard card = await pumpCard(
         tester,
@@ -1370,6 +1526,7 @@ void main() {
           workspaces: const <String>['default', 'ci', 'docs', 'release', 'scratch'],
           workspaceName: 'default',
           refs: const <GraphRef>[GraphRef('main')],
+          tags: const <GraphRef>[GraphRef('v1'), GraphRef('v2')],
         ),
         controller,
       );
@@ -1388,10 +1545,10 @@ void main() {
         return controller.hoverArea.value;
       }
 
-      final GraphCardHoverArea? more = await at(rectOf(card, GraphCardSlot.more).center);
-      expect(more?.part, GraphCardHoverPart.more);
-      expect(more?.tooltip, 'Actions (or right-click the card)');
-      expect(more?.rect, rectOf(card, GraphCardSlot.more).shift(-card.cardRect.topLeft));
+      final GraphCardHoverArea? tags = await at(rectOf(card, GraphCardSlot.tagLegend).center);
+      expect(tags?.part, GraphCardHoverPart.tags);
+      expect(tags?.tooltip, 'Tags: v1, v2');
+      expect(tags?.rect, rectOf(card, GraphCardSlot.tagLegend).shift(-card.cardRect.topLeft));
       final GraphCardHoverArea? legend = await at(rectOf(card, GraphCardSlot.legend).center);
       expect(legend?.part, GraphCardHoverPart.bookmarks);
       expect(legend?.tooltip, 'Bookmarks: main');

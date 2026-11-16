@@ -76,6 +76,14 @@ RecordedGraphLayout _layout(String op, {List<String>? changeIds}) {
       <GraphRef>[],
       <GraphRef>[],
     ],
+    tags: const <List<GraphRef>>[
+      <GraphRef>[],
+      <GraphRef>[GraphRef('v1.0'), GraphRef('v1.0', remote: 'origin')],
+      <GraphRef>[],
+      <GraphRef>[],
+      <GraphRef>[],
+      <GraphRef>[],
+    ],
     contents: <GraphCommitContent?>[
       for (final String key in _keys) GraphCommitContent(subject: 'about $key', authorName: 'Ada', empty: key == _at),
     ],
@@ -4870,6 +4878,36 @@ void main() {
       await rightClick(tester, find.text('main@origin'));
       await choose(tester, 'Copy name');
       expect(copied, <String>['main@origin']);
+      await unmount(tester);
+    });
+
+    testWidgets('Story 10.45: the tag chips follow the bookmark chips: the tag glyph, no state word, no drag', (
+      tester,
+    ) async {
+      recordClipboard(tester);
+      await pump(tester);
+      await settle(tester);
+      final Finder tag = find.text('v1.0@origin');
+      expect(find.text('v1.0'), findsOneWidget);
+      expect(tag, findsOneWidget);
+      expect(tester.getTopLeft(find.text('v1.0')).dx, greaterThan(tester.getTopLeft(find.text('main@origin')).dx));
+      final Finder chip = find.ancestor(of: tag, matching: find.byType(Row)).first;
+      final glyphs = <String?>[
+        for (final ZanshinIcon icon in tester.widgetList<ZanshinIcon>(
+          find.descendant(of: chip, matching: find.byType(ZanshinIcon)),
+        ))
+          icon.name,
+      ];
+      expect(glyphs, <String>[ZI.tag]);
+      expect(
+        find.descendant(of: chip, matching: find.byType(Text)),
+        findsOneWidget,
+        reason: 'no state word',
+      );
+      expect(find.ancestor(of: tag, matching: find.byType(GraphDragSource)), findsNothing);
+      await rightClick(tester, tag);
+      await choose(tester, 'Copy name');
+      expect(copied, <String>['v1.0@origin']);
       await unmount(tester);
     });
   });

@@ -659,6 +659,8 @@ void main() {
     expect(name(const GraphTagDelete(<String>['v1', 'v2'])), 'Delete Tag v1, v2');
     expect(name(const GraphTagTrack('v1', 'origin')), 'Track Tag v1@origin');
     expect(name(const GraphUndo(GraphTagUntrack('v1', 'origin'))), 'Untrack Tag v1@origin');
+    // Story 10.45.
+    expect(name(const GraphTagSet(<String>['v9'], revision: 'k')), 'Set Tag v9');
   });
 
   test('Undo and Redo name the drop verbs (Story 10.10)', () {

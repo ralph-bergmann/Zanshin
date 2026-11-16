@@ -12,6 +12,8 @@ export interface ChangeCardProps extends React.HTMLAttributes<HTMLDivElement> {
   /** relative time: "now", "3h", "Sep 19" */
   date?: string;
   bookmarks?: string[];
+  /** the tags, in jj's order: the tag legend on the bottom edge, right — the first tag and +N, calmer than the bookmark pill (tag glyph, dim regular text, a plain border), at most half the card less 34px */
+  tags?: string[];
   /** the workspaces whose working copy is this commit — only when the repo has two or more (jj prints no marker with one): ours = the saffron name@, others = quiet name@ tags (two, then +N) */
   workspaces?: string[];
   /** this window's workspace (e.g. "default") */
@@ -35,12 +37,12 @@ export interface ChangeCardProps extends React.HTMLAttributes<HTMLDivElement> {
   dragging?: "src" | "from";
   /** moon pulse after an operation touched this change */
   flash?: boolean;
-  /** its ••• menu is open */
+  /** its card menu is open (right-click, the context-menu key, ⇧F10 or VoiceOver's "Show menu"; the card has no ••• button) */
   menuOpen?: boolean;
-  /** shows the ••• button on the bottom edge (hover / focus) */
-  onMenu?: (e: React.MouseEvent) => void;
   /** shows a round bookmark button on the top edge when the change has no bookmark */
   onBookmark?: (e: React.MouseEvent) => void;
+  /** a click on the tag legend: opens the tag popover; without it the legend is no button */
+  onTags?: (e: React.MouseEvent) => void;
   /** extra absolutely-positioned layers (e.g. a PeekCard) */
   children?: React.ReactNode;
 }

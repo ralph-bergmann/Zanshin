@@ -1,10 +1,10 @@
-<!-- @dsCard group="Components" viewport="700x592" name="Graph" subtitle="ChangeCard states (immutable: hatched), StackCard, GraphEdge (own exit, @ path, gap, end), ChangeId, AtBadge, BookmarkChip, Flag, HatchSwatch" -->
+<!-- @dsCard group="Components" viewport="700x800" name="Graph" subtitle="ChangeCard states (immutable: hatched; bookmark pill on top, tag legend below — no •••), StackCard, GraphEdge (own exit, @ path, gap, end), ChangeId, AtBadge, BookmarkChip, Flag, HatchSwatch, the tag popover" -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="../../styles.css"/>
-<style>body{margin:0;padding:0;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.plane{position:relative;height:350px}.plane>.zs-card{position:absolute}.strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 24px;border-top:1px solid var(--border)}.strip svg{overflow:visible}.paper{background:var(--canvas);padding:22px 24px 16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}</style>
+<style>body{margin:0;padding:0;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.plane{position:relative;height:350px}.plane>.zs-card{position:absolute}.strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 24px;border-top:1px solid var(--border)}.strip svg{overflow:visible}.paper{background:var(--canvas);padding:22px 24px 16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}.tags{position:relative;height:208px;border-top:1px solid var(--border)}.tags>.zs-card,.tags>.zs-menu,.tags>.cap{position:absolute}.tags>.cap{font-size:var(--fs-sm);color:var(--text-dim)}.tags>.zs-menu{width:300px}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -14,7 +14,7 @@
 <script src="../../_ds_bundle.js"></script>
 <script type="text/babel">
 (() => {
-  const { ChangeCard, StackCard, GraphEdge, GraphEnd, GraphPorts, ChangeId, AtBadge, BookmarkChip, Flag, HatchSwatch } = window.ZanshinDesignSystem_a33847;
+  const { ChangeCard, StackCard, GraphEdge, GraphEnd, GraphPorts, ChangeId, AtBadge, BookmarkChip, Flag, HatchSwatch, Menu } = window.ZanshinDesignSystem_a33847;
   const noop = () => {};
   // lane A x=24 (centre 144), lane B x=320 (centre 440); rows 62px tall, 48px apart. The fork leaves xyzrmwpo at its own exit, 24px right of the straight line's centre exit.
   const Demo = () => (
@@ -28,13 +28,27 @@
           <GraphEdge from={[144, 350]} to={[144, 308]} kind="wc" gap/>
           <GraphEnd x={611} y={290}/>
         </svg>
-        <ChangeCard style={{ left: 24, top: 22 }} id="ovknlmro" workingCopy empty date="now" author="Ralph Stein" onMenu={noop} onBookmark={noop}/>
+        <ChangeCard style={{ left: 24, top: 22 }} id="ovknlmro" workingCopy empty date="now" author="Ralph Stein" onBookmark={noop}/>
         <ChangeCard style={{ left: 24, top: 136 }} id="plkmnvxo" subject="feat(onboarding): swipe gestures + haptic feedback" author="Ralph Stein" date="3h" bookmarks={["feature/ZAN-412_onboarding-swipe-gestures", "review/ZAN-412-v2"]}/>
         <ChangeCard style={{ left: 24, top: 246 }} id="xyzrmwpo" subject="feat(onboarding): animated page indicator" author="Ralph Stein" date="5h" conflict/>
-        <ChangeCard style={{ left: 320, top: 22 }} id="tnrkslqw" subject="exp: drop legacy ChangeNotifier wrappers" author="Ralph Stein" date="40m" selected menuOpen onMenu={noop} bookmarks={["exp/riverpod-3"]}/>
+        <ChangeCard style={{ left: 320, top: 22 }} id="tnrkslqw" subject="exp: drop legacy ChangeNotifier wrappers" author="Ralph Stein" date="40m" selected menuOpen bookmarks={["exp/riverpod-3"]}/>
         <StackCard style={{ left: 320, top: 136 }} count={2} subject="exp: generate providers for settings + auth" from="uwqmpnrk" to="kzrmqvnt" author="Ralph" date="1h"/>
         <ChangeCard style={{ left: 320, top: 250, width: 210 }} id="vruxwmqv" subject="Release v1.0.0" immutable detailed={false} bookmarks={["main"]}/>
         <ChangeCard style={{ left: 546, top: 250, width: 130 }} id="zzzzzzzz" root detailed={false}/>
+      </div>
+      {/* Story 10.45 (Refs Study section 1): tags hang on the bottom edge, calmer than the bookmark pill; a click opens the tag popover. */}
+      <div className="tags">
+        <div className="cap" style={{ left: 24, top: 12 }}>a bookmark and two tags · an immutable change with a tag</div>
+        <ChangeCard style={{ left: 24, top: 44 }} id="tnoyqlsv" subject="release: 1.5.0-rc1" author="Ralph Stein" date="Nov 14" bookmarks={["release/1.5.x"]} tags={["v1.5.0-rc1", "v1.5.0-rc2"]} onTags={noop}/>
+        <ChangeCard style={{ left: 24, top: 128 }} id="ypwulmnr" subject="fix: crash when the queue is empty" author="Anna" date="Oct 30" immutable tags={["v1.4.2"]}/>
+        <div className="cap" style={{ left: 320, top: 12 }}>the tag popover (a click on the legend)</div>
+        <Menu still style={{ left: 320, top: 36 }} id="tnoyqlsv" items={[
+          { id: "v1", label: <span style={{ fontFamily: "var(--font-mono)" }}>v1.5.0-rc1</span>, text: "v1.5.0-rc1", shortcut: "on origin", submenu: [{ id: "del", label: "Delete…", cmd: "jj tag delete v1.5.0-rc1", danger: true }] },
+          { id: "v2", label: <span style={{ fontFamily: "var(--font-mono)" }}>v1.5.0-rc2</span>, text: "v1.5.0-rc2", shortcut: "local only", submenu: [{ id: "del", label: "Delete…", cmd: "jj tag delete v1.5.0-rc2", danger: true }] },
+          "sep",
+          { id: "create", label: "Create tag here…" },
+          { id: "move", label: "Move existing here…" },
+        ]}/>
       </div>
       <div className="strip">
         <AtBadge/><AtBadge size="sm"/><ChangeId id="plkmnvxo"/><ChangeId id="vruxwmqv" length={8}/><HatchSwatch title="Immutable"/>

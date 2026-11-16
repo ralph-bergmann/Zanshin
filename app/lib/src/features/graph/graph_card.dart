@@ -25,11 +25,11 @@ enum GraphCardHoverPart {
   /// The card body.
   body,
 
-  /// The ••• circle.
-  more,
-
   /// The bookmark control: the legend pill or the add circle.
   bookmarks,
+
+  /// The tag legend pill (Story 10.45).
+  tags,
 
   /// The `+N` tag of the folded workspaces.
   moreTag,
@@ -45,7 +45,8 @@ typedef GraphCardHoverArea = ({GraphCardHoverPart part, Rect rect, String? toolt
 /// Story 10.6 adds the pointer model: [click] selects after [graphDoubleClickWindow], and a second click inside it runs
 /// [onEdit] on an editable card instead; [enter] and [leave] keep [hovered] with [graphHoverIntent], [holdHover] keeps
 /// it while the pointer is in the card's peek, [hoverEnabled] turns hover off (calm scrolling, an inactive window).
-/// [openMenu] and [openBookmarks] record what the graph's menu hosts show (Story 10.15); 10.5 owns [now] in the app.
+/// [openMenu], [openBookmarks] and [openTags] record what the graph's menu hosts show (Stories 10.15, 10.45); 10.5 owns
+/// [now] in the app.
 class GraphCardController {
   /// A controller whose "now" starts at [now] (epoch ms).
   GraphCardController({required int now}) : now = ValueNotifier<int>(now);
@@ -171,7 +172,8 @@ class GraphCardController {
     _leave = null;
   }
 
-  /// Where the open card menu hangs (global): the ••• circle, or a zero-size box at the pointer for a right-click.
+  /// Where the open card menu hangs (global): the card rect (the keyboard, VoiceOver), or a zero-size box at the
+  /// pointer for a right-click.
   Rect? menuAnchor;
 
   /// The key of the card whose bookmark popover is open (Story 10.15).
@@ -180,32 +182,59 @@ class GraphCardController {
   /// Where the open bookmark popover hangs (global): the card's bookmark control.
   Rect? bookmarksAnchor;
 
-  /// Opens [key]'s card menu at [anchor] (global), or closes it when it is open; an open bookmark popover closes.
+  /// The key of the card whose tag popover is open (Story 10.45).
+  final tagsOpen = ValueNotifier<String?>(null);
+
+  /// Where the open tag popover hangs (global): the card's tag pill.
+  Rect? tagsAnchor;
+
+  /// The global rect of the card with the given key, while it is laid out; set by the canvas, null elsewhere. The
+  /// menu keys anchor the card menu at it.
+  Rect? Function(String key)? cardRect;
+
+  /// Opens [key]'s card menu at [anchor] (global), or closes it when it is open; an open popover closes.
   void openMenu(String key, Rect anchor) {
     if (menuOpen.value == key) {
       menuOpen.value = null;
       return;
     }
     bookmarksOpen.value = null;
+    tagsOpen.value = null;
     menuAnchor = anchor;
     menuOpen.value = key;
   }
 
-  /// Opens [key]'s bookmark popover at [anchor] (global), or closes it when it is open; an open card menu closes.
+  /// Opens [key]'s bookmark popover at [anchor] (global), or closes it when it is open; an open card menu or tag
+  /// popover closes.
   void openBookmarks(String key, Rect anchor) {
     if (bookmarksOpen.value == key) {
       bookmarksOpen.value = null;
       return;
     }
     menuOpen.value = null;
+    tagsOpen.value = null;
     bookmarksAnchor = anchor;
     bookmarksOpen.value = key;
   }
 
-  /// Closes the card menu and the bookmark popover.
+  /// Opens [key]'s tag popover at [anchor] (global), or closes it when it is open; an open card menu or bookmark
+  /// popover closes.
+  void openTags(String key, Rect anchor) {
+    if (tagsOpen.value == key) {
+      tagsOpen.value = null;
+      return;
+    }
+    menuOpen.value = null;
+    bookmarksOpen.value = null;
+    tagsAnchor = anchor;
+    tagsOpen.value = key;
+  }
+
+  /// Closes the card menu and both popovers.
   void closeMenus() {
     menuOpen.value = null;
     bookmarksOpen.value = null;
+    tagsOpen.value = null;
   }
 
   /// The graph's drag (Story 10.10): a card body or its legend pill starts it past the drag threshold; null drags
@@ -227,6 +256,7 @@ class GraphCardController {
     focused.dispose();
     menuOpen.dispose();
     bookmarksOpen.dispose();
+    tagsOpen.dispose();
     dropTarget.dispose();
     now.dispose();
     actionsEnabled.dispose();
@@ -278,6 +308,7 @@ class GraphCardData {
     this.timestampMs,
     this.utcOffsetMinutes = 0,
     this.refs = const <GraphRef>[],
+    this.tags = const <GraphRef>[],
     this.workingCopies = const <String>[],
     this.workspaceName,
     this.content,
@@ -308,6 +339,7 @@ class GraphCardData {
       timestampMs: layout.timestampOf(node) ?? loaded?.timestampMs,
       utcOffsetMinutes: layout.utcOffsetMinutes,
       refs: layout.refsOf(node),
+      tags: layout.tagsOf(node),
       workingCopies: layout.workingCopiesOf(node),
       workspaceName: layout.workspaceName,
       content: loaded,
@@ -358,6 +390,9 @@ class GraphCardData {
 
   /// The bookmarks, in jj's order.
   final List<GraphRef> refs;
+
+  /// The tags, in jj's order (Story 10.45).
+  final List<GraphRef> tags;
 
   /// jj's `working_copies()` names.
   final List<String> workingCopies;
@@ -554,7 +589,7 @@ String graphCardLabel(AppLocalizations strings, GraphCardData data, {required in
 typedef GraphCardIcons = ({
   ui.Picture? bookmark,
   ui.Picture? bookmarkFilled,
-  ui.Picture? more,
+  ui.Picture? tag,
   ui.Picture? conflict,
   ui.Picture? merge,
 });
@@ -636,7 +671,7 @@ class _GraphCardState extends State<GraphCard> with TickerProviderStateMixin {
   bool get _revealed {
     final GraphCardController c = widget.controller;
     final String key = _key;
-    return (!_inactive && c.hovered.value == key) || c.focused.value == key || c.menuOpen.value == key;
+    return (!_inactive && c.hovered.value == key) || c.focused.value == key;
   }
 
   @override
@@ -676,13 +711,11 @@ class _GraphCardState extends State<GraphCard> with TickerProviderStateMixin {
   void _listen(GraphCardController c) {
     c.hovered.addListener(_update);
     c.focused.addListener(_update);
-    c.menuOpen.addListener(_update);
   }
 
   void _unlisten(GraphCardController c) {
     c.hovered.removeListener(_update);
     c.focused.removeListener(_update);
-    c.menuOpen.removeListener(_update);
   }
 
   void _update() {
@@ -720,7 +753,7 @@ class _GraphCardState extends State<GraphCard> with TickerProviderStateMixin {
       icons: (
         bookmark: registry?[ZI.bookmark]?.picture,
         bookmarkFilled: registry?[ZI.bookmarkFilled]?.picture,
-        more: registry?[ZI.more]?.picture,
+        tag: registry?[ZI.tag]?.picture,
         conflict: registry?[ZI.conflict]?.picture,
         merge: registry?[ZI.merge]?.picture,
       ),

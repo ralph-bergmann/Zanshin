@@ -6,13 +6,16 @@ import { BookmarkChip } from "./BookmarkChip.jsx";
 
 // ChangeCard — one change in the graph. Detailed (62px): subject over meta. Compact (40px): one line.
 // States: workingCopy (saffron, glow) · selected (moon ring) · immutable (hatched, muted subject — no ◆, no colour; the hatch stays on hover, selection, open menu and drop) · empty / undescribed (italic, dim) · root
-// · dim · drop (rebase target) · dragging "src" | "from" · flash (just changed) · menuOpen (its ••• menu is showing)
-// Hover affordances: the ••• button (onMenu) on the bottom edge; without bookmarks, a round bookmark button (onBookmark) on the top edge.
+// · dim · drop (rebase target) · dragging "src" | "from" · flash (just changed) · menuOpen (its card menu is showing — right-click, the
+// context-menu key, ⇧F10 or VoiceOver's "Show menu"; there is no ••• button)
+// Hover affordance: without bookmarks, a round bookmark button (onBookmark) on the top edge.
+// tags: the tag legend on the bottom edge, right — the bookmark pill's shape, calmer (tag glyph, dim regular text, a plain border),
+// at most half the card less 34px so the line to the parent stays free; with onTags a click opens the tag popover.
 // workspaces: the workspaces whose working copy is this commit — pass them only when the repo has two or more (jj prints no marker
 // with one). Ours (ownWorkspace) is the saffron name@ badge; the others are quiet name@ tags, two at most, then +N (its title lists them).
 export function ChangeCard({
-  id, subject, author, date, bookmarks = [], workspaces, ownWorkspace, workingCopy, selected, hover, immutable, empty, root, conflict, merge,
-  detailed = true, width, dim, drop, dragging, flash, menuOpen, onMenu, onBookmark, className = "", style, children, ...rest
+  id, subject, author, date, bookmarks = [], tags = [], workspaces, ownWorkspace, workingCopy, selected, hover, immutable, empty, root, conflict, merge,
+  detailed = true, width, dim, drop, dragging, flash, menuOpen, onBookmark, onTags, className = "", style, children, ...rest
 }) {
   const quiet = !subject || root;
   const subj = <span className={"zs-card-subj" + (quiet ? " is-dim" : "")}>{root ? "root()" : subject || "(no description set)"}</span>;
@@ -28,6 +31,7 @@ export function ChangeCard({
   const stop = (e) => e.stopPropagation();
   const others = (workspaces || []).filter((w) => w !== ownWorkspace).sort();
   const named = workspaces && workspaces.length > 0;
+  const tagSlash = tags.length ? tags[0].lastIndexOf("/") : -1;
   const at = (
     <>
       {workingCopy && <AtBadge name={named ? ownWorkspace : undefined} />}
@@ -63,11 +67,15 @@ export function ChangeCard({
           <Icon name="bookmark" size="sm" />
         </button>
       )}
-      {onMenu && (
-        <button type="button" className="zs-card-more" aria-label="Actions" aria-haspopup="menu" aria-expanded={!!menuOpen} title="Actions (or right-click the card)"
-          onClick={(e) => { stop(e); onMenu(e); }} onDoubleClick={stop} onPointerDown={stop}>
-          <Icon name="more" size="sm" />
-        </button>
+      {tags.length > 0 && !root && (
+        <span className="zs-bm zs-card-tags" role={onTags ? "button" : undefined} tabIndex={onTags ? 0 : undefined}
+          aria-label={"Tags: " + tags.join(", ")} title={"Tags: " + tags.join(", ")}
+          onClick={onTags && ((e) => { stop(e); onTags(e); })} onDoubleClick={stop} onPointerDown={stop}>
+          <Icon name="tag" size="sm" />
+          {tagSlash >= 0 && <span className="zs-bm-rest is-prefix">{tags[0].slice(0, tagSlash + 1)}</span>}
+          <span className="zs-bm-main">{tags[0].slice(tagSlash + 1)}</span>
+          {tags.length > 1 && <span className="zs-bm-more">+{tags.length - 1}</span>}
+        </span>
       )}
       {children}
     </div>

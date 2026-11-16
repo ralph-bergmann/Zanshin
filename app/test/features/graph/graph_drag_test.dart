@@ -820,7 +820,7 @@ void main() {
       model.dispose();
     });
 
-    testWidgets('the pill drags its local bookmark; a remote ref and the root do not drag', (tester) async {
+    testWidgets('the pill drags its local bookmark; a remote ref, a tag pill and the root do not drag', (tester) async {
       useShellWindow(tester);
       final RecordedGraphLayout layout = handLayout(
         <(String, int, int)>[('a', 3, 0), ('b', 2, 0), ('c', 1, 0), ('r', 0, 0)],
@@ -830,6 +830,12 @@ void main() {
         refs: <List<GraphRef>>[
           <GraphRef>[const GraphRef('main')],
           <GraphRef>[const GraphRef('feat', remote: 'origin')],
+          const <GraphRef>[],
+          const <GraphRef>[],
+        ],
+        tags: <List<GraphRef>>[
+          <GraphRef>[const GraphRef('v1')],
+          const <GraphRef>[],
           const <GraphRef>[],
           const <GraphRef>[],
         ],
@@ -859,6 +865,10 @@ void main() {
 
       await dragFrom(pill('b'), _centre(tester, 'c'));
       expect(drops.calls, isEmpty, reason: 'a remote ref does not drag');
+      final RenderGraphCard a = _card(tester, 'a');
+      final Rect tagPill = a.debugSlots.firstWhere((s) => s.kind == GraphCardSlot.tagLegend).rect;
+      await dragFrom(a.localToGlobal(tagPill.center), _centre(tester, 'c'));
+      expect(drops.calls, isEmpty, reason: 'a tag does not drag');
       await dragFrom(_centre(tester, 'r'), _centre(tester, 'c'));
       expect(drops.calls, isEmpty, reason: 'the root does not drag');
       await dragFrom(pill('a'), _centre(tester, 'c'));

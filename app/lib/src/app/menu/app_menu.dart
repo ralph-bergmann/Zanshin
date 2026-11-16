@@ -220,6 +220,7 @@ class AppMenuModel extends ChangeNotifier {
         '$name@$remote', // l10n-ignore: symbol
       ),
       GraphBookmarkForget(:final String name) => s.menuBookmarkForget(name),
+      GraphTagSet(:final List<String> names) => s.menuTagSet(names.join(', ')),
       GraphTagDelete(:final List<String> names) => s.menuTagDelete(names.join(', ')),
       GraphTagTrack(:final String name, :final String remote) => s.menuTagTrack(
         '$name@$remote', // l10n-ignore: symbol

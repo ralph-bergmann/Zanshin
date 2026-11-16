@@ -22,6 +22,12 @@
 .zs-card:hover>.zs-bm{background:var(--card-solid-hi);border-color:var(--edge-hov)}
 .zs-card.is-sel>.zs-bm{border-color:var(--accent-line)}
 .zs-card.is-wc>.zs-bm{border-color:var(--co)}
+/* The tag legend (Story 10.45): the bookmark pill mirrored to the bottom edge, calmer — dim regular text, a border that never
+   lights; at most half the card less 34px (the app's W/2 − 34), so it stays right of the centre where the line to the
+   parent leaves the card */
+.zs-card>.zs-bm.zs-card-tags{top:auto;bottom:-11px;max-width:calc(50% - 34px);color:var(--text-dim)}
+.zs-card>.zs-bm.zs-card-tags,.zs-card:hover>.zs-bm.zs-card-tags,.zs-card.is-sel>.zs-bm.zs-card-tags,.zs-card.is-wc>.zs-bm.zs-card-tags{border-color:var(--border-strong)}
+.zs-card-tags .zs-bm-main{font-weight:400;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 
 /* StackCard — linear run of changes folded into one card */
 .zs-card.is-stack{box-shadow:0 7px 0 -4px var(--card-solid),0 7px 0 -3px var(--border-strong),0 14px 0 -7px var(--card-solid),0 14px 0 -6px var(--border-strong)}
@@ -84,15 +90,14 @@
 @keyframes zs-flash{0%,35%{box-shadow:0 0 0 2px var(--accent-live-line),0 0 0 6px var(--accent-live-ring)}100%{box-shadow:0 0 0 0 transparent}}
 .zs-card.is-menu{border-color:var(--edge-hov);background:var(--card-solid-hi);z-index:35}
 
-/* ChangeCard — hover affordances on the card edge: ••• (bottom right) and, without bookmarks, a bookmark button (top right) */
-.zs-card-more,.zs-card-bmadd{position:absolute;right:10px;z-index:3;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:var(--radius-pill);background:var(--card-solid);border:1px solid var(--border-strong);color:var(--text-faint);cursor:default;opacity:0;pointer-events:none;transform:scale(calc(1 - .15 * var(--motion)));transition:opacity var(--dur-hover) var(--ease-state),transform var(--dur-nudge) var(--ease-glide),color var(--dur-hover) var(--ease-state),background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state)}
-.zs-card-more{bottom:-11px}.zs-card-bmadd{top:-11px}
-.zs-card:hover>.zs-card-more,.zs-card:focus-within>.zs-card-more,.zs-card.is-menu>.zs-card-more,.zs-card:hover>.zs-card-bmadd,.zs-card:focus-within>.zs-card-bmadd{opacity:1;pointer-events:auto;transform:scale(1)}
-.zs-card:hover>.zs-card-more,.zs-card:hover>.zs-card-bmadd{background:var(--card-solid-hi);border-color:var(--edge-hov)}
-.zs-card.is-sel>.zs-card-more,.zs-card.is-sel>.zs-card-bmadd{border-color:var(--accent-line)}
-.zs-card.is-wc>.zs-card-more,.zs-card.is-wc>.zs-card-bmadd{border-color:var(--co)}
-.zs-card-more:hover,.zs-card.is-menu>.zs-card-more{color:var(--text);background:var(--card-solid-hi);border-color:var(--edge-hov)}
-.zs-card-more:active,.zs-card-bmadd:active{background:linear-gradient(var(--fl-on),var(--fl-on)),var(--card-solid-hi)}
+/* ChangeCard — the hover affordance on the card edge: without bookmarks, a bookmark button (top right). No ••• (Story 10.45):
+   the card menu opens by right-click, the context-menu key, ⇧F10 or VoiceOver's "Show menu" */
+.zs-card-bmadd{position:absolute;right:10px;top:-11px;z-index:3;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:var(--radius-pill);background:var(--card-solid);border:1px solid var(--border-strong);color:var(--text-faint);cursor:default;opacity:0;pointer-events:none;transform:scale(calc(1 - .15 * var(--motion)));transition:opacity var(--dur-hover) var(--ease-state),transform var(--dur-nudge) var(--ease-glide),color var(--dur-hover) var(--ease-state),background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state)}
+.zs-card:hover>.zs-card-bmadd,.zs-card:focus-within>.zs-card-bmadd{opacity:1;pointer-events:auto;transform:scale(1)}
+.zs-card:hover>.zs-card-bmadd{background:var(--card-solid-hi);border-color:var(--edge-hov)}
+.zs-card.is-sel>.zs-card-bmadd{border-color:var(--accent-line)}
+.zs-card.is-wc>.zs-card-bmadd{border-color:var(--co)}
+.zs-card-bmadd:active{background:linear-gradient(var(--fl-on),var(--fl-on)),var(--card-solid-hi)}
 .zs-card-bmadd:hover{color:var(--text)}
 
 /* DayAxis — Free layout: dashed dividers between calendar days, one sticky label per day on the divider, at the left edge */

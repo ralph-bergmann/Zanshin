@@ -216,6 +216,7 @@ void main() {
       await handle.describe(changeId: merge, description: 'merge');
       await handle.newChange(<String>[first]);
       await handle.bookmarkCreate(<String>['feat'], revision: first);
+      await handle.tagSet(<String>['v1'], revision: first);
       final BackendGraphLayout before = await _layout(handle, 'all()', mode: LayoutMode.free);
       rewrittenCommit = before.commitIdOf(before.indexOfKey(second)!);
       // The describe rewrites second: its old commit is hidden.
@@ -254,10 +255,13 @@ void main() {
       expect(graphGapCounts(layout).ends, 2);
     });
 
-    test('bookmarks are its refs; one workspace names none', () async {
+    test('bookmarks are its refs, tags its tags (Story 10.45); one workspace names none', () async {
       final BackendGraphLayout layout = await _layout(handle, 'all()', mode: LayoutMode.free);
       expect(layout.refsOf(layout.indexOfKey(first)!), const <GraphRef>[GraphRef('feat')]);
+      expect(layout.tagsOf(layout.indexOfKey(first)!), const <GraphRef>[GraphRef('v1')]);
       expect(layout.refsOf(layout.indexOfKey(second)!), isEmpty);
+      expect(layout.tagsOf(layout.indexOfKey(second)!), isEmpty);
+      expect(GraphCardData.of(layout, layout.indexOfKey(first)!).tags, const <GraphRef>[GraphRef('v1')]);
       expect(layout.workingCopiesOf(layout.workingCopyIndex!), isEmpty);
       expect(layout.workspaceName, isNull);
       expect(layout.isImmutable(layout.rootIndex!), isTrue);
@@ -280,6 +284,7 @@ void main() {
       expect(layout.parentCountOf(stack), 1);
       expect(layout.isImmutable(stack), isFalse);
       expect(layout.refsOf(stack), isEmpty);
+      expect(layout.tagsOf(stack), isEmpty);
       // The card data the peek reads: a real node's commit id and prefix, none for the stack node.
       final real = GraphCardData.of(layout, layout.indexOfKey(first)!);
       expect(real.commitId, layout.commitIdOf(layout.indexOfKey(first)!));

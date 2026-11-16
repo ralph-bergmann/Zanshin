@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="960x600" name="Card menu" subtitle="••• / right-click on a change: Revert · Abandon in the last group; the immutable (locked) variant with its note row; @ itself with Revert off" -->
+<!-- @dsCard group="Components" viewport="960x680" name="Card menu" subtitle="Right-click (or the context-menu key, ⇧F10, VoiceOver's Show menu) on a change: Revert · Abandon, then Create bookmark here… · Create tag here…; the immutable (locked) variant with its note row; @ itself with Revert off" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -20,11 +20,17 @@
     { id: "after", label: "Insert after", icon: "insert-after", cmd: "jj new -A" },
     { id: "before", label: "Insert before", icon: "insert-before", cmd: "jj new -B" },
   ];
+  // Story 10.45: every non-root card menu ends with the two ways to put a ref on the change; both ask for the name.
+  const REFS = [
+    "sep",
+    { id: "bm", label: "Create bookmark here…", icon: "bookmark", cmd: "jj bookmark create" },
+    { id: "tag", label: "Create tag here…", icon: "tag", cmd: "jj tag set" },
+  ];
   const Demo = () => (
     <div>
       <div className="g">
         <div className="c">
-          <div className="cap"><b>Below @</b> · the last group holds the two ways to take a change back: <b>Revert</b> records the undo as a new change (<code>jj revert -r plkmnvxo -B @</code> — it slots in between @ and its parents), <b>Abandon</b> erases the change.</div>
+          <div className="cap"><b>Below @</b> · the third group holds the two ways to take a change back: <b>Revert</b> records the undo as a new change (<code>jj revert -r plkmnvxo -B @</code> — it slots in between @ and its parents), <b>Abandon</b> erases the change. The last group puts a bookmark or a tag on it.</div>
           <Menu still id="plkmnvxo" subject="feat(onboarding): swipe gestures + haptic feedback" highlight={8} items={[
             ...NEW, "sep",
             { id: "edit", label: "Edit", icon: "working-copy-at", cmd: "jj edit" },
@@ -33,6 +39,7 @@
             "sep",
             { id: "revert", label: "Revert", icon: "revert", cmd: "jj revert -B @" },
             { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true },
+            ...REFS,
           ]}/>
         </div>
         <div className="c">
@@ -43,6 +50,7 @@
             "sep",
             { note: "Immutable · trunk() · main", icon: <HatchSwatch/> },
             { id: "imm", label: "Immutable commits…", icon: "settings" },
+            ...REFS,
           ]}/>
         </div>
         <div className="c">
@@ -55,6 +63,7 @@
             "sep",
             { id: "revert", label: "Revert", icon: "revert", cmd: "jj revert -B @", disabled: true, title: "The revert lands below @ — @ itself can’t be reverted" },
             { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true },
+            ...REFS,
           ]}/>
         </div>
       </div>

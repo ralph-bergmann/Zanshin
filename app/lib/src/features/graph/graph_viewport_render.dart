@@ -170,6 +170,16 @@ class GraphViewportController {
     return viewport.cardRect(node).shift(-viewport._scroll);
   }
 
+  /// [key]'s card rect in global coordinates at the current scroll (Story 10.45: the menu keys anchor the card menu at
+  /// it), or null when absent or detached.
+  Rect? globalCardRectOf(String key) {
+    final Rect? rect = cardRectOf(key);
+    final RenderGraphViewport? viewport = _viewport;
+    return rect == null || viewport == null || !viewport.attached
+        ? null
+        : MatrixUtils.transformRect(viewport.getTransformTo(null), rect);
+  }
+
   /// Makes [key] the anchor the next geometry change keeps at its current viewport position (a folded key at its
   /// stack's), as if the last layout had recorded it (Story 10.17: a stack toggle's anchor member, even when the new
   /// layout lands before another frame).

@@ -448,7 +448,8 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     cards.focused.addListener(_focusedChanged);
     cards
       ..onExpandStack = _expandStack
-      ..onCollapseStack = _collapseStackOf;
+      ..onCollapseStack = _collapseStackOf
+      ..cardRect = _viewport.globalCardRectOf;
   }
 
   void _unlisten(GraphCardController cards) {
@@ -463,6 +464,9 @@ class _GraphCanvasState extends State<GraphCanvas> with TickerProviderStateMixin
     }
     if (cards.onCollapseStack == _collapseStackOf) {
       cards.onCollapseStack = null;
+    }
+    if (cards.cardRect == _viewport.globalCardRectOf) {
+      cards.cardRect = null;
     }
   }
 

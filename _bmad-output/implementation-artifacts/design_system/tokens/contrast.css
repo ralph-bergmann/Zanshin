@@ -9,7 +9,7 @@
              paper card 3.7–4.0 · canvas 3.1–3.5 (--border-strong #867e75 on the darkest stop #e8e3dd 3.13; #8a8279 gave 2.97 —
              the day dividers sit exactly there)
              hover is always stronger than rest: --edge-hov night #a6adc6 (card 7.3, 1.8 × the rest edge) · paper #5f5852 (6.9, 1.85 ×) —
-             cards, bookmark chips, stacks, •••, the switch
+             cards, bookmark chips, stacks, the add-bookmark button, the switch
              slider: the groove is dark (night #232941) / light (paper #efebe6) with a --border-strong edge (--track-edge: night 3.7 to the
              groove, 4.2 on the card · paper 3.4 / 3.9), so the filled part stands ≥ 3:1 off the empty part in every family — night 3.97
              (red) – 10.1 · paper 3.28 (orange) – 6.4 · inactive 4.1 / 3.4 (an opaque mid-grey track gave 1.01–1.12). Hover steps the

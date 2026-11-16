@@ -37,7 +37,7 @@
   --dur-shimmer:1600ms;/* @kind other */ /* one skeleton / indeterminate sweep; under Reduce motion one pulse */
 
   /* ---- movement: position, size, rotation, stroke drawing of something that has to end up elsewhere. Reduce motion: 0ms. ---- */
-  --dur-nudge:120ms;/* @kind other */   /* small geometry: the scroll thumb widening, the card's ••• and bookmark buttons scaling in */
+  --dur-nudge:120ms;/* @kind other */   /* small geometry: the scroll thumb widening, the card's bookmark button scaling in */
   --dur-toggle:180ms;/* @kind other */  /* switch knob (and its press stretch), segment thumb, radio dot, check draw / morph, the @ pill's arrow */
   --dur-expand:200ms;/* @kind other */  /* disclosure and tree height, their chevrons, the progress value */
   --dur-move:260ms;/* @kind other */    /* the @ pill re-centring over the visible graph */

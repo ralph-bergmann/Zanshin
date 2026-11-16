@@ -1368,8 +1368,12 @@ class _GraphInspectorState extends State<GraphInspector> {
                                       nowMs: graph.now.value,
                                       onJump: graph.goTo,
                                     ),
-                                    if (data.refs.isNotEmpty)
-                                      _Chips(refs: data.refs, drag: graph.actionsEnabled ? graph.drag : null),
+                                    if (data.refs.isNotEmpty || data.tags.isNotEmpty)
+                                      _Chips(
+                                        refs: data.refs,
+                                        tags: data.tags,
+                                        drag: graph.actionsEnabled ? graph.drag : null,
+                                      ),
                                     if (editing == null && squashing == null)
                                       _Actions(model: _model, data: data, layout: layout, node: node),
                                   ],
@@ -2346,11 +2350,13 @@ class _ParentJump extends StatelessWidget {
 
 /// The bookmark chips (DS BookmarkChip tag; kit.css:110; graph.css:55-57): padding 12 20 0, gap 6; each chip padding
 /// 4 9, `--radius-chip`, `--fl-hover`, the filled bookmark, the name mono `--fs-id` and the state ✓ / local / remote
-/// mono `--fs-xs`.
+/// mono `--fs-xs`. The tag chips follow (Story 10.45): the same chip with the tag glyph, no state word, not draggable.
 class _Chips extends StatelessWidget {
-  const _Chips({required this.refs, this.drag});
+  const _Chips({required this.refs, this.tags = const <GraphRef>[], this.drag});
 
   final List<GraphRef> refs;
+
+  final List<GraphRef> tags;
 
   /// The graph's drag (Story 10.10): a local chip drags its bookmark; null drags none.
   final GraphDrag? drag;
@@ -2360,6 +2366,54 @@ class _Chips extends StatelessWidget {
     final AppLocalizations strings = context.l10n;
     final ZsColors colors = ZsColors.of(context);
     final metrics = ZsMetrics.of(context);
+
+    Widget chip(GraphRef ref, Widget child) => ZsMenuAnchor(
+      // Story 10.39: a right-click copies the name as the chip shows it.
+      entries: <ZsMenuEntry>[
+        ZsMenuItem(
+          label: strings.inspectorCopyName,
+          identifier: 'inspector-chip-copy',
+          onSelected: () => unawaited(() async {
+            try {
+              await Clipboard.setData(ClipboardData(text: ref.remote == null ? ref.name : '${ref.name}@${ref.remote}'));
+            } on PlatformException {
+              return;
+            }
+            if (context.mounted) {
+              announceCopied(context);
+            }
+          }()),
+        ),
+      ],
+      semanticLabel: ref.name,
+      identifier: 'inspector-chip-menu',
+      builder: (context, menu) => GestureDetector(
+        onSecondaryTapUp: (details) => menu.open(position: details.localPosition),
+        child: child,
+      ),
+    );
+
+    Widget body(String glyph, GraphRef ref, {Widget? state}) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(color: colors.flHover, borderRadius: BorderRadius.circular(metrics.radiusChip)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 6,
+        children: <Widget>[
+          ZanshinIcon(glyph, size: ZsIconSize.sm, color: colors.textDim),
+          Flexible(
+            child: Text(
+              ref.remote == null ? ref.name : '${ref.name}@${ref.remote}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ZsType.id.copyWith(color: colors.text),
+            ),
+          ),
+          ?state,
+        ],
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Wrap(
@@ -2367,76 +2421,36 @@ class _Chips extends StatelessWidget {
         runSpacing: 6,
         children: <Widget>[
           for (final GraphRef ref in refs)
-            ZsMenuAnchor(
-              // Story 10.39: a right-click copies the name as the chip shows it.
-              entries: <ZsMenuEntry>[
-                ZsMenuItem(
-                  label: strings.inspectorCopyName,
-                  identifier: 'inspector-chip-copy',
-                  onSelected: () => unawaited(() async {
-                    try {
-                      await Clipboard.setData(
-                        ClipboardData(text: ref.remote == null ? ref.name : '${ref.name}@${ref.remote}'),
-                      );
-                    } on PlatformException {
-                      return;
-                    }
-                    if (context.mounted) {
-                      announceCopied(context);
-                    }
-                  }()),
-                ),
-              ],
-              semanticLabel: ref.name,
-              identifier: 'inspector-chip-menu',
-              builder: (context, menu) => GestureDetector(
-                onSecondaryTapUp: (details) => menu.open(position: details.localPosition),
-                child: GraphDragSource(
-                  drag: drag,
-                  payload: GraphBookmarkDrag(ref.name),
-                  enabled: graphBookmarkDraggable(ref.name, remote: ref.remote),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: colors.flHover,
-                      borderRadius: BorderRadius.circular(metrics.radiusChip),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      spacing: 6,
-                      children: <Widget>[
-                        ZanshinIcon(ZI.bookmarkFilled, size: ZsIconSize.sm, color: colors.textDim),
-                        Flexible(
-                          child: Text(
-                            ref.remote == null ? ref.name : '${ref.name}@${ref.remote}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: ZsType.id.copyWith(color: colors.text),
-                          ),
-                        ),
-                        Text(
-                          ref.conflicted
-                              ? strings.inspectorBookmarkConflicted
-                              : ref.remote != null
-                              ? strings.inspectorBookmarkRemote
-                              : ref.synced
-                              ? '✓' // l10n-ignore: a symbol for "in sync"
-                              : strings.inspectorBookmarkLocal,
-                          style: ZsType.id.copyWith(
-                            fontSize: ZsType.fsXs,
-                            color: ref.conflicted
-                                ? colors.conflict
-                                : ref.remote != null
-                                ? colors.remote
-                                : colors.textDim,
-                          ),
-                        ),
-                      ],
+            chip(
+              ref,
+              GraphDragSource(
+                drag: drag,
+                payload: GraphBookmarkDrag(ref.name),
+                enabled: graphBookmarkDraggable(ref.name, remote: ref.remote),
+                child: body(
+                  ZI.bookmarkFilled,
+                  ref,
+                  state: Text(
+                    ref.conflicted
+                        ? strings.inspectorBookmarkConflicted
+                        : ref.remote != null
+                        ? strings.inspectorBookmarkRemote
+                        : ref.synced
+                        ? '✓' // l10n-ignore: a symbol for "in sync"
+                        : strings.inspectorBookmarkLocal,
+                    style: ZsType.id.copyWith(
+                      fontSize: ZsType.fsXs,
+                      color: ref.conflicted
+                          ? colors.conflict
+                          : ref.remote != null
+                          ? colors.remote
+                          : colors.textDim,
                     ),
                   ),
                 ),
               ),
             ),
+          for (final GraphRef tag in tags) chip(tag, body(ZI.tag, tag)),
         ],
       ),
     );

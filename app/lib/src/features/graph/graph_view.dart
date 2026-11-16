@@ -42,7 +42,8 @@ import 'stale_notice.dart';
 /// [GraphViewModel.anchorHint].
 ///
 /// Story 10.15: the card menu and the bookmark popover ([GraphCardMenuHost], [GraphBookmarkMenuHost]) float over the
-/// graph; a scroll over it, a window resize and the window turning inactive close them.
+/// graph; a scroll over it, a window resize and the window turning inactive close them. Story 10.45 adds the tag
+/// popover ([GraphTagMenuHost]); the context-menu key and ⇧F10 open the focused card's menu.
 class GraphView extends StatefulWidget {
   /// The graph of [model].
   const GraphView({
@@ -52,6 +53,8 @@ class GraphView extends StatefulWidget {
     this.inspectorModel,
     this.bookmarks,
     this.deleteBookmark,
+    this.tags,
+    this.deleteTag,
     this.search,
     super.key,
   });
@@ -70,6 +73,12 @@ class GraphView extends StatefulWidget {
 
   /// The bookmark popover's Delete through the project's delete flow (Story 10.44).
   final GraphDeleteBookmark? deleteBookmark;
+
+  /// `jj tag list --all-remotes` as bookmark-shaped rows, read by the tag popover (Story 10.45).
+  final Future<List<Bookmark>> Function()? tags;
+
+  /// The tag popover's Delete… through the project's delete flow (Story 10.45).
+  final GraphDeleteBookmark? deleteTag;
 
   /// The card width and detail.
   final GraphViewOptions options;
@@ -265,6 +274,23 @@ class _GraphViewState extends State<GraphView> {
       }
       return KeyEventResult.ignored;
     }
+    if (key == LogicalKeyboardKey.contextMenu ||
+        (key == LogicalKeyboardKey.f10 && HardwareKeyboard.instance.isShiftPressed)) {
+      // The keyboard's right-click (Story 10.45): the focused card's menu, anchored at the card.
+      if (_pointerFocus) {
+        _pointerFocus = false;
+        _focusChanged();
+      }
+      final String? focused = _cards.focused.value;
+      final GraphLayout? layout = widget.model.layout;
+      final int? node = focused == null ? null : layout?.indexOfKey(focused);
+      final Rect? rect = node == null || layout!.isStackNode(node) ? null : _cards.cardRect?.call(focused!);
+      if (rect == null) {
+        return KeyEventResult.ignored;
+      }
+      _cards.openMenu(focused!, rect);
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.space) {
       if (_pointerFocus) {
         _pointerFocus = false;
@@ -407,6 +433,7 @@ class _GraphViewState extends State<GraphView> {
                 bookmarks: widget.bookmarks,
                 deleteBookmark: widget.deleteBookmark,
               ),
+              GraphTagMenuHost(cards: _cards, model: model, tags: widget.tags, deleteTag: widget.deleteTag),
             ],
             if (caption != null)
               Padding(

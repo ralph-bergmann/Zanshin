@@ -12,6 +12,7 @@ import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/graph/at_pill.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
+import 'package:zanshin/src/features/graph/graph_card_menu.dart';
 import 'package:zanshin/src/features/graph/graph_controls.dart';
 import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_drop_menu.dart';
@@ -42,11 +43,13 @@ import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
 import 'package:zanshin/src/features/shell/shell_toast.dart';
 import 'package:zanshin/src/features/sync/sync_island.dart';
+import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart'
     show
         AbsorbResult,
         ActionOutcome,
         ActionStatus,
+        Bookmark,
         Change,
         ChangeActions,
         ConflictState,
@@ -59,7 +62,9 @@ import 'package:zanshin_core/zanshin_core.dart'
         HunkKey,
         HunkLine,
         HunkLineKind,
+        LocalBookmark,
         MutationResult,
+        RemoteBookmark,
         Segment,
         SegmentKind,
         ShowEntry,
@@ -370,6 +375,9 @@ final graphFolder = WidgetbookFolder(
             workspaceName: context.knobs.string(label: 'our workspace', initialValue: 'default'),
           ),
         ),
+        // Story 10.45: the menus shown open (Marionette cannot right-click or hover).
+        WidgetbookUseCase(name: 'Card menu', builder: (context) => const _CardMenuOpen()),
+        WidgetbookUseCase(name: 'Tag popover', builder: (context) => const _CardMenuOpen(tags: true)),
       ],
     ),
   ],
@@ -1446,6 +1454,7 @@ RecordedGraphLayout _single(
   bool root = false,
   int flags = 0,
   List<GraphRef> refs = const <GraphRef>[],
+  List<GraphRef> tags = const <GraphRef>[],
   List<String> workspaces = const <String>[],
   String? workspaceName,
   GraphCommitContent? content = _subject,
@@ -1471,6 +1480,7 @@ RecordedGraphLayout _single(
   changeOffsets: <int?>[offset],
   flags: Uint8List.fromList(<int>[flags]),
   refs: <List<GraphRef>>[refs],
+  tags: <List<GraphRef>>[tags],
   workingCopies: <List<String>>[workspaces],
   contents: <GraphCommitContent?>[content],
   workspaceName: workspaceName,
@@ -1573,6 +1583,20 @@ List<_CardCase> _cases(String ours) {
       ),
     ),
     c('legend: unsynced', _single('kxwplsrtmqnv', refs: const <GraphRef>[GraphRef('dev', synced: false)])),
+    // Story 10.45: the tag legend on the bottom edge (Refs Study section 1).
+    c(
+      'tags: bookmark + two tags',
+      _single(
+        'tnoyqlsvkmrw',
+        refs: const <GraphRef>[GraphRef('release/1.5.x')],
+        tags: const <GraphRef>[GraphRef('v1.5.0-rc1'), GraphRef('v1.5.0-rc2')],
+      ),
+    ),
+    c(
+      'tags: immutable',
+      _single('ypwulmnrkqst', flags: imm, tags: const <GraphRef>[GraphRef('v1.4.2')]),
+    ),
+    c('tags: long', _single('wzpmrkoytnql', tags: const <GraphRef>[GraphRef('nightly/2026-11-14-very-long')])),
   ];
 }
 
@@ -2362,6 +2386,89 @@ class _InspectorAtState extends State<_InspectorAt> {
               ),
             ),
           ),
+      ],
+    );
+  }
+}
+
+/// Story 10.45: the card menu of a change without refs, its last group Create bookmark here… / Create tag here…; or,
+/// with [tags], the tag popover of a change with a tag on origin and a local one (Refs Study section 1). Nothing runs.
+class _CardMenuOpen extends StatefulWidget {
+  const _CardMenuOpen({this.tags = false});
+
+  final bool tags;
+
+  @override
+  State<_CardMenuOpen> createState() => _CardMenuOpenState();
+}
+
+class _CardMenuOpenState extends State<_CardMenuOpen> {
+  final _menu = ZsMenuController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _menu.open(position: const Offset(24, 24)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations strings = context.l10n;
+    final RecordedGraphLayout layout = widget.tags
+        ? _single(
+            'tnoyqlsvkmrw',
+            refs: const <GraphRef>[GraphRef('release/1.5.x')],
+            tags: const <GraphRef>[GraphRef('v1.5.0-rc1'), GraphRef('release/2026-11')],
+          )
+        : _single('srkvzmopqtnl');
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        const ZsCanvas(),
+        ZsMenuAnchor(
+          controller: _menu,
+          maxWidth: 360,
+          cmdMaxWidth: 200,
+          headLeading: GraphMenuId(changeId: layout.changeIdOf(0), prefix: layout.changeIdPrefixLengthOf(0)),
+          subject: widget.tags ? null : _subject.subject,
+          entries: widget.tags
+              ? graphTagMenuEntries(
+                  strings,
+                  layout,
+                  0,
+                  blocked: null,
+                  run: (_) {},
+                  tags: const <Bookmark>[
+                    Bookmark(name: 'v1.5.0-rc1', target: 'c', kind: LocalBookmark(), conflicted: false, synced: true),
+                    Bookmark(
+                      name: 'v1.5.0-rc1',
+                      target: 'c',
+                      kind: RemoteBookmark('origin', tracked: true),
+                      conflicted: false,
+                      synced: true,
+                    ),
+                    Bookmark(
+                      name: 'release/2026-11',
+                      target: 'c',
+                      kind: LocalBookmark(),
+                      conflicted: false,
+                      synced: true,
+                    ),
+                  ],
+                  ask: (_) {},
+                  delete: (_) {},
+                )
+              : graphCardMenuEntries(
+                  strings,
+                  layout,
+                  0,
+                  blocked: null,
+                  run: (_) {},
+                  onDescribe: (_) {},
+                  ask: (_) {},
+                ),
+          builder: (context, _) => const SizedBox.expand(),
+        ),
       ],
     );
   }

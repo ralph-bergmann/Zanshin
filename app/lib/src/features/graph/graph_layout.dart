@@ -280,6 +280,10 @@ abstract class GraphLayout {
   /// The bookmarks on [node], in jj's order (`bookmarks()`).
   List<GraphRef> refsOf(int node);
 
+  /// The tags on [node], in jj's order (`tags()`): kept apart from [refsOf] so every bookmark consumer stays
+  /// bookmark-only (Story 10.45).
+  List<GraphRef> tagsOf(int node) => const <GraphRef>[];
+
   /// The workspace names whose working copy is [node] (jj's `working_copies()`): empty with at most one workspace
   /// (commit_templater.rs:1491-1503 @ v0.46.0).
   List<String> workingCopiesOf(int node);

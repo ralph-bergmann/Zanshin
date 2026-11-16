@@ -4,7 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart' show TagListModel;
+import 'package:zanshin/src/features/bookmarks/bookmark_list_model.dart' show RefKind, TagListModel;
 import 'package:zanshin/src/features/bookmarks/ref_delete.dart';
 import 'package:zanshin/src/features/graph/active_graph.dart';
 import 'package:zanshin/src/features/graph/graph_minimap.dart';
@@ -95,6 +95,24 @@ void main() {
       ),
     ]);
     expect(scope.refDelete.pending?.name, 'feat');
+    expect(scope.refDelete.pending?.remotes, <String>['origin']);
+    scope.refDelete.cancel();
+    await tester.pump();
+    // Story 10.45: the tag popover reads the project's tags and deletes through the same flow, as a tag.
+    expect(view.tags, isNotNull, reason: "the tag popover's states and Track / Untrack read");
+    expect(view.deleteTag, isNotNull);
+    view.deleteTag!('v1', <Bookmark>[
+      const Bookmark(name: 'v1', target: 'a', kind: LocalBookmark(), conflicted: false, synced: true),
+      const Bookmark(
+        name: 'v1',
+        target: 'a',
+        kind: RemoteBookmark('origin', tracked: true),
+        conflicted: false,
+        synced: true,
+      ),
+    ]);
+    expect(scope.refDelete.pending?.kind, RefKind.tag);
+    expect(scope.refDelete.pending?.name, 'v1');
     expect(scope.refDelete.pending?.remotes, <String>['origin']);
     scope.refDelete.cancel();
     await tester.pump();

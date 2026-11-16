@@ -103,9 +103,10 @@ bool _childImmutable(GraphLayout layout, int node) {
 /// top, Insert after, Insert before · Edit, Describe…, Squash into parent, Absorb into ancestors, Copy › · Revert,
 /// Abandon; on an immutable
 /// one New change on top, Insert after (not when a child is immutable), Revert · the "Immutable" note, Immutable
-/// commits… (Settings' page, [onImmutableCommits]; disabled without it); on the root New change on top. Each row's
-/// command is its action's with the short id; [run] gets the action with the node key. While [blocked] names a reason
-/// every jj row is disabled with it as its tooltip.
+/// commits… (Settings' page, [onImmutableCommits]; disabled without it); on the root New change on top. Every non-root
+/// menu ends with Create bookmark here… and Create tag here… (Story 10.45), which [ask] for a name (disabled without
+/// it). Each row's command is its action's with the short id; [run] gets the action with the node key. While
+/// [blocked] names a reason every jj row is disabled with it as its tooltip.
 List<ZsMenuEntry> graphCardMenuEntries(
   AppLocalizations strings,
   GraphLayout layout,
@@ -116,6 +117,7 @@ List<ZsMenuEntry> graphCardMenuEntries(
   ValueChanged<String>? onDescribe,
   ValueChanged<String>? onSquash,
   VoidCallback? onImmutableCommits,
+  ValueChanged<GraphNameRequest>? ask,
 }) {
   final data = GraphCardData.of(layout, node, content: content);
   final String key = data.key;
@@ -152,6 +154,20 @@ List<ZsMenuEntry> graphCardMenuEntries(
   if (data.isRoot) {
     return <ZsMenuEntry>[newOnTop];
   }
+  // No command column: the name sheet shows the live command once a name is typed.
+  ZsMenuItem create(String label, String icon, String identifier, GraphNameRequest request) => ZsMenuItem(
+    label: label,
+    icon: icon,
+    enabled: blocked == null && ask != null,
+    tooltip: blocked,
+    identifier: identifier,
+    onSelected: ask == null ? null : () => ask(request),
+  );
+  final createGroup = <ZsMenuEntry>[
+    const ZsMenuSeparator(),
+    create(strings.cardMenuCreateBookmark, ZI.bookmark, 'card-menu-create-bookmark', _createBookmarkRequest(strings)),
+    create(strings.cardMenuCreateTag, ZI.tag, 'card-menu-create-tag', _createTagRequest(strings)),
+  ];
   final ZsMenuItem insertAfter = verb(
     strings.cardMenuInsertAfter,
     ZI.insertAfter,
@@ -186,6 +202,7 @@ List<ZsMenuEntry> graphCardMenuEntries(
         identifier: 'card-menu-immutable-commits',
         onSelected: onImmutableCommits,
       ),
+      ...createGroup,
     ];
   }
   final GraphCommitContent? loaded = data.content;
@@ -259,8 +276,26 @@ List<ZsMenuEntry> graphCardMenuEntries(
       identifier: 'card-menu-abandon',
       danger: true,
     ),
+    ...createGroup,
   ];
 }
+
+/// The name sheet's request for "Create bookmark here…" (the bookmark popover and the card menu):
+/// `jj bookmark create <name> -r <id>`.
+GraphNameRequest _createBookmarkRequest(AppLocalizations strings) => GraphNameRequest(
+  title: strings.nameSheetCreateTitle,
+  label: strings.nameSheetNameLabel,
+  confirm: strings.nameSheetCreate,
+  action: (text, id) => GraphBookmarkCreate(<String>[text], revision: id),
+);
+
+/// The name sheet's request for "Create tag here…" (Story 10.45): `jj tag set <name> -r <id>`.
+GraphNameRequest _createTagRequest(AppLocalizations strings) => GraphNameRequest(
+  title: strings.nameSheetCreateTagTitle,
+  label: strings.nameSheetTagNameLabel,
+  confirm: strings.nameSheetCreate,
+  action: (text, id) => GraphTagSet(<String>[text], revision: id),
+);
 
 /// The thin bookmark popover's rows for [node] (Story 10.15): per local bookmark a submenu Rename…, Move to…,
 /// Delete; per remote bookmark (not `git`) a submenu with Track or Untrack as [bookmarks] (jj's live `bookmark list
@@ -421,14 +456,7 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
     item(
       strings.bookmarkMenuCreate,
       identifier: 'bookmark-menu-create',
-      onSelected: () => ask(
-        GraphNameRequest(
-          title: strings.nameSheetCreateTitle,
-          label: strings.nameSheetNameLabel,
-          confirm: strings.nameSheetCreate,
-          action: (text, id) => GraphBookmarkCreate(<String>[text], revision: id),
-        ),
-      ),
+      onSelected: () => ask(_createBookmarkRequest(strings)),
     ),
     item(
       strings.bookmarkMenuMoveHere,
@@ -439,6 +467,150 @@ List<ZsMenuEntry> graphBookmarkMenuEntries(
           label: strings.nameSheetNameLabel,
           confirm: strings.nameSheetMove,
           action: (text, id) => GraphBookmarkMove(<String>[text], to: id),
+        ),
+      ),
+    ),
+  ];
+}
+
+/// The tag popover's rows for [node] (Story 10.45), the bookmark popover's pattern: per local tag a mono row with its
+/// state ("on `<remotes>`" by [tags], jj's live `tag list --all-remotes` in `tagRow`'s shape, else "local only"; "Reading
+/// tags…" while it is null, the failure when [readFailed]) and a submenu Delete… — through [delete] (10.44's flow,
+/// disabled when the read failed), else `jj tag delete` at once; per remote tag (not `git`) Track or Untrack as the read
+/// says; then Create tag here… and Move existing here…, which [ask] for a name. While [blocked] names a reason every
+/// row is disabled with it.
+List<ZsMenuEntry> graphTagMenuEntries(
+  AppLocalizations strings,
+  GraphLayout layout,
+  int node, {
+  required String? blocked,
+  required ValueChanged<GraphAction> run,
+  required List<Bookmark>? tags,
+  required ValueChanged<GraphNameRequest> ask,
+  bool readFailed = false,
+  ValueChanged<String>? delete,
+}) {
+  final String? unread = tags != null
+      ? null
+      : readFailed
+      ? strings.tagMenuReadFailed
+      : strings.tagMenuReading;
+
+  ZsMenuItem item(
+    String label, {
+    required String identifier,
+    GraphAction? action,
+    VoidCallback? onSelected,
+    String? reason,
+    String? cmd,
+    String? state,
+    bool mono = false,
+    bool danger = false,
+    List<ZsMenuEntry>? submenu,
+  }) {
+    final String? why = blocked ?? reason;
+    return ZsMenuItem(
+      label: label,
+      cmd: cmd,
+      shortcut: state,
+      mono: mono,
+      danger: danger,
+      enabled: why == null,
+      tooltip: why,
+      identifier: identifier,
+      submenu: submenu,
+      onSelected: onSelected ?? (action == null ? null : () => run(action)),
+    );
+  }
+
+  Bookmark? remoteRow(String name, String remote) {
+    for (final Bookmark row in tags ?? const <Bookmark>[]) {
+      if (row.kind case RemoteBookmark(:final String remoteName) when row.name == name && remoteName == remote) {
+        return row;
+      }
+    }
+    return null;
+  }
+
+  String stateOf(String name) {
+    final remotes = <String>[
+      for (final Bookmark row in tags ?? const <Bookmark>[])
+        if (row.kind case RemoteBookmark(:final String remoteName)
+            when row.name == name && remoteName != _gitRemote && row.target != null)
+          remoteName,
+    ];
+    return unread ?? (remotes.isEmpty ? strings.tagMenuLocalOnly : strings.tagMenuOnRemotes(remotes.join(', ')));
+  }
+
+  final rows = <ZsMenuEntry>[];
+  for (final GraphRef ref in layout.tagsOf(node)) {
+    final String name = ref.name;
+    final String? remote = ref.remote;
+    if (remote == null) {
+      final GraphAction deleteAction = GraphTagDelete(<String>[name]);
+      rows.add(
+        item(
+          name,
+          mono: true,
+          state: stateOf(name),
+          identifier: 'tag-menu-$name',
+          submenu: <ZsMenuEntry>[
+            item(
+              strings.refsDelete,
+              identifier: 'tag-menu-delete',
+              cmd: deleteAction.command,
+              danger: true,
+              // 10.44's flow decides by the read's tracked remotes, so a failed read disables it.
+              reason: delete != null && readFailed ? strings.tagMenuReadFailed : null,
+              action: delete == null ? deleteAction : null,
+              onSelected: delete == null ? null : () => delete(name),
+            ),
+          ],
+        ),
+      );
+      continue;
+    }
+    if (remote == _gitRemote) {
+      continue;
+    }
+    final Bookmark? row = remoteRow(name, remote);
+    if (tags != null && row == null) {
+      // The read no longer knows it: nothing to track.
+      continue;
+    }
+    final display = '$name@$remote'; // l10n-ignore: jj's symbol
+    final bool tracked = switch (row?.kind) {
+      RemoteBookmark(:final bool tracked) => tracked,
+      _ => false,
+    };
+    rows.add(
+      item(
+        display,
+        mono: true,
+        identifier: 'tag-menu-$display',
+        reason: unread,
+        submenu: <ZsMenuEntry>[
+          if (tracked)
+            item(strings.bookmarksUntrack, identifier: 'tag-menu-untrack', action: GraphTagUntrack(name, remote))
+          else
+            item(strings.bookmarksTrack, identifier: 'tag-menu-track', action: GraphTagTrack(name, remote)),
+        ],
+      ),
+    );
+  }
+  return <ZsMenuEntry>[
+    ...rows,
+    if (rows.isNotEmpty) const ZsMenuSeparator(),
+    item(strings.cardMenuCreateTag, identifier: 'tag-menu-create', onSelected: () => ask(_createTagRequest(strings))),
+    item(
+      strings.tagMenuMoveHere,
+      identifier: 'tag-menu-move-here',
+      onSelected: () => ask(
+        GraphNameRequest(
+          title: strings.nameSheetMoveTagHereTitle,
+          label: strings.nameSheetTagNameLabel,
+          confirm: strings.nameSheetMove,
+          action: (text, id) => GraphTagSet(<String>[text], revision: id, allowMove: true),
         ),
       ),
     ),
@@ -646,9 +818,73 @@ class _MenuHostState extends State<_MenuHost> {
   }
 }
 
+/// Asks for a name for the change [key] (its [short] id shown) in the name sheet.
+typedef _Ask = void Function(String key, String short, GraphNameRequest request);
+
+/// The name sheet in the root overlay, shared by the card menu and both popovers (Stories 10.15, 10.45): [builder]
+/// gets the `ask` that shows it; a confirmed name runs through [model]'s runner.
+class _NameSheetHost extends StatefulWidget {
+  const _NameSheetHost({required this.model, required this.builder});
+
+  final GraphViewModel model;
+  final Widget Function(BuildContext context, _Ask ask) builder;
+
+  @override
+  State<_NameSheetHost> createState() => _NameSheetHostState();
+}
+
+class _NameSheetHostState extends State<_NameSheetHost> {
+  final _portal = OverlayPortalController();
+
+  /// The sheet's request and the change it acts on, while it shows.
+  ({GraphNameRequest request, String key, String short})? _ask;
+  var _closing = false;
+
+  void _askFor(String key, String short, GraphNameRequest request) {
+    setState(() {
+      _ask = (request: request, key: key, short: short);
+      _closing = false;
+    });
+    _portal.show();
+  }
+
+  void _close() => setState(() => _closing = true);
+
+  void _closed() {
+    _portal.hide();
+    setState(() => _ask = null);
+  }
+
+  @override
+  Widget build(BuildContext context) => OverlayPortal(
+    controller: _portal,
+    overlayLocation: OverlayChildLocation.rootOverlay,
+    overlayChildBuilder: (context) {
+      final ({GraphNameRequest request, String key, String short})? ask = _ask;
+      if (ask == null) {
+        return const SizedBox.shrink();
+      }
+      return Positioned.fill(
+        child: GraphNameSheet(
+          request: ask.request,
+          id: ask.short,
+          closing: _closing,
+          onClosed: _closed,
+          onCancel: _close,
+          onConfirm: (text) {
+            unawaited(widget.model.run(ask.request.action(text, ask.key)));
+            _close();
+          },
+        ),
+      );
+    },
+    child: widget.builder(context, _askFor),
+  );
+}
+
 /// The card menu (Story 10.15): `GraphCardController.menuOpen` and its anchor as a [ZsMenuAnchor] with
 /// [graphCardMenuEntries]; every row runs through [model]'s runner, Describe… and Squash into parent through
-/// [inspector].
+/// [inspector], Create bookmark here… and Create tag here… through the name sheet (Story 10.45).
 class GraphCardMenuHost extends StatelessWidget {
   /// The menu of [cards]' open card in [model].
   const GraphCardMenuHost({required this.cards, required this.model, this.inspector, super.key});
@@ -666,35 +902,39 @@ class GraphCardMenuHost extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations strings = context.l10n;
     final AppWindowActions? windows = AppWindowActionsScope.maybeOf(context);
-    return _MenuHost(
-      open: cards.menuOpen,
-      anchor: () => cards.menuAnchor,
+    return _NameSheetHost(
       model: model,
-      identifier: 'card-menu',
-      semanticLabel: strings.cardActions,
-      subject: (context, layout, node) {
-        if (node == layout.rootIndex) {
-          return 'root()'; // l10n-ignore: jj's text
-        }
-        final GraphCommitContent? content = model.content.of(layout, node) ?? layout.contentOf(node);
-        return content == null
-            ? null
-            : content.subject.isEmpty
-            ? strings.cardMenuNoDescription
-            : content.subject;
-      },
-      build: (context, layout, node) => graphCardMenuEntries(
-        strings,
-        layout,
-        node,
-        blocked: graphBlockedReason(strings, model),
-        run: (action) => unawaited(model.run(action)),
-        content: model.content,
-        onDescribe: inspector?.describe,
-        onSquash: inspector?.squash,
-        onImmutableCommits: windows == null
-            ? null
-            : () => unawaited(windows.openSettings(target: SettingsTarget.immutableCommits)),
+      builder: (context, ask) => _MenuHost(
+        open: cards.menuOpen,
+        anchor: () => cards.menuAnchor,
+        model: model,
+        identifier: 'card-menu',
+        semanticLabel: strings.cardActions,
+        subject: (context, layout, node) {
+          if (node == layout.rootIndex) {
+            return 'root()'; // l10n-ignore: jj's text
+          }
+          final GraphCommitContent? content = model.content.of(layout, node) ?? layout.contentOf(node);
+          return content == null
+              ? null
+              : content.subject.isEmpty
+              ? strings.cardMenuNoDescription
+              : content.subject;
+        },
+        build: (context, layout, node) => graphCardMenuEntries(
+          strings,
+          layout,
+          node,
+          blocked: graphBlockedReason(strings, model),
+          run: (action) => unawaited(model.run(action)),
+          content: model.content,
+          onDescribe: inspector?.describe,
+          onSquash: inspector?.squash,
+          onImmutableCommits: windows == null
+              ? null
+              : () => unawaited(windows.openSettings(target: SettingsTarget.immutableCommits)),
+          ask: (request) => ask(layout.keyOf(node), graphShortId(layout, node), request),
+        ),
       ),
     );
   }
@@ -704,7 +944,7 @@ class GraphCardMenuHost extends StatelessWidget {
 /// [graphBookmarkMenuEntries]; each opening reads [bookmarks] for Track / Untrack, and Create / Rename / Move ask for a
 /// name in a [GraphNameSheet] in the root overlay. Delete goes to [deleteBookmark] with the read's rows (read first
 /// when the read has not landed yet).
-class GraphBookmarkMenuHost extends StatefulWidget {
+class GraphBookmarkMenuHost extends StatelessWidget {
   /// The popover of [cards]' open card in [model].
   const GraphBookmarkMenuHost({
     required this.cards,
@@ -728,18 +968,123 @@ class GraphBookmarkMenuHost extends StatefulWidget {
   final GraphDeleteBookmark? deleteBookmark;
 
   @override
-  State<GraphBookmarkMenuHost> createState() => _GraphBookmarkMenuHostState();
+  Widget build(BuildContext context) {
+    final AppLocalizations strings = context.l10n;
+    return _RefMenuHost(
+      open: cards.bookmarksOpen,
+      anchor: () => cards.bookmarksAnchor,
+      model: model,
+      identifier: 'bookmark-menu',
+      semanticLabel: strings.bookmarkMenuLabel,
+      kind: 'bookmarks', // l10n-ignore: log text
+      read: bookmarks,
+      delete: deleteBookmark,
+      entries: (layout, node, state) => graphBookmarkMenuEntries(
+        strings,
+        layout,
+        node,
+        blocked: graphBlockedReason(strings, model),
+        run: (action) => unawaited(model.run(action)),
+        bookmarks: state.rows,
+        readFailed: state.readFailed,
+        drag: model.drag,
+        ask: state.ask,
+        delete: state.delete,
+      ),
+    );
+  }
 }
 
-class _GraphBookmarkMenuHostState extends State<GraphBookmarkMenuHost> {
-  final _portal = OverlayPortalController();
+/// The tag popover (Story 10.45): `GraphCardController.tagsOpen` as a menu in the bookmark popover's material, with
+/// [graphTagMenuEntries]; each opening reads [tags] for the rows' states and Track / Untrack, and Create / Move ask for
+/// a name in a [GraphNameSheet]. Delete… goes to [deleteTag] with the read's rows (read first when the read has not
+/// landed yet).
+class GraphTagMenuHost extends StatelessWidget {
+  /// The popover of [cards]' open card in [model].
+  const GraphTagMenuHost({required this.cards, required this.model, this.tags, this.deleteTag, super.key});
+
+  /// The graph's card controller.
+  final GraphCardController cards;
+
+  /// The graph's model.
+  final GraphViewModel model;
+
+  /// `jj tag list --all-remotes` as bookmark-shaped rows; without it the rows stay "Reading tags…".
+  final Future<List<Bookmark>> Function()? tags;
+
+  /// The project's delete flow (Story 10.44) for a tag name and the `--all-remotes` rows; without it Delete… runs
+  /// `jj tag delete` at once.
+  final GraphDeleteBookmark? deleteTag;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations strings = context.l10n;
+    return _RefMenuHost(
+      open: cards.tagsOpen,
+      anchor: () => cards.tagsAnchor,
+      model: model,
+      identifier: 'tag-menu',
+      semanticLabel: strings.tagMenuLabel,
+      kind: 'tags', // l10n-ignore: log text
+      read: tags,
+      delete: deleteTag,
+      entries: (layout, node, state) => graphTagMenuEntries(
+        strings,
+        layout,
+        node,
+        blocked: graphBlockedReason(strings, model),
+        run: (action) => unawaited(model.run(action)),
+        tags: state.rows,
+        readFailed: state.readFailed,
+        ask: state.ask,
+        delete: state.delete,
+      ),
+    );
+  }
+}
+
+/// What a ref popover's rows get from its host: the read's `rows` (null until it lands), whether it failed, the name
+/// sheet's `ask`, and the delete flow (null without one).
+typedef _RefMenuState = ({
+  List<Bookmark>? rows,
+  bool readFailed,
+  ValueChanged<GraphNameRequest> ask,
+  ValueChanged<String>? delete,
+});
+
+/// A ref popover (bookmarks, tags): [read] on each opening, Delete… through [delete] with the read's rows, the name
+/// sheet for the rows that ask.
+class _RefMenuHost extends StatefulWidget {
+  const _RefMenuHost({
+    required this.open,
+    required this.anchor,
+    required this.model,
+    required this.identifier,
+    required this.semanticLabel,
+    required this.kind,
+    required this.read,
+    required this.delete,
+    required this.entries,
+  });
+
+  final ValueNotifier<String?> open;
+  final Rect? Function() anchor;
+  final GraphViewModel model;
+  final String identifier;
+  final String semanticLabel;
+  final String kind;
+  final Future<List<Bookmark>> Function()? read;
+  final GraphDeleteBookmark? delete;
+  final List<ZsMenuEntry> Function(GraphLayout layout, int node, _RefMenuState state) entries;
+
+  @override
+  State<_RefMenuHost> createState() => _RefMenuHostState();
+}
+
+class _RefMenuHostState extends State<_RefMenuHost> {
   List<Bookmark>? _read;
   var _readFailed = false;
   var _serial = 0;
-
-  /// The sheet's request and the change it acts on, while it shows.
-  ({GraphNameRequest request, String key, String short})? _ask;
-  var _closing = false;
 
   Future<void> _load(String _) async {
     final int serial = ++_serial;
@@ -747,7 +1092,7 @@ class _GraphBookmarkMenuHostState extends State<GraphBookmarkMenuHost> {
       _read = null;
       _readFailed = false;
     });
-    final Future<List<Bookmark>> Function()? read = widget.bookmarks;
+    final Future<List<Bookmark>> Function()? read = widget.read;
     if (read == null) {
       return;
     }
@@ -758,7 +1103,7 @@ class _GraphBookmarkMenuHostState extends State<GraphBookmarkMenuHost> {
       }
     } on Object catch (error, stack) {
       final String reason = error is ZanshinFfiException ? error.code : error.runtimeType.toString();
-      _log.warning('bookmarks read failed: $reason', error, stack);
+      _log.warning('${widget.kind} read failed: $reason', error, stack);
       if (mounted && serial == _serial) {
         setState(() => _readFailed = true);
       }
@@ -766,17 +1111,17 @@ class _GraphBookmarkMenuHostState extends State<GraphBookmarkMenuHost> {
   }
 
   Future<void> _delete(String name) async {
-    final GraphDeleteBookmark? delete = widget.deleteBookmark;
+    final GraphDeleteBookmark? delete = widget.delete;
     if (delete == null) {
       return;
     }
     List<Bookmark>? rows = _read;
     if (rows == null) {
       try {
-        rows = await widget.bookmarks?.call();
+        rows = await widget.read?.call();
       } on Object catch (error, stack) {
         final String reason = error is ZanshinFfiException ? error.code : error.runtimeType.toString();
-        _log.warning('bookmarks read for delete failed: $reason', error, stack);
+        _log.warning('${widget.kind} read for delete failed: $reason', error, stack);
         // Delete then shows disabled with the failure instead of doing nothing.
         if (mounted) {
           setState(() => _readFailed = true);
@@ -790,69 +1135,24 @@ class _GraphBookmarkMenuHostState extends State<GraphBookmarkMenuHost> {
     delete(name, rows ?? const <Bookmark>[]);
   }
 
-  void _askFor(String key, String short, GraphNameRequest request) {
-    setState(() {
-      _ask = (request: request, key: key, short: short);
-      _closing = false;
-    });
-    _portal.show();
-  }
-
-  void _close() => setState(() => _closing = true);
-
-  void _closed() {
-    _portal.hide();
-    setState(() => _ask = null);
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final AppLocalizations strings = context.l10n;
-    final GraphViewModel model = widget.model;
-    return OverlayPortal(
-      controller: _portal,
-      overlayLocation: OverlayChildLocation.rootOverlay,
-      overlayChildBuilder: (context) {
-        final ({GraphNameRequest request, String key, String short})? ask = _ask;
-        if (ask == null) {
-          return const SizedBox.shrink();
-        }
-        return Positioned.fill(
-          child: GraphNameSheet(
-            request: ask.request,
-            id: ask.short,
-            closing: _closing,
-            onClosed: _closed,
-            onCancel: _close,
-            onConfirm: (text) {
-              unawaited(model.run(ask.request.action(text, ask.key)));
-              _close();
-            },
-          ),
-        );
-      },
-      child: _MenuHost(
-        open: widget.cards.bookmarksOpen,
-        anchor: () => widget.cards.bookmarksAnchor,
-        model: model,
-        identifier: 'bookmark-menu',
-        semanticLabel: strings.bookmarkMenuLabel,
-        onOpened: (key) => unawaited(_load(key)),
-        build: (context, layout, node) => graphBookmarkMenuEntries(
-          strings,
-          layout,
-          node,
-          blocked: graphBlockedReason(strings, model),
-          run: (action) => unawaited(model.run(action)),
-          bookmarks: _read,
-          readFailed: _readFailed,
-          drag: model.drag,
-          ask: (request) => _askFor(layout.keyOf(node), graphShortId(layout, node), request),
-          delete: widget.deleteBookmark == null ? null : (name) => unawaited(_delete(name)),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => _NameSheetHost(
+    model: widget.model,
+    builder: (context, ask) => _MenuHost(
+      open: widget.open,
+      anchor: widget.anchor,
+      model: widget.model,
+      identifier: widget.identifier,
+      semanticLabel: widget.semanticLabel,
+      onOpened: (key) => unawaited(_load(key)),
+      build: (context, layout, node) => widget.entries(layout, node, (
+        rows: _read,
+        readFailed: _readFailed,
+        ask: (request) => ask(layout.keyOf(node), graphShortId(layout, node), request),
+        delete: widget.delete == null ? null : (name) => unawaited(_delete(name)),
+      )),
+    ),
+  );
 }
 
 /// The name sheet (Story 10.15): a [ZsSheet] with the [request]'s title, one mono field focused at open, the live jj

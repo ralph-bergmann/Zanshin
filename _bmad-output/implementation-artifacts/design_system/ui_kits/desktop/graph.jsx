@@ -114,7 +114,7 @@ function ZKPlane({ nodes, L, W, H, axisLeft = 0, detailed, wcId, selId, hoverId,
           id={n.id} subject={n.subject} author={n.author} date={n.date} bookmarks={n.bookmarks.map((b) => b.name)} workingCopy={n.id === wcId} selected={n.id === selId}
           immutable={n.immutable} empty={!n.files.length && !n.merge} conflict={n.conflict} merge={n.merge}
           drop={dnd && dnd.target === n.id} dragging={isDnd || undefined} flash={flashIds.includes(n.id)} menuOpen={menuId === n.id}
-          onMenu={(e) => onMenu(n.id, e, true)} onBookmark={() => onSelect(n.id, true)}
+          onBookmark={() => onSelect(n.id, true)}
           onClick={() => onSelect(n.id)} onDoubleClick={() => onDouble(n.id)} onContextMenu={(e) => { e.preventDefault(); onMenu(n.id, e); }}
           onPointerDown={(e) => onCardDown(e, n)} {...hov}
           onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSelect(n.id, true); } }}/>;

@@ -15,7 +15,6 @@
 <script type="text/babel">
 (() => {
   const { ChangeCard, StackCard, PeekCard, Flag, HatchSwatch } = window.ZanshinDesignSystem_a33847;
-  const noop = () => {};
   const rel = { id: "vruxwmqv", subject: "Release v1.0.0", author: "Alice", date: "Sep 19", bookmarks: ["main"], immutable: true, width: 200 };
   const Demo = () => (
     <div>
@@ -24,7 +23,7 @@
         <div className="cell"><ChangeCard {...rel}/><span>rest · trunk() · main</span></div>
         <div className="cell"><ChangeCard {...rel} hover/><span>hover — the hatch stays</span></div>
         <div className="cell"><ChangeCard {...rel} selected/><span>selected</span></div>
-        <div className="cell"><ChangeCard {...rel} menuOpen onMenu={noop}/><span>menu open</span></div>
+        <div className="cell"><ChangeCard {...rel} menuOpen/><span>menu open</span></div>
         <div className="cell"><ChangeCard {...rel} drop/><span>drop target (Insert after, New merge)</span></div>
         <div className="cell"><ChangeCard id="wqnwkozp" subject="chore(deps): update dependencies" immutable detailed={false} width={200}/><span>compact · below trunk() · main</span></div>
         <div className="cell"><StackCard count={3} subject="chore: release prep" from="wqnwkozp" to="tmqwpzrk" author="Charlie" date="Sep 12" immutable width={200}/><span>stack — every member immutable</span></div>

@@ -216,11 +216,16 @@ class BackendGraphLayout extends GraphLayout {
   bool isDivergent(int node) => !_isStack(node) && topology.isDivergent(node);
 
   @override
-  List<GraphRef> refsOf(int node) => _isStack(node)
+  List<GraphRef> refsOf(int node) => _refsOfKind(node, TopologyRefKind.bookmark);
+
+  @override
+  List<GraphRef> tagsOf(int node) => _refsOfKind(node, TopologyRefKind.tag);
+
+  List<GraphRef> _refsOfKind(int node, TopologyRefKind kind) => _isStack(node)
       ? const <GraphRef>[]
       : <GraphRef>[
           for (final TopologyRef ref in topology.refsOf(node))
-            if (ref.kind == TopologyRefKind.bookmark)
+            if (ref.kind == kind)
               GraphRef(ref.name, remote: ref.remote, synced: ref.synced, conflicted: ref.conflicted),
         ];
 

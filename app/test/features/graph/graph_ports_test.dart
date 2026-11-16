@@ -1111,6 +1111,18 @@ void main() {
     expect(tag.kind, isA<LocalBookmark>());
     await actions.run(const GraphTagDelete(<String>['v1']));
     expect(await tags.bookmarks(), isEmpty);
+    // Story 10.45: jj tag set creates, refuses an existing name elsewhere, moves it with --allow-move.
+    final String elsewhere = (await repo.handle.newChange(<String>[row.target!])).newChangeIds.single;
+    await actions.run(GraphTagSet(const <String>['v2'], revision: row.target));
+    expect((await tags.bookmarks()).single.target, row.target);
+    await expectLater(
+      actions.run(GraphTagSet(const <String>['v2'], revision: elsewhere)),
+      throwsA(isA<ZanshinFfiException>()),
+    );
+    await actions.run(GraphTagSet(const <String>['v2'], revision: elsewhere, allowMove: true));
+    final String? moved = (await tags.bookmarks()).single.target;
+    expect(moved, isNot(row.target));
+    await actions.run(const GraphTagDelete(<String>['v2']));
     await actions.run(GraphBookmarkCreate(const <String>['topic'], revision: row.target));
     await actions.run(const GraphBookmarkForget('topic'));
     expect((await source.bookmarks()).where((b) => b.name == 'topic'), isEmpty);
@@ -1383,6 +1395,15 @@ void main() {
       expect(revsetSymbol('main'), 'main');
       expect(revsetSymbol('my topic'), '"my topic"');
       expect(const GraphTagDelete(<String>['v1']).pendingKeys, isEmpty);
+      // Story 10.45.
+      expect(const GraphTagSet(<String>['v1.5.0']).command, 'jj tag set v1.5.0');
+      expect(const GraphTagSet(<String>['v1', 'my tag'], revision: 'kkk').command, 'jj tag set v1 \'"my tag"\' -r kkk');
+      expect(
+        const GraphTagSet(<String>['v1'], revision: 'kkk', allowMove: true).command,
+        'jj tag set v1 -r kkk --allow-move',
+      );
+      expect(const GraphTagSet(<String>['v1'], revision: 'kkk').pendingKeys, <String>{'kkk'});
+      expect(const GraphTagSet(<String>['v1']).pendingKeys, isEmpty);
       expect(const GraphUndo(GraphEdit('k')).command, 'jj undo');
       expect(const GraphRedo(GraphEdit('k')).command, 'jj redo');
       expect(const GraphOpRestore('1a2b3c4d5e6f').command, 'jj op restore 1a2b3c4d5e6f');

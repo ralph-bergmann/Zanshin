@@ -60,13 +60,13 @@ enum GraphCardSlot {
   /// The add-bookmark circle.
   addBookmark,
 
-  /// The ••• circle.
-  more,
+  /// The tag legend pill on the bottom edge (Story 10.45).
+  tagLegend,
 }
 
 enum _Deco { none, badge, tag }
 
-enum _Area { body, bookmarks, more }
+enum _Area { body, bookmarks, tags }
 
 /// One item of a card line: a text, an icon or a decorated (badge / tag) text.
 class _Item {
@@ -119,10 +119,10 @@ const double _skeletonBarH = 9;
 const _skeletonShare = .58;
 
 /// The render box of a `GraphCard` (Story 10.3): one leaf that lays out its texts with [TextPainter]s and paints
-/// rings, fill, tint, hatch, border, content, focus ring, the bookmark control and •••.
+/// rings, fill, tint, hatch, border, content, focus ring, the bookmark control and the tag legend.
 ///
 /// Its size is the card rect inflated by `graphCardOverhang`; it hit-tests only the card's rounded rect, the legend
-/// pill and the revealed affordances, so the empty margin reaches the viewport. It is a [MouseTrackerAnnotation]
+/// pills and the revealed add circle, so the empty margin reaches the viewport. It is a [MouseTrackerAnnotation]
 /// that sets [GraphCardController.hovered] and defers the cursor. Hover, selection, focus, menu, the actions switch
 /// and the reveal repaint; a minute tick lays out only when the date text changes.
 class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
@@ -317,17 +317,12 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   var _focused = false;
   var _menuOpen = false;
   var _dropTarget = false;
-  var _pointerOnMore = false;
   var _pointerOnAdd = false;
-  // Whether the add circle was revealed before the fade-out started (an open menu alone never reveals it).
-  var _addWasRevealed = false;
   _Area? _downArea;
   String? _relative;
   String? _day;
 
   bool get _hoverShown => _hovered && !_inactive;
-
-  bool get _moreRevealed => _hoverShown || _focused || _menuOpen;
 
   bool get _addRevealed => _hoverShown || _focused;
 
@@ -353,7 +348,6 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     if (value != _hovered) {
       _hovered = value;
       if (!value) {
-        _pointerOnMore = false;
         _pointerOnAdd = false;
       }
       markNeedsPaint();
@@ -467,7 +461,6 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
         }
       });
     }
-    _pointerOnMore = false;
     _pointerOnAdd = false;
     _unlisten();
     _reveal.removeListener(markNeedsPaint);
@@ -491,9 +484,10 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   final _texts = <TextPainter>[];
   final _items = <_Item>[];
   final _legendItems = <_Item>[];
+  final _tagLegendItems = <_Item>[];
   Rect? _legend;
   Rect? _add;
-  Rect _more = Rect.zero;
+  Rect? _tagLegend;
   // The skeleton bar: set for a non-root card without content while [skeleton] is set.
   Rect? _bar;
   // The other workspaces folded into the `+N` tag.
@@ -507,12 +501,22 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
           (kind: item.kind, rect: item.rect, text: item.text?.plainText, style: item.text?.text?.style),
         if (_legend != null) (kind: GraphCardSlot.legend, rect: _legend!, text: null, style: null),
         if (_add != null) (kind: GraphCardSlot.addBookmark, rect: _add!, text: null, style: null),
-        (kind: GraphCardSlot.more, rect: _more, text: null, style: null),
+        if (_tagLegend != null) (kind: GraphCardSlot.tagLegend, rect: _tagLegend!, text: null, style: null),
       ];
 
   /// The legend pill's texts in render order, for the legend witnesses.
   @visibleForTesting
   List<String> get debugLegendTexts => <String>[for (final _Item item in _legendItems) item.text!.plainText];
+
+  /// The tag legend pill's texts in render order, for the tag legend witnesses.
+  @visibleForTesting
+  List<String> get debugTagLegendTexts => <String>[for (final _Item item in _tagLegendItems) item.text!.plainText];
+
+  /// The tag legend pill's text styles in render order.
+  @visibleForTesting
+  List<TextStyle> get debugTagLegendStyles => <TextStyle>[
+    for (final _Item item in _tagLegendItems) item.text!.text!.style!,
+  ];
 
   /// The card rect in local coordinates.
   Rect get cardRect => _card;
@@ -554,6 +558,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     _disposeTexts();
     _items.clear();
     _legendItems.clear();
+    _tagLegendItems.clear();
     const double o = graphCardOverhang;
     _card = Rect.fromLTWH(o, o, math.max(0, size.width - 2 * o), math.max(0, size.height - 2 * o));
     _detailed = _card.height >= _metrics.cardHDetailed;
@@ -562,7 +567,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     _day = day;
     _layoutLines();
     _layoutBookmarkControl();
-    _more = Rect.fromLTWH(_card.right - _affordRight - _afford, _card.bottom + _affordOut - _afford, _afford, _afford);
+    _layoutTagLegend();
   }
 
   void _layoutLines() {
@@ -775,15 +780,49 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       return;
     }
     final GraphTheme t = _theme;
-    final (:String prefix, :String main, :String remote, :String sigil, :String rest) = graphLegendParts(
-      _data.refs.first,
+    _legend = _layoutPill(
+      _data.refs,
+      top: top,
+      kind: GraphCardSlot.legend,
+      dim: _mono11.copyWith(color: t.cardTextDim),
+      bold: _weight(_mono11, FontWeight.w600).copyWith(color: t.cardText),
+      into: _legendItems,
     );
-    final int more = _data.refs.length - 1;
-    final TextStyle dim = _mono11.copyWith(color: t.cardTextDim);
-    final TextStyle bold = _weight(_mono11, FontWeight.w600).copyWith(color: t.cardText);
+  }
+
+  /// The tag legend (Story 10.45): the bookmark legend's pill mirrored to the bottom edge, every text dim and regular.
+  void _layoutTagLegend() {
+    _tagLegend = null;
+    if (_data.isRoot || _data.tags.isEmpty) {
+      return;
+    }
+    final TextStyle dim = _weight(_mono11, FontWeight.w400).copyWith(color: _theme.cardTextDim);
+    _tagLegend = _layoutPill(
+      _data.tags,
+      top: _card.bottom + _affordOut - _pillH,
+      kind: GraphCardSlot.tagLegend,
+      dim: dim,
+      bold: dim,
+      into: _tagLegendItems,
+    );
+  }
+
+  /// Lays out a legend pill of [refs] (the first one, then `+N`) right-aligned `_affordRight` in at [top], its texts
+  /// in [dim] and the main part and sigil in [bold], into [into]; returns the pill's rect.
+  Rect _layoutPill(
+    List<GraphRef> refs, {
+    required double top,
+    required GraphCardSlot kind,
+    required TextStyle dim,
+    required TextStyle bold,
+    required List<_Item> into,
+  }) {
+    final double right = _card.right - _affordRight;
+    final (:String prefix, :String main, :String remote, :String sigil, :String rest) = graphLegendParts(refs.first);
+    final int more = refs.length - 1;
     final double ch = _plain('0', _mono11).width;
     _Item item(String text, TextStyle style, {double gap = _pillGap}) =>
-        _Item.text(GraphCardSlot.legend, _plain(text, style))..gapBefore = gap;
+        _Item.text(kind, _plain(text, style))..gapBefore = gap;
     // The render order (epics.md:8909): prefix · main · @remote · sigil · rest · +N.
     final _Item? prefixItem = prefix.isEmpty ? null : item(prefix, dim);
     final _Item? mainItem = main.isEmpty ? null : item(main, bold);
@@ -792,11 +831,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     final _Item? restItem = rest.isEmpty ? null : item(rest, dim);
     final _Item? moreItem = more <= 0
         ? null
-        : item(
-            '+$more',
-            _mono11.copyWith(fontSize: ZsType.fsXs, color: t.cardTextDim),
-            gap: _pillGap + _pillMoreGap,
-          );
+        : item('+$more', dim.copyWith(fontSize: ZsType.fsXs), gap: _pillGap + _pillMoreGap);
     final items = <_Item>[?prefixItem, ?mainItem, ?remoteItem, ?sigilItem, ?restItem, ?moreItem];
     for (final each in items) {
       each.width = identical(each, prefixItem) ? math.min(each.natural, 4 * ch) : each.natural;
@@ -824,9 +859,9 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       each.text!.layout(maxWidth: each.width);
       each.rect = Rect.fromLTWH(x, legend.center.dy - each.height / 2, each.width, each.height);
       x += each.width;
-      _legendItems.add(each);
+      into.add(each);
     }
-    _legend = legend;
+    return legend;
   }
 
   // ---- paint ----
@@ -935,54 +970,56 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
 
     final Rect? legend = _legend;
     if (legend != null) {
-      final pill = RRect.fromRectAndRadius(legend, const Radius.circular(_pillH / 2));
-      canvas
-        ..drawRRect(pill, Paint()..color = hover ? t.cardFillHover : t.cardFill)
-        ..drawRRect(
-          pill.deflate(.5),
-          Paint()
-            ..color = wc
-                ? t.workingCopyLine
-                : _selected
-                ? t.cardSelectedBorder
-                : hover
-                ? t.cardBorderHover
-                : t.cardBorder
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1,
-        )
-        ..save()
-        ..clipRRect(pill);
-      _paintIcon(
+      _paintPill(
         canvas,
+        legend,
         _icons.bookmarkFilled,
-        Offset(legend.left + 1 + _pillPadL, legend.center.dy - _icon / 2),
-        t.cardTextDim,
+        _legendItems,
+        border: wc
+            ? t.workingCopyLine
+            : _selected
+            ? t.cardSelectedBorder
+            : hover
+            ? t.cardBorderHover
+            : t.cardBorder,
       );
-      for (final _Item item in _legendItems) {
-        _paintItem(canvas, item);
-      }
-      canvas.restore();
+    }
+    // The tag legend is calmer (refs-study.css `.rs-tg`): its border stays plain.
+    final Rect? tagLegend = _tagLegend;
+    if (tagLegend != null) {
+      _paintPill(canvas, tagLegend, _icons.tag, _tagLegendItems, border: t.cardBorder);
     }
 
     final double v = _reveal.value;
-    if (v > 0) {
+    final Rect? add = _add;
+    // While v > 0 and nothing reveals it, the add circle fades out.
+    if (v > 0 && add != null) {
       final double alpha =
           _motion.easeState.transform(v) * (_controller.actionsEnabled.value ? 1 : _metrics.disabledOpacity);
       final double scale = 1 - .15 * _motion.motion * (1 - _motion.easeGlide.transform(v));
-      final Rect? add = _add;
-      // Nothing revealed while v > 0 is the fade-out: both fade with it, the add circle only if it was shown. An open
-      // menu alone reveals ••• only.
-      if (_addRevealed) {
-        _addWasRevealed = true;
-      } else if (_moreRevealed) {
-        _addWasRevealed = false;
-      }
-      if (add != null && (_addRevealed || (!_moreRevealed && _addWasRevealed))) {
-        // graph.css:96: the pointer over the add circle lights its glyph only.
-        _paintAffordance(canvas, add, _icons.bookmark, alpha: alpha, scale: scale, lit: false, glyphLit: _pointerOnAdd);
-      }
-      _paintAffordance(canvas, _more, _icons.more, alpha: alpha, scale: scale, lit: _pointerOnMore || _menuOpen);
+      // graph.css:96: the pointer over the add circle lights its glyph only.
+      _paintAffordance(canvas, add, _icons.bookmark, alpha: alpha, scale: scale, lit: false, glyphLit: _pointerOnAdd);
+    }
+    canvas.restore();
+  }
+
+  void _paintPill(Canvas canvas, Rect rect, ui.Picture? glyph, List<_Item> items, {required Color border}) {
+    final GraphTheme t = _theme;
+    final pill = RRect.fromRectAndRadius(rect, const Radius.circular(_pillH / 2));
+    canvas
+      ..drawRRect(pill, Paint()..color = _hoverShown ? t.cardFillHover : t.cardFill)
+      ..drawRRect(
+        pill.deflate(.5),
+        Paint()
+          ..color = border
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      )
+      ..save()
+      ..clipRRect(pill);
+    _paintIcon(canvas, glyph, Offset(rect.left + 1 + _pillPadL, rect.center.dy - _icon / 2), t.cardTextDim);
+    for (final item in items) {
+      _paintItem(canvas, item);
     }
     canvas.restore();
   }
@@ -1083,13 +1120,15 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
 
   static bool _inCircle(Rect rect, Offset p) => (p - rect.center).distance <= rect.width / 2;
 
+  static bool _inPill(Rect? rect, Offset p) =>
+      rect != null && RRect.fromRectAndRadius(rect, const Radius.circular(_pillH / 2)).contains(p);
+
   _Area? _areaAt(Offset p) {
-    if (_moreRevealed && _inCircle(_more, p)) {
-      return _Area.more;
-    }
-    final Rect? legend = _legend;
-    if (legend != null && RRect.fromRectAndRadius(legend, const Radius.circular(_pillH / 2)).contains(p)) {
+    if (_inPill(_legend, p)) {
       return _Area.bookmarks;
+    }
+    if (_inPill(_tagLegend, p)) {
+      return _Area.tags;
     }
     final Rect? add = _add;
     if (add != null && _addRevealed && _inCircle(add, p)) {
@@ -1117,11 +1156,9 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
         _drag.addPointer(event);
       }
     } else if (event is PointerHoverEvent) {
-      final bool onMore = _moreRevealed && _inCircle(_more, entry.localPosition);
       final Rect? add = _add;
       final bool onAdd = add != null && _addRevealed && _inCircle(add, entry.localPosition);
-      if (onMore != _pointerOnMore || onAdd != _pointerOnAdd) {
-        _pointerOnMore = onMore;
+      if (onAdd != _pointerOnAdd) {
         _pointerOnAdd = onAdd;
         markNeedsPaint();
       }
@@ -1134,16 +1171,17 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     final Offset origin = _card.topLeft;
     GraphCardHoverArea area(GraphCardHoverPart part, Rect rect, String? tooltip) =>
         (part: part, rect: rect.shift(-origin), tooltip: tooltip);
-    if (_moreRevealed && _inCircle(_more, p)) {
-      return area(GraphCardHoverPart.more, _more, _strings.cardActionsTooltip);
-    }
     final Rect? legend = _legend;
-    if (legend != null && RRect.fromRectAndRadius(legend, const Radius.circular(_pillH / 2)).contains(p)) {
+    if (legend != null && _inPill(legend, p)) {
       return area(
         GraphCardHoverPart.bookmarks,
         legend,
         _strings.cardBookmarks(_data.refs.map((r) => r.display).join(', ')),
       );
+    }
+    final Rect? tagLegend = _tagLegend;
+    if (tagLegend != null && _inPill(tagLegend, p)) {
+      return area(GraphCardHoverPart.tags, tagLegend, _tagsLabel);
     }
     final Rect? add = _add;
     if (add != null && _addRevealed && _inCircle(add, p)) {
@@ -1157,24 +1195,23 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
     return area(GraphCardHoverPart.body, _card, null);
   }
 
+  String get _tagsLabel => _strings.cardTags(_data.tags.map((r) => r.display).join(', '));
+
   Rect _global(Rect rect) => MatrixUtils.transformRect(getTransformTo(null), rect);
 
   /// What a drag from [p] (local) carries (Story 10.10): the change from the body of a non-root card, the first ref
-  /// from the legend pill when it is a local bookmark without `@`; null elsewhere (•••, the add circle).
+  /// from the legend pill when it is a local bookmark without `@`; null elsewhere (the add circle, the tag pill).
   GraphDragPayload? _dragPayloadAt(Offset p) {
     final GraphCardData d = _data;
     switch (_areaAt(p)) {
       case _Area.body:
         return d.isRoot ? null : graphChangeDragOf(d);
       case _Area.bookmarks:
-        final Rect? legend = _legend;
         final GraphRef? first = d.refs.firstOrNull;
-        final bool onPill =
-            legend != null && RRect.fromRectAndRadius(legend, const Radius.circular(_pillH / 2)).contains(p);
-        return onPill && first != null && graphBookmarkDraggable(first.name, remote: first.remote)
+        return _inPill(_legend, p) && first != null && graphBookmarkDraggable(first.name, remote: first.remote)
             ? GraphBookmarkDrag(first.name)
             : null;
-      case _Area.more || null:
+      case _Area.tags || null:
         return null;
     }
   }
@@ -1182,9 +1219,9 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
   void _onTapUp(TapUpDetails details) {
     final bool enabled = _controller.actionsEnabled.value;
     switch (_downArea) {
-      case _Area.more:
+      case _Area.tags:
         if (enabled) {
-          _controller.openMenu(_data.key, _global(_more));
+          _controller.openTags(_data.key, _global(_tagLegend ?? _card));
         }
       case _Area.bookmarks:
         if (enabled) {
@@ -1204,7 +1241,6 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
 
   void _exit(PointerExitEvent event) {
     _controller.leave(_data.key);
-    _pointerOnMore = false;
     _pointerOnAdd = false;
   }
 
@@ -1238,13 +1274,14 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       ..textDirection = TextDirection.ltr
       ..onTap = _semanticSelect
       ..customSemanticsActions = <CustomSemanticsAction, VoidCallback>{
-        CustomSemanticsAction(label: _strings.cardActions): _semanticMenu,
+        CustomSemanticsAction(label: _strings.cardShowMenu): _semanticMenu,
         if (!d.isRoot)
           CustomSemanticsAction(
             label: d.refs.isEmpty
                 ? _strings.cardAddBookmark
                 : _strings.cardBookmarks(d.refs.map((r) => r.display).join(', ')),
           ): _semanticBookmarks,
+        if (!d.isRoot && d.tags.isNotEmpty) CustomSemanticsAction(label: _tagsLabel): _semanticTags,
         if (d.expandedRunSize case final int count)
           CustomSemanticsAction(label: _strings.stackCollapseTooltip(count)): _semanticCollapse,
       };
@@ -1254,7 +1291,7 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
 
   void _semanticCollapse() => _controller.onCollapseStack?.call(_data.key);
 
-  void _semanticMenu() => _controller.openMenu(_data.key, _global(_more));
+  void _semanticMenu() => _controller.openMenu(_data.key, _global(_card));
 
   void _semanticBookmarks() {
     // As a tap on the pill or the add circle, ignored while the actions are disabled.
@@ -1262,5 +1299,13 @@ class RenderGraphCard extends RenderBox implements MouseTrackerAnnotation {
       return;
     }
     _controller.openBookmarks(_data.key, _global(_legend ?? _add ?? _card));
+  }
+
+  void _semanticTags() {
+    // As a tap on the tag pill, ignored while the actions are disabled.
+    if (!_controller.actionsEnabled.value) {
+      return;
+    }
+    _controller.openTags(_data.key, _global(_tagLegend ?? _card));
   }
 }

@@ -23,7 +23,7 @@ The kit picks up the control library through the components: pressed states and 
 
 ## Try
 
-- Click a card → inspector; double-click → `jj edit`; right-click or ••• → context menu. ⌘J scrolls to the selected change, ⇧⌘J to @.
+- Click a card → inspector; double-click → `jj edit`; right-click (or the context-menu key, ⇧F10) → the card menu. ⌘J scrolls to the selected change, ⇧⌘J to @.
 - **Revert** (card menu, last group with Abandon): on a change below @ — e.g. the immutable *Release v1.0.0* — a new change with the inverse diff is born under @, toast *Reverted … — … undoes it* with Undo. Off, with the reason as tooltip, on @ itself, on changes not below @ and on empty ones.
 - **Immutable changes are hatched** (no ◆, no colour). Hover one: the peek's eyebrow says IMMUTABLE and why; its menu keeps New change on top, Insert after, Revert, then the reason and **Immutable commits…**, which opens Settings › Project on that page. Switch *Other people's changes* on or add a bookmark there and watch the graph re-hatch; ‹ MyApp goes back (⌘[ too).
 - Drag the inspector's left edge or a pinned panel's right edge to resize it (double-click: the default width; remembered in the browser). ⌘W on the graph shows Projects (the kit keeps the graph behind it).

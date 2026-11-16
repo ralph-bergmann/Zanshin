@@ -7,6 +7,7 @@ import 'package:zanshin/src/features/graph/graph_layout.dart';
 import 'package:zanshin/src/features/graph/graph_peek.dart';
 import 'package:zanshin/src/features/graph/immutable_reasons.dart';
 import 'package:zanshin_core/zanshin_core.dart' show RevsetCount, RevsetCounts, ZanshinWarning;
+import 'package:zanshin_ui/zanshin_ui.dart' show ZanshinIcon;
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/shell_host.dart';
@@ -95,6 +96,29 @@ void main() {
       await tester.pumpWidget(peek(reasons));
       await tester.pump();
       expect(asked, hasLength(1), reason: 'cached per operation and commit');
+    });
+
+    testWidgets('Story 10.45: the tags row above the meta line, only with tags', (tester) async {
+      await pumpPeek(tester, data(content: content));
+      expect(find.byKey(const ValueKey<String>('peek-tags')), findsNothing);
+      await pumpPeek(
+        tester,
+        const GraphCardData(
+          key: 'kmnvxoqprstu',
+          changeId: 'kmnvxoqprstu',
+          prefixLength: 2,
+          content: content,
+          tags: <GraphRef>[
+            GraphRef('v1.5.0'),
+            GraphRef('v1', remote: 'origin'),
+          ],
+        ),
+      );
+      final Finder row = find.byKey(const ValueKey<String>('peek-tags'));
+      expect(find.descendant(of: row, matching: find.text('v1.5.0')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('v1@origin')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.byType(ZanshinIcon)), findsOneWidget);
+      expect(tester.getTopLeft(row).dy, lessThan(tester.getTopLeft(find.text('Lena König')).dy));
     });
 
     testWidgets('a one-line description shows no body', (tester) async {

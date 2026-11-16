@@ -12,6 +12,7 @@ import 'package:zanshin/l10n/app_localizations_en.dart';
 import 'package:zanshin/src/features/graph/graph_canvas.dart';
 import 'package:zanshin/src/features/graph/graph_card.dart';
 import 'package:zanshin/src/features/graph/graph_card_menu.dart';
+import 'package:zanshin/src/features/graph/graph_card_render.dart';
 import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
@@ -80,6 +81,10 @@ RecordedGraphLayout _layout() {
         else
           const <GraphRef>[],
     ],
+    tags: <List<GraphRef>>[
+      for (final String key in _keys)
+        if (key == _b) const <GraphRef>[GraphRef('v1'), GraphRef('v2')] else const <GraphRef>[],
+    ],
     contents: <GraphCommitContent?>[
       for (final String key in _keys)
         if (key == _root)
@@ -102,6 +107,7 @@ List<ZsMenuEntry> _menu(
   ValueChanged<String>? onDescribe,
   ValueChanged<String>? onSquash,
   VoidCallback? onImmutableCommits,
+  ValueChanged<GraphNameRequest>? ask,
 }) => graphCardMenuEntries(
   _en,
   _l,
@@ -111,6 +117,7 @@ List<ZsMenuEntry> _menu(
   onDescribe: onDescribe ?? (_) {},
   onSquash: onSquash,
   onImmutableCommits: onImmutableCommits,
+  ask: ask ?? (_) {},
 );
 
 List<ZsMenuItem> _items(List<ZsMenuEntry> entries) => entries.whereType<ZsMenuItem>().toList();
@@ -259,6 +266,9 @@ void main() {
         '—',
         'Revert',
         'Abandon',
+        '—',
+        'Create bookmark here…',
+        'Create tag here…',
       ]);
       expect(_items(entries).every((i) => i.enabled), isTrue);
       expect(_row(entries, 'Absorb into ancestors').cmd, 'jj absorb --from kmnvxoqp');
@@ -337,6 +347,9 @@ void main() {
         '—',
         'note: Immutable',
         'Immutable commits…',
+        '—',
+        'Create bookmark here…',
+        'Create tag here…',
       ]);
       expect(_row(entries, 'Revert').enabled, isTrue, reason: 'an immutable ancestor of @');
       expect((entries[4] as ZsMenuNote).leading, isNotNull);
@@ -353,7 +366,34 @@ void main() {
         '—',
         'note: Immutable',
         'Immutable commits…',
+        '—',
+        'Create bookmark here…',
+        'Create tag here…',
       ]);
+    });
+
+    test('Story 10.45: the last group creates a bookmark or a tag through the name sheet; disabled without one', () {
+      for (final key in <String>[_b, _imm]) {
+        final asked = <GraphNameRequest>[];
+        final List<ZsMenuEntry> entries = _menu(key, ask: asked.add);
+        final ZsMenuItem bookmark = _row(entries, 'Create bookmark here…');
+        final ZsMenuItem tag = _row(entries, 'Create tag here…');
+        expect((bookmark.icon, bookmark.identifier), (ZI.bookmark, 'card-menu-create-bookmark'), reason: key);
+        expect((tag.icon, tag.identifier), (ZI.tag, 'card-menu-create-tag'), reason: key);
+        final short = key == _b ? 'kmnvxoqp' : 'iiiiiiii';
+        expect((bookmark.cmd, tag.cmd), (null, null), reason: 'the name sheet shows the live command');
+        bookmark.onSelected!();
+        tag.onSelected!();
+        expect(asked.map((r) => r.title), <String>['Create bookmark here', 'Create tag here']);
+        expect(asked.map((r) => r.label), <String>['Bookmark name', 'Tag name']);
+        expect(asked[0].action('x', key), isA<GraphBookmarkCreate>().having((a) => a.revision, 'revision', key));
+        expect(asked[1].action('v9', short).command, 'jj tag set v9 -r $short');
+      }
+      final ZsMenuItem without = _row(
+        graphCardMenuEntries(_en, _l, _node(_b), blocked: null, run: (_) {}),
+        'Create tag here…',
+      );
+      expect(without.enabled, isFalse, reason: 'no name sheet');
     });
 
     test('the root: New change on top only', () {
@@ -502,11 +542,118 @@ void main() {
     });
   });
 
+  group('graphTagMenuEntries (Story 10.45)', () {
+    final GraphLayout tagged = handLayout(
+      <(String, int, int)>[(_b, 0, 0)],
+      changeIds: const <String>[_b],
+      prefixLengths: const <int>[2],
+      tags: const <List<GraphRef>>[
+        <GraphRef>[
+          GraphRef('v1'),
+          GraphRef('v2'),
+          GraphRef('v1', remote: 'origin'),
+          GraphRef('v1', remote: 'git'),
+        ],
+      ],
+    );
+    final tagRows = <Bookmark>[
+      localRow('v1', 'c$_b'),
+      remoteRow('v1', 'origin', 'c$_b'),
+      remoteRow('v1', 'git', 'c$_b'),
+      localRow('v2', 'c$_b'),
+      remoteRow('v2', 'upstream', null, tracked: false),
+    ];
+
+    List<ZsMenuEntry> tags({
+      List<Bookmark>? rows,
+      bool readFailed = false,
+      String? blocked,
+      ValueChanged<GraphAction>? run,
+      ValueChanged<GraphNameRequest>? ask,
+      ValueChanged<String>? delete,
+    }) => graphTagMenuEntries(
+      _en,
+      tagged,
+      0,
+      blocked: blocked,
+      run: run ?? (_) {},
+      tags: rows,
+      readFailed: readFailed,
+      ask: ask ?? (_) {},
+      delete: delete,
+    );
+
+    test('a row per local tag with its state, the remote tag (not git), then Create and Move', () {
+      final List<ZsMenuEntry> entries = tags(rows: tagRows);
+      expect(_shape(entries), <String>['v1', 'v2', 'v1@origin', '—', 'Create tag here…', 'Move existing here…']);
+      expect(_row(entries, 'v1').shortcut, 'on origin');
+      expect(_row(entries, 'v2').shortcut, 'local only', reason: 'a remote row without a target holds nothing');
+      expect(_row(entries, 'v1').mono, isTrue);
+      expect(_row(entries, 'v1').identifier, 'tag-menu-v1');
+      expect(_items(entries).every((i) => i.enabled), isTrue);
+    });
+
+    test('while the read is pending "Reading tags…", after a failure the failure; Delete… then off', () {
+      final List<ZsMenuEntry> pending = tags(delete: (_) {});
+      expect(_row(pending, 'v1').shortcut, 'Reading tags…');
+      expect(_row(pending, 'v1@origin').enabled, isFalse);
+      expect(_row(_row(pending, 'v1').submenu!, 'Delete…').enabled, isTrue, reason: 'the flow reads first');
+      final List<ZsMenuEntry> failed = tags(readFailed: true, delete: (_) {});
+      expect(_row(failed, 'v2').shortcut, "Couldn't read the tags");
+      final ZsMenuItem delete = _row(_row(failed, 'v1').submenu!, 'Delete…');
+      expect((delete.enabled, delete.tooltip), (false, "Couldn't read the tags"));
+    });
+
+    test('Delete… goes to the delete flow, or runs jj tag delete without one', () {
+      final deleted = <String>[];
+      final ran = <GraphAction>[];
+      final ZsMenuItem flow = _row(_row(tags(rows: tagRows, delete: deleted.add), 'v1').submenu!, 'Delete…');
+      expect((flow.cmd, flow.danger, flow.identifier), ('jj tag delete v1', true, 'tag-menu-delete'));
+      flow.onSelected!();
+      expect(deleted, <String>['v1']);
+      _row(_row(tags(rows: tagRows, run: ran.add), 'v2').submenu!, 'Delete…').onSelected!();
+      expect(ran.single, isA<GraphTagDelete>().having((a) => a.names, 'names', <String>['v2']));
+    });
+
+    test('Track or Untrack the remote tag as the read says', () {
+      final ran = <GraphAction>[];
+      _row(_row(tags(rows: tagRows, run: ran.add), 'v1@origin').submenu!, 'Untrack').onSelected!();
+      expect(ran.last.command, 'jj tag untrack v1@origin');
+      final untracked = <Bookmark>[localRow('v1', 'c$_b'), remoteRow('v1', 'origin', 'c$_b', tracked: false)];
+      _row(_row(tags(rows: untracked, run: ran.add), 'v1@origin').submenu!, 'Track').onSelected!();
+      expect(ran.last.command, 'jj tag track v1@origin');
+    });
+
+    test('Create tag here… and Move existing here… ask for a name: jj tag set [-r] [--allow-move]', () {
+      final asked = <GraphNameRequest>[];
+      final List<ZsMenuEntry> entries = tags(rows: tagRows, ask: asked.add);
+      _row(entries, 'Create tag here…').onSelected!();
+      _row(entries, 'Move existing here…').onSelected!();
+      expect(asked.map((r) => r.title), <String>['Create tag here', 'Move a tag here']);
+      expect(asked[0].action('v9', 'kmnvxoqp').command, 'jj tag set v9 -r kmnvxoqp');
+      expect(asked[1].action('v1', 'kmnvxoqp').command, 'jj tag set v1 -r kmnvxoqp --allow-move');
+      expect(asked[1].action('v1', _b), isA<GraphTagSet>().having((a) => a.revision, 'revision', _b));
+    });
+
+    test('busy: every row disabled with the reason', () {
+      for (final ZsMenuItem item in _items(tags(rows: tagRows, blocked: 'stale'))) {
+        expect((item.enabled, item.tooltip), (false, 'stale'), reason: item.label);
+      }
+    });
+  });
+
   test('test-fixtures/commands/card-menu.txt holds the commands the menu, the popover and the sheets show', () {
     final List<ZsMenuEntry> menu = _menu(_b);
     final ZsMenuItem local = _row(_popover(bookmarks: _rows(tracked: false)), 'b-mark');
     final Map<String, GraphNameRequest> sheets = _requests();
     const short = 'kmnvxoqp';
+    // Story 10.45: the tag sheets — the card menu's Create tag here…, the tag popover's Move existing here….
+    final tagSheets = <GraphNameRequest>[];
+    _row(_menu(_b, ask: tagSheets.add), 'Create tag here…').onSelected!();
+    _row(
+      graphTagMenuEntries(_en, _l, _node(_b), blocked: null, run: (_) {}, tags: null, ask: tagSheets.add),
+      'Move existing here…',
+    ).onSelected!();
     final commands = <String>[
       for (final ZsMenuItem item in _items(menu))
         if (item.cmd case final String cmd) cmd,
@@ -517,6 +664,8 @@ void main() {
       sheets['moveTo']!.action('@', short).command,
       sheets['create']!.action('ü', short).command,
       sheets['moveHere']!.action('b-mark', short).command,
+      tagSheets[0].action('ü', short).command,
+      tagSheets[1].action('v1', short).command,
     ];
     final List<String> lines = File('../test-fixtures/commands/card-menu.txt').readAsLinesSync();
     expect(commands, lines);
@@ -535,6 +684,8 @@ void main() {
       Future<List<Bookmark>> Function()? bookmarks,
       AppWindowActions? windowActions,
       GraphDeleteBookmark? deleteBookmark,
+      Future<List<Bookmark>> Function()? tags,
+      GraphDeleteBookmark? deleteTag,
     }) async {
       source = ScriptedGraphSource(respond: (_) => _layout());
       actions = _Actions();
@@ -552,7 +703,14 @@ void main() {
         ..physicalSize = surface
         ..devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      view = GraphView(model: model, inspectorModel: inspector, bookmarks: bookmarks, deleteBookmark: deleteBookmark);
+      view = GraphView(
+        model: model,
+        inspectorModel: inspector,
+        bookmarks: bookmarks,
+        deleteBookmark: deleteBookmark,
+        tags: tags,
+        deleteTag: deleteTag,
+      );
       await tester.pumpWidget(
         shellHost(windowActions == null ? view : AppWindowActionsScope(actions: windowActions, child: view)),
       );
@@ -579,12 +737,13 @@ void main() {
 
     testWidgets('a right-click opens the menu at the pointer; Esc closes it and clears menuOpen', (tester) async {
       await pump(tester);
-      final Offset at = tester.getCenter(card(_b));
+      // @, the top card: its menu fits below the pointer.
+      final Offset at = tester.getCenter(card(_at));
       await tester.tapAt(at, buttons: kSecondaryButton);
       await settle(tester);
-      expect(cards(tester).menuOpen.value, _b);
+      expect(cards(tester).menuOpen.value, _at);
       expect(find.text('Insert before'), findsOneWidget);
-      expect(find.text('about $_b'), findsOneWidget, reason: 'the subject heads the menu');
+      expect(find.text('about $_at'), findsOneWidget, reason: 'the subject heads the menu');
       final Rect panel = tester.getRect(find.byType(ZsMenuMaterial));
       expect(panel.topLeft, at, reason: 'at the pointer');
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -594,14 +753,15 @@ void main() {
       await finish(tester);
     });
 
-    testWidgets('••• twice opens then closes; a scroll and a new selection close it', (tester) async {
+    testWidgets('openMenu twice opens then closes; a scroll and a new selection close it', (tester) async {
       await pump(tester);
       final GraphCardController c = cards(tester);
-      final more = Rect.fromCenter(center: tester.getCenter(card(_b)), width: 18, height: 18);
+      // @, the top card: its menu fits below the anchor.
+      final more = Rect.fromCenter(center: tester.getCenter(card(_at)), width: 18, height: 18);
       c.openMenu(_b, more);
       await settle(tester);
       expect(find.text('Insert before'), findsOneWidget);
-      expect(tester.getRect(find.byType(ZsMenuMaterial)).top, more.bottom + 4, reason: 'below the circle');
+      expect(tester.getRect(find.byType(ZsMenuMaterial)).top, more.bottom + 4, reason: 'below the anchor');
       c.openMenu(_b, more);
       await settle(tester);
       expect(find.text('Insert before'), findsNothing);
@@ -609,7 +769,8 @@ void main() {
 
       c.openMenu(_b, more);
       await settle(tester);
-      final pointer = TestPointer(1, PointerDeviceKind.mouse)..hover(tester.getCenter(card(_side)));
+      // Over the graph beside the menu, which hangs from the anchor to the right.
+      final pointer = TestPointer(1, PointerDeviceKind.mouse)..hover(more.bottomLeft + const Offset(-40, 60));
       await tester.sendEventToBinding(pointer.scroll(const Offset(0, 40)));
       await settle(tester);
       expect(find.text('Insert before'), findsNothing);
@@ -891,6 +1052,81 @@ void main() {
             .having((a) => a.revision, 'revision', _b),
       );
       expect(find.byType(GraphNameSheet), findsNothing);
+      await finish(tester);
+    });
+
+    Future<void> tapRow(WidgetTester tester, String label) async {
+      await tester.tap(find.text(label));
+      await tester.pump(m.durBlink);
+      await tester.pump(m.durBlink);
+      await tester.pump();
+      await tester.pump(m.durPop);
+    }
+
+    Future<void> confirmName(WidgetTester tester, String name) async {
+      expect(find.byType(GraphNameSheet), findsOneWidget);
+      await tester.enterText(find.byType(EditableText), name);
+      await tester.pump();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pump(m.durExitLg);
+      await tester.pump();
+    }
+
+    testWidgets('Story 10.45: the card menu\'s Create tag here… and Create bookmark here… run through the name sheet', (
+      tester,
+    ) async {
+      await pump(tester);
+      final GraphCardController c = cards(tester);
+      final at = Rect.fromCenter(center: tester.getCenter(card(_side)), width: 0, height: 0);
+      c.openMenu(_side, at);
+      await settle(tester);
+      await tapRow(tester, 'Create tag here…');
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey<String>('name-sheet-command'))).data,
+        ' ',
+        reason: 'no command while the field is empty',
+      );
+      await confirmName(tester, 'v9');
+      expect(actions.ran.last.command, 'jj tag set v9 -r $_side');
+      expect(find.byType(GraphNameSheet), findsNothing);
+
+      c.openMenu(_side, at);
+      await settle(tester);
+      await tapRow(tester, 'Create bookmark here…');
+      await confirmName(tester, 'feat');
+      expect(actions.ran.last.command, 'jj bookmark create feat -r $_side');
+      await finish(tester);
+    });
+
+    testWidgets('Story 10.45: the tag popover lists the tags with their state; Delete… goes to the delete flow; '
+        'Move existing here… runs jj tag set --allow-move', (tester) async {
+      final deleted = <(String, List<Bookmark>)>[];
+      final rows = <Bookmark>[localRow('v1', 'c$_b'), remoteRow('v1', 'origin', 'c$_b'), localRow('v2', 'c$_b')];
+      await pump(tester, tags: () async => rows, deleteTag: (name, rows) => deleted.add((name, rows)));
+      final GraphCardController c = cards(tester);
+      final RenderGraphCard render = tester.renderObject(card(_b));
+      final Rect pill = render.debugSlots.firstWhere((s) => s.kind == GraphCardSlot.tagLegend).rect;
+      await tester.tapAt(render.localToGlobal(pill.center));
+      await settle(tester);
+      expect(c.tagsOpen.value, _b, reason: 'a click on the pill opens it');
+      expect(find.bySemanticsIdentifier('tag-menu'), findsWidgets);
+      expect(find.text('on origin'), findsOneWidget);
+      expect(find.text('local only'), findsOneWidget);
+      expect(find.text('Create tag here…'), findsOneWidget);
+      await tester.tap(find.text('v1'));
+      await settle(tester);
+      await tapRow(tester, 'Delete…');
+      await settle(tester);
+      expect(deleted.single.$1, 'v1');
+      expect(deleted.single.$2, rows);
+      expect(actions.ran, isEmpty, reason: 'the flow decides what runs');
+
+      c.openTags(_b, Rect.fromCenter(center: tester.getCenter(card(_b)), width: 40, height: 16));
+      await settle(tester);
+      await tapRow(tester, 'Move existing here…');
+      await confirmName(tester, 'v1');
+      expect(actions.ran.last.command, 'jj tag set v1 -r $_b --allow-move');
       await finish(tester);
     });
   });

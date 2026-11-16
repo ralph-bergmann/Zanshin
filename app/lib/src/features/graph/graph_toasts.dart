@@ -343,6 +343,9 @@ InlineSpan _text(AppLocalizations strings, ZsColors colors, GraphOutcome outcome
     case GraphBookmarkForget(:final String name):
       message = strings.toastBookmarkForgot(s0);
       parts = <InlineSpan>[toastMono(colors, name)];
+    case GraphTagSet(names: final List<String> set, :final String? revision):
+      message = strings.toastTagSet(s0, s1);
+      parts = <InlineSpan>[names(set), target(revision ?? result?.workingCopyChangeId)];
     case GraphTagDelete(names: final List<String> deleted):
       message = strings.toastTagDeleted(s0);
       parts = <InlineSpan>[names(deleted)];

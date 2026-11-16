@@ -667,6 +667,41 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('the context-menu key and ⇧F10 open the focused card\'s menu at the card; plain F10 does not', (
+      tester,
+    ) async {
+      await pump(tester);
+      final GraphCardController cards = cardsOf(tester);
+      graphFocus(tester).requestFocus();
+      await tester.pump();
+      expect(cards.focused.value, 'r100');
+      final Rect card = tester.getRect(cardOf('r100')).deflate(graphCardOverhang);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+      await tester.pumpAndSettle();
+      expect(cards.menuOpen.value, 'r100');
+      expect(cards.menuAnchor, card);
+      expect(find.bySemanticsIdentifier('card-menu'), findsWidgets);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(cards.menuOpen.value, isNull);
+
+      graphFocus(tester).requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.f10);
+      await tester.pump();
+      expect(cards.menuOpen.value, isNull, reason: 'F10 without ⇧');
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f10);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+      expect(cards.menuOpen.value, 'r100');
+      expect(cards.menuAnchor, card);
+      cards.closeMenus();
+      await tester.pumpAndSettle();
+      await finish(tester);
+    });
+
     testWidgets('keyboard focus on an off-screen focus card reveals it wholly inside the visible rect', (tester) async {
       FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
       addTearDown(() => FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic);
@@ -1125,9 +1160,8 @@ void main() {
         await finish(tester);
       }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
-      testWidgets('over •••: no peek, but the tooltip after its delay; an open menu and calm keep the peek closed', (
-        tester,
-      ) async {
+      testWidgets('over the add circle: no peek, but the tooltip after its delay; an open menu and calm keep the peek '
+          'closed', (tester) async {
         final shell = ShellController();
         create(shell: shell);
         await pump(tester);
@@ -1136,13 +1170,13 @@ void main() {
         final TestGesture mouse = await hover(tester, tester.getCenter(card));
         await tester.pump(const Duration(milliseconds: 200));
         final Rect box = tester.getRect(card);
-        // ••• sits 10 px from the right, its centre on the card's bottom edge (the overhang's 11 px below it).
-        await mouse.moveTo(Offset(box.right - graphCardOverhang - 20, box.bottom - graphCardOverhang));
+        // The add circle sits 10 px from the right, its centre 1 px above the card's top edge.
+        await mouse.moveTo(Offset(box.right - graphCardOverhang - 20, box.top + graphCardOverhang - 1));
         await tester.pump(ZsMotion.full.delayTooltip);
         await tester.pump();
-        expect(cards.hoverArea.value?.part, GraphCardHoverPart.more);
+        expect(cards.hoverArea.value?.part, GraphCardHoverPart.bookmarks);
         expect(find.byType(GraphPeek), findsNothing);
-        expect(find.text('Actions (or right-click the card)'), findsOneWidget);
+        expect(find.text('Add bookmark'), findsOneWidget);
 
         // @'s `+N` tag: its bubble names the folded workspaces.
         final RenderGraphCard at = tester.renderObject(cardOf('wkmnvxoqrstl'));
@@ -1156,13 +1190,13 @@ void main() {
         final int folded = int.parse(tag.text!.substring(1));
         final others = <String>['ci', 'docs', 'release', 'scratch'];
         expect(find.text(others.sublist(others.length - folded).join(', ')), findsOneWidget);
-        expect(find.text('Actions (or right-click the card)'), findsNothing);
+        expect(find.text('Add bookmark'), findsNothing);
 
         cards.menuOpen.value = 'mzvqrstklnwp';
         await mouse.moveTo(tester.getCenter(card));
         await tester.pump(ZsMotion.full.delayPeek * 2);
         expect(find.byType(GraphPeek), findsNothing, reason: 'a card menu is open');
-        expect(find.text('Actions (or right-click the card)'), findsNothing);
+        expect(find.text('Add bookmark'), findsNothing);
         cards.menuOpen.value = null;
         shell.calm.addUserScroll(40);
         await tester.pump(ZsMotion.full.delayPeek * 2);

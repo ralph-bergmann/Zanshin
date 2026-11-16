@@ -826,6 +826,23 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('the context-menu key and ⇧F10 on a focused stack card open no menu', (tester) async {
+      await pumpView(tester);
+      final GraphLayout layout = model.layout!;
+      final String key = layout.keyOf(layout.stackNodeOf(0)!);
+      focusGraph(tester);
+      await tester.pump();
+      final GraphCardController cards = tester.widget<GraphCanvas>(find.byType(GraphCanvas)).cards..focused.value = key;
+      await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f10);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+      expect(cards.menuOpen.value, isNull);
+      await tester.pumpAndSettle();
+      await finish(tester);
+    });
+
     testWidgets('← on a focused member of an expanded run collapses it and focuses the stack card; → does nothing', (
       tester,
     ) async {

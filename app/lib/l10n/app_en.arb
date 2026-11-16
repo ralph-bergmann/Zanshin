@@ -330,7 +330,7 @@
   "cardDivergent": "divergent",
   "@cardDivergent": {"description": "VoiceOver: the change is divergent."},
   "cardActions": "Actions",
-  "@cardActions": {"description": "VoiceOver custom action that opens a card's menu."},
+  "@cardActions": {"description": "VoiceOver name of a card's menu."},
   "cardAddBookmark": "Add bookmark",
   "@cardAddBookmark": {"description": "VoiceOver custom action that adds a bookmark to a card."},
   "cardBookmarks": "Bookmarks: {names}",
@@ -338,8 +338,13 @@
     "description": "VoiceOver custom action listing a card's bookmarks (comma-separated).",
     "placeholders": {"names": {"type": "String", "example": "main, feat/x"}}
   },
-  "cardActionsTooltip": "Actions (or right-click the card)",
-  "@cardActionsTooltip": {"description": "Tooltip over a card's ••• affordance."},
+  "cardShowMenu": "Show menu",
+  "@cardShowMenu": {"description": "VoiceOver custom action that opens a card's menu (as a right-click does)."},
+  "cardTags": "Tags: {names}",
+  "@cardTags": {
+    "description": "Tooltip over a card's tag pill and the VoiceOver custom action that opens its tag popover; names comma-separated.",
+    "placeholders": {"names": {"type": "String", "example": "v1.5.0-rc1, v1.5.0-rc2"}}
+  },
 
   "peekImmutable": "Immutable",
   "@peekImmutable": {"description": "The eyebrow of an immutable change's hover card (shown in caps)."},
@@ -1051,6 +1056,11 @@
     "description": "Operation toast after jj bookmark forget; name is the bookmark name.",
     "placeholders": {"name": {"type": "String", "example": "main"}}
   },
+  "toastTagSet": "Set tag {names} on {target}",
+  "@toastTagSet": {
+    "description": "Operation toast after jj tag set; names are tag names, target a change id.",
+    "placeholders": {"names": {"type": "String", "example": "v1.5.0"}, "target": {"type": "String", "example": "ovknlmro"}}
+  },
   "toastTagDeleted": "Deleted tag {names}",
   "@toastTagDeleted": {
     "description": "Operation toast after jj tag delete; names are tag names.",
@@ -1286,6 +1296,11 @@
   "@menuBookmarkForget": {
     "description": "Names jj bookmark forget in Undo/Redo.",
     "placeholders": {"name": {"type": "String", "example": "main"}}
+  },
+  "menuTagSet": "Set Tag {names}",
+  "@menuTagSet": {
+    "description": "Names jj tag set in Undo/Redo.",
+    "placeholders": {"names": {"type": "String", "example": "v1.5.0"}}
   },
   "menuTagDelete": "Delete Tag {names}",
   "@menuTagDelete": {
@@ -1591,6 +1606,31 @@
   "@cardMenuImmutableCommits": {"description": "Card menu row on an immutable change: opens the immutable-commits settings."},
   "cardMenuNoDescription": "(no description set)",
   "@cardMenuNoDescription": {"description": "Card menu header subject of a change without a description, as jj prints it."},
+  "cardMenuCreateBookmark": "Create bookmark here…",
+  "@cardMenuCreateBookmark": {"description": "Card menu row: creates a bookmark on this change, asking for its name."},
+  "cardMenuCreateTag": "Create tag here…",
+  "@cardMenuCreateTag": {"description": "Card menu and tag popover row: creates a tag on this change, asking for its name."},
+  "tagMenuLabel": "Tags",
+  "@tagMenuLabel": {"description": "VoiceOver name of a card's tag popover."},
+  "tagMenuOnRemotes": "on {remotes}",
+  "@tagMenuOnRemotes": {
+    "description": "Tag popover row state: the remotes that hold the tag, comma-separated.",
+    "placeholders": {"remotes": {"type": "String", "example": "origin"}}
+  },
+  "tagMenuLocalOnly": "local only",
+  "@tagMenuLocalOnly": {"description": "Tag popover row state: no remote holds the tag."},
+  "tagMenuReading": "Reading tags…",
+  "@tagMenuReading": {"description": "Tag popover row state and disabled reason until the tag list is read."},
+  "tagMenuReadFailed": "Couldn't read the tags",
+  "@tagMenuReadFailed": {"description": "Tag popover row state and disabled reason after the tag list could not be read."},
+  "tagMenuMoveHere": "Move existing here…",
+  "@tagMenuMoveHere": {"description": "Tag popover row: moves an existing tag to this change."},
+  "nameSheetCreateTagTitle": "Create tag here",
+  "@nameSheetCreateTagTitle": {"description": "Name sheet title: a new tag on the change."},
+  "nameSheetMoveTagHereTitle": "Move a tag here",
+  "@nameSheetMoveTagHereTitle": {"description": "Name sheet title: an existing tag moved to the change."},
+  "nameSheetTagNameLabel": "Tag name",
+  "@nameSheetTagNameLabel": {"description": "Name sheet field label: a tag name."},
   "bookmarkMenuLabel": "Bookmarks",
   "@bookmarkMenuLabel": {"description": "VoiceOver name of a card's bookmark popover."},
   "bookmarkMenuRename": "Rename…",

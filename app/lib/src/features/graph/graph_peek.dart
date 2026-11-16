@@ -180,6 +180,22 @@ class GraphPeek extends StatelessWidget {
                 key: const ValueKey<String>('peek-description'),
                 style: ZsType.meta.copyWith(fontSize: ZsType.fsMd, height: 1.45, color: colors.textDim),
               ),
+            // The change's tags (Story 10.45): the tag glyph, then the names.
+            if (d.tags.isNotEmpty)
+              Wrap(
+                key: const ValueKey<String>('peek-tags'),
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[
+                  ZanshinIcon(ZI.tag, size: ZsIconSize.sm, color: colors.textDim),
+                  for (final GraphRef tag in d.tags)
+                    Text(
+                      tag.remote == null ? tag.name : '${tag.name}@${tag.remote}',
+                      style: ZsType.id.copyWith(color: colors.textDim),
+                    ),
+                ],
+              ),
             Wrap(
               spacing: 10,
               runSpacing: 4,

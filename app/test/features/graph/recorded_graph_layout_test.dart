@@ -181,6 +181,21 @@ void main() {
       expect(layout.changeIdPrefixLengthOf(0), lessThan(9), reason: 'the stack keys never lengthen a jj prefix');
     });
 
+    test('fromSpec passes tags through apart from the refs (Story 10.45); a stack node has none', () {
+      final (String input, String output, _) = graphStackRecordings['design-default free default']!;
+      final layout = RecordedGraphLayout.fromSpec(
+        input,
+        output,
+        refs: (node, _) => node == 0 ? const <GraphRef>[GraphRef('main')] : const <GraphRef>[],
+        tags: (node, _) => <GraphRef>[GraphRef('v$node')],
+      );
+      expect(layout.refsOf(0), const <GraphRef>[GraphRef('main')]);
+      expect(layout.tagsOf(0), const <GraphRef>[GraphRef('v0')]);
+      expect(layout.tagsOf(1), const <GraphRef>[GraphRef('v1')]);
+      expect(layout.tagsOf(layout.stackNodeOf(0)!), isEmpty);
+      expect(recording('design-default free').tagsOf(0), isEmpty, reason: 'without tags, none');
+    });
+
     test('an expanded run has no stack node; its members are laid out', () {
       final RecordedGraphLayout layout = stackRecording('design-default free expanded');
       expect(layout.runCount, greaterThan(0));

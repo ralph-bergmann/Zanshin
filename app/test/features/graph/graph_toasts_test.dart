@@ -423,6 +423,14 @@ void main() {
     expect(text(tester), 'Stopped tracking tag v1@origin');
   });
 
+  toastTest('Story 10.45: tag set says which tag went on which change, with Undo', (tester) async {
+    await run(tester, const GraphTagSet(<String>['v9'], revision: _b));
+    expect(text(tester), 'Set tag v9 on vruxwmqvz');
+    expect(buttons(tester), <String>['Undo']);
+    await run(tester, const GraphTagSet(<String>['v1'], revision: _b, allowMove: true));
+    expect(text(tester), 'Set tag v1 on vruxwmqvz');
+  });
+
   toastTest('a revision that no longer resolves says so in the CLI’s words, not as a bare id', (tester) async {
     actions.refuse = const ZanshinFfiException('jj.change_not_found', '0803bb67');
     await tester.runAsync(() => model.run(const GraphAbandon(<String>[_b])));

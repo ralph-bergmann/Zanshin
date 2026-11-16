@@ -198,6 +198,8 @@ class _ProjectGraphHostState extends State<ProjectGraphHost> {
                   bookmarks: scope.remoteBookmarks,
                   deleteBookmark: (name, rows) =>
                       scope.refDelete.delete(RefDeleteRequest.of(RefKind.bookmark, name, rows)),
+                  tags: scope.remoteTags,
+                  deleteTag: (name, rows) => scope.refDelete.delete(RefDeleteRequest.of(RefKind.tag, name, rows)),
                   search: scope.search,
                 ),
               ),

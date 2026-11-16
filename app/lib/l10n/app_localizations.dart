@@ -824,7 +824,7 @@ abstract class AppLocalizations {
   /// **'divergent'**
   String get cardDivergent;
 
-  /// VoiceOver custom action that opens a card's menu.
+  /// VoiceOver name of a card's menu.
   ///
   /// In en, this message translates to:
   /// **'Actions'**
@@ -842,11 +842,17 @@ abstract class AppLocalizations {
   /// **'Bookmarks: {names}'**
   String cardBookmarks(String names);
 
-  /// Tooltip over a card's ••• affordance.
+  /// VoiceOver custom action that opens a card's menu (as a right-click does).
   ///
   /// In en, this message translates to:
-  /// **'Actions (or right-click the card)'**
-  String get cardActionsTooltip;
+  /// **'Show menu'**
+  String get cardShowMenu;
+
+  /// Tooltip over a card's tag pill and the VoiceOver custom action that opens its tag popover; names comma-separated.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags: {names}'**
+  String cardTags(String names);
 
   /// The eyebrow of an immutable change's hover card (shown in caps).
   ///
@@ -2420,6 +2426,12 @@ abstract class AppLocalizations {
   /// **'Forgot {name}'**
   String toastBookmarkForgot(String name);
 
+  /// Operation toast after jj tag set; names are tag names, target a change id.
+  ///
+  /// In en, this message translates to:
+  /// **'Set tag {names} on {target}'**
+  String toastTagSet(String names, String target);
+
   /// Operation toast after jj tag delete; names are tag names.
   ///
   /// In en, this message translates to:
@@ -2839,6 +2851,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Forget Bookmark {name}'**
   String menuBookmarkForget(String name);
+
+  /// Names jj tag set in Undo/Redo.
+  ///
+  /// In en, this message translates to:
+  /// **'Set Tag {names}'**
+  String menuTagSet(String names);
 
   /// Names jj tag delete in Undo/Redo.
   ///
@@ -3433,6 +3451,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'(no description set)'**
   String get cardMenuNoDescription;
+
+  /// Card menu row: creates a bookmark on this change, asking for its name.
+  ///
+  /// In en, this message translates to:
+  /// **'Create bookmark here…'**
+  String get cardMenuCreateBookmark;
+
+  /// Card menu and tag popover row: creates a tag on this change, asking for its name.
+  ///
+  /// In en, this message translates to:
+  /// **'Create tag here…'**
+  String get cardMenuCreateTag;
+
+  /// VoiceOver name of a card's tag popover.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get tagMenuLabel;
+
+  /// Tag popover row state: the remotes that hold the tag, comma-separated.
+  ///
+  /// In en, this message translates to:
+  /// **'on {remotes}'**
+  String tagMenuOnRemotes(String remotes);
+
+  /// Tag popover row state: no remote holds the tag.
+  ///
+  /// In en, this message translates to:
+  /// **'local only'**
+  String get tagMenuLocalOnly;
+
+  /// Tag popover row state and disabled reason until the tag list is read.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading tags…'**
+  String get tagMenuReading;
+
+  /// Tag popover row state and disabled reason after the tag list could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read the tags'**
+  String get tagMenuReadFailed;
+
+  /// Tag popover row: moves an existing tag to this change.
+  ///
+  /// In en, this message translates to:
+  /// **'Move existing here…'**
+  String get tagMenuMoveHere;
+
+  /// Name sheet title: a new tag on the change.
+  ///
+  /// In en, this message translates to:
+  /// **'Create tag here'**
+  String get nameSheetCreateTagTitle;
+
+  /// Name sheet title: an existing tag moved to the change.
+  ///
+  /// In en, this message translates to:
+  /// **'Move a tag here'**
+  String get nameSheetMoveTagHereTitle;
+
+  /// Name sheet field label: a tag name.
+  ///
+  /// In en, this message translates to:
+  /// **'Tag name'**
+  String get nameSheetTagNameLabel;
 
   /// VoiceOver name of a card's bookmark popover.
   ///

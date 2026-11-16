@@ -672,6 +672,32 @@ final class GraphTagDelete extends GraphAction {
   Set<String> get pendingKeys => const <String>{};
 }
 
+/// `jj tag set <names> [-r <revision>] [--allow-move]` (Story 10.45; `null` = @).
+final class GraphTagSet extends GraphAction {
+  /// Sets the tags [names] on [revision]; [allowMove] lets an existing tag move.
+  const GraphTagSet(this.names, {this.revision, this.allowMove = false});
+
+  /// The tag names.
+  final List<String> names;
+
+  /// The target.
+  final String? revision;
+
+  /// `--allow-move`.
+  final bool allowMove;
+
+  @override
+  String get command => _jj(<String>[
+    'tag', 'set', // l10n-ignore: jj command
+    ...names.map(_revsetSymbol),
+    if (revision case final String revision) ...<String>['-r', revision],
+    if (allowMove) '--allow-move',
+  ]);
+
+  @override
+  Set<String> get pendingKeys => <String>{?revision};
+}
+
 /// `jj tag track <name>@<remote>` (Story 10.44): exactly that remote tag.
 final class GraphTagTrack extends GraphAction {
   /// Tracks the tag [name]@[remote].
@@ -1042,6 +1068,11 @@ class RepoGraphActions implements GraphActions {
       GraphBookmarkTrack(:final String symbol) => handle.bookmarkTrack(<String>[symbol]),
       GraphBookmarkUntrack(:final String symbol) => handle.bookmarkUntrack(<String>[symbol]),
       GraphBookmarkForget(:final String pattern) => handle.bookmarkForget(<String>[pattern]),
+      GraphTagSet(:final List<String> names, :final String? revision, :final bool allowMove) => handle.tagSet(
+        names,
+        revision: revision,
+        allowMove: allowMove,
+      ),
       GraphTagDelete() => handle.tagDelete(action.patterns),
       GraphTagTrack(:final String symbol) => handle.tagTrack(<String>[symbol]),
       GraphTagUntrack(:final String symbol) => handle.tagUntrack(<String>[symbol]),

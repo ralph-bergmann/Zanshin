@@ -42,6 +42,7 @@ class RecordedGraphLayout extends GraphLayout {
     List<int?>? changeOffsets,
     Uint8List? flags,
     List<List<GraphRef>>? refs,
+    List<List<GraphRef>>? tags,
     List<List<String>>? workingCopies,
     List<GraphCommitContent?>? contents,
     this.workspaceName,
@@ -56,6 +57,7 @@ class RecordedGraphLayout extends GraphLayout {
        _changeOffsets = changeOffsets,
        _flags = flags,
        _refs = refs,
+       _tags = tags,
        _workingCopies = workingCopies,
        _contents = contents,
        _cols = cols,
@@ -81,6 +83,7 @@ class RecordedGraphLayout extends GraphLayout {
     assert(changeOffsets == null || changeOffsets.length == n);
     assert(flags == null || flags.length == n);
     assert(refs == null || refs.length == n);
+    assert(tags == null || tags.length == n);
     assert(workingCopies == null || workingCopies.length == n);
     assert(contents == null || contents.length == n);
     assert(edgeParents.length == e && edgeKinds.length == e && edgeShapes.length == e);
@@ -106,7 +109,7 @@ class RecordedGraphLayout extends GraphLayout {
   /// Joins a docs/graph-layout.md §2 input (the view facts: `key` ?? `id`, `parent_count` ?? the parent entries,
   /// `working_copy == "this"`, a Missing parent, `ts_ms`) with the engine's §3 output for it (rows, unit, lanes,
   /// columns, edges with their routes, buckets). `immutable` goes into the flags (the root is immutable); the
-  /// recordings carry no content and no refs, so [content] and [refs] may supply them per node. A grouped output
+  /// recordings carry no content and no refs, so [content], [refs] and [tags] may supply them per node. A grouped output
   /// (format 4, `--stacks`, Story 10.17) carries n + S nodes and `runs`: a folded member gets row and column −1, and
   /// each stack node the key [graphStackKey] of its oldest member, its newest member's timestamp, one parent, and the
   /// immutable flag when every member has it. [operationId] pins the layout to an operation, as a worker layout is
@@ -116,6 +119,7 @@ class RecordedGraphLayout extends GraphLayout {
     String outputJson, {
     GraphCommitContent? Function(int node, String key)? content,
     List<GraphRef> Function(int node, String key)? refs,
+    List<GraphRef> Function(int node, String key)? tags,
     String? operationId,
     int? totalCount,
   }) {
@@ -268,6 +272,12 @@ class RecordedGraphLayout extends GraphLayout {
               for (var i = 0; i < n; i++) refs(i, keys[i]),
               for (var i = n; i < total; i++) const <GraphRef>[],
             ],
+      tags: tags == null
+          ? null
+          : <List<GraphRef>>[
+              for (var i = 0; i < n; i++) tags(i, keys[i]),
+              for (var i = n; i < total; i++) const <GraphRef>[],
+            ],
       runMembers: runMembers,
       runStackNodes: runStackNodes,
     );
@@ -291,6 +301,7 @@ class RecordedGraphLayout extends GraphLayout {
   final List<int?>? _changeOffsets;
   final Uint8List? _flags;
   final List<List<GraphRef>>? _refs;
+  final List<List<GraphRef>>? _tags;
   final List<List<String>>? _workingCopies;
   final List<GraphCommitContent?>? _contents;
 
@@ -348,6 +359,9 @@ class RecordedGraphLayout extends GraphLayout {
 
   @override
   List<GraphRef> refsOf(int node) => _refs?[node] ?? const <GraphRef>[];
+
+  @override
+  List<GraphRef> tagsOf(int node) => _tags?[node] ?? const <GraphRef>[];
 
   @override
   List<String> workingCopiesOf(int node) => _workingCopies?[node] ?? const <String>[];
