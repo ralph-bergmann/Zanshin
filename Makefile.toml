@@ -45,7 +45,7 @@ cwd = "app"
 # ─── test ───────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Run the quality gate for what changed since the last green run (clippy + fmt + doctests + flutter test + dart analyze + dart format + cargo deny advisories+bans + cargo hygiene + the coverage ratchet, which runs the Rust and zanshin_core test suites). `cargo make test-full` runs every step."
+description = "Run the quality gate for what changed since the last green run (clippy + fmt + doctests + flutter test + dart analyze + dart format + the runner's XCTests + cargo deny advisories+bans + cargo hygiene + the coverage ratchet, which runs the Rust and zanshin_core test suites). `cargo make test-full` runs every step."
 # WHY: `gate-plan` (cargo xtask gate-plan) maps every path changed since the last green run to the
 # steps it needs and writes them to target/gate/plan; each `gate-*` wrapper runs its step only when
 # the plan lists it, and `gate-stamp` records the verified tree once everything passed. No stamp, a
@@ -58,6 +58,7 @@ dependencies = [
     "gate-test-flutter",
     "gate-test-dart-analyze",
     "gate-test-dart-format",
+    "gate-test-runner",
     "gate-test-core-analyze",
     "gate-test-core-format",
     "gate-test-shell",
@@ -174,6 +175,27 @@ cwd = "app"
 private = true
 command = "dart"
 args = ["format", "--output=none", "--set-exit-if-changed", "."]
+cwd = "app"
+
+[tasks.test-runner]
+private = true
+# WHY: the runner's XCTests (app/macos/RunnerTests) are the only witness of the native window chrome and
+# menu state (a synchronous button move would pass every Dart test). `--config-only` writes the Flutter
+# build settings xcodebuild needs; the scheme's own build phase then builds the app for the test host.
+# The test host is the whole app: without its own home it would read and rewrite the developer's real
+# settings.json and could reopen the last project, whose start-up jj snapshot writes into that repository.
+# CFFIXED_USER_HOME moves Application Support to an empty folder (Projects window, nothing opened);
+# xcodebuild hands a TEST_RUNNER_ variable to the test host without the prefix.
+script_runner = "bash"
+script = '''
+set -euo pipefail
+test_home="${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-runner-home"
+rm -rf "$test_home"
+mkdir -p "$test_home"
+flutter build macos --debug --config-only
+TEST_RUNNER_CFFIXED_USER_HOME="$test_home" xcodebuild test -workspace macos/Runner.xcworkspace -scheme Runner \
+    -destination "platform=macOS,arch=$(uname -m)" -only-testing:RunnerTests -quiet
+'''
 cwd = "app"
 
 [tasks.test-core]
@@ -449,6 +471,10 @@ run_task = "test-dart-analyze"
 [tasks.gate-test-dart-format]
 extend = "gate-step"
 run_task = "test-dart-format"
+
+[tasks.gate-test-runner]
+extend = "gate-step"
+run_task = "test-runner"
 
 [tasks.gate-test-core-analyze]
 extend = "gate-step"

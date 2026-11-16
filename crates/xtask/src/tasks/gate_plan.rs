@@ -44,6 +44,7 @@ const ALL_STEPS: &[&str] = &[
     "test-flutter",
     "test-dart-analyze",
     "test-dart-format",
+    "test-runner",
     "test-core-analyze",
     "test-core-format",
     "test-shell",
@@ -79,6 +80,8 @@ const RUST: &[&str] = &[
 ];
 /// `app/`; its tests load the real cdylib.
 const APP: &[&str] = &["test-flutter", "test-dart-analyze", "test-dart-format"];
+/// `app/macos/`: the runner's `XCTests`, the only witness of the native window chrome and menu state.
+const RUNNER: &[&str] = &["test-runner"];
 /// `packages/zanshin_core`; its tests run inside `coverage`, whose ratchet they feed.
 const CORE: &[&str] = &["test-core-analyze", "test-core-format", "coverage"];
 const SETTINGS: &[&str] = &["test-settings", "test-settings-analyze", "test-settings-format"];
@@ -256,6 +259,12 @@ const RULES: &[(Pattern, &str, Need)] = &[
         Pattern::Prefix("packages/zanshin_ui/"),
         "zanshin_ui",
         Need::Groups(&[UI, APP]),
+    ),
+    // The app's Dart tests read runner files too (runner_chrome_assets_test.dart), so APP stays.
+    (
+        Pattern::Prefix("app/macos/"),
+        "the macOS runner",
+        Need::Groups(&[RUNNER, APP]),
     ),
     (Pattern::Prefix("app/"), "app", Need::Groups(&[APP])),
 ];
@@ -897,6 +906,15 @@ mod tests {
             ]
         );
         assert_eq!(plan("app/lib/a.dart"), APP);
+    }
+
+    #[test]
+    fn the_macos_runner_plans_its_xctests_and_the_app() {
+        assert_eq!(
+            steps(classify("app/macos/Runner/MainWindowChrome.swift").1),
+            ["test-flutter", "test-dart-analyze", "test-dart-format", "test-runner"]
+        );
+        assert!(!steps(classify("app/lib/a.dart").1).contains(&"test-runner"));
     }
 
     #[test]

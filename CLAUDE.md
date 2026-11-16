@@ -51,6 +51,7 @@ rather than baking in defaults. See project-context.md § zanshin-jj for the can
 code storage only). Run it — and make it pass — before considering any code
 change complete. Its steps: clippy (pedantic, `-D warnings`) + rustfmt + Rust
 doctests + `flutter test` / `dart analyze` / `dart format` per Dart package +
+the runner's XCTests (`test-runner`, when `app/macos/` changed) +
 `cargo deny` + the **coverage ratchet**, which also runs the Rust test suites and
 the `packages/zanshin_core` suite.
 
