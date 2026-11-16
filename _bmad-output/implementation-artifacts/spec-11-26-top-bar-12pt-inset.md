@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/macos/Runner/MainWindowChrome.swift (buttonMidY); app/lib/src/features/window/zanshin_window_root.dart:94
     severity: medium
+    resolved: >-
+      2026-11-16 — fixed (spec-11-27-traffic-lights-hover-and-zoom, commit 73d56a4a): Ralph chose 12 × zoom; the lights move to tlMidY × zoom (Dart sends the line) and the bar keeps the reference line.
   - summary: >-
       The top bar may jump for one frame when AppKit lays the titlebar out again, because WindowChromeHost reports the system block (or a mixed block while the buttons move one by one) before the runner's move.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       packages/zanshin_shell_macos/macos/zanshin_shell_macos/Sources/zanshin_shell_macos/WindowChromeHost.swift (update); app/macos/Runner/MainWindowChrome.swift (placeWindowButtons)
     severity: medium (unverified)
+    resolved: >-
+      2026-11-16 — fixed (spec-11-27-traffic-lights-hover-and-zoom, commit 73d56a4a): verified real (4 reports per hover); the bar no longer reads the block's y, and the buttons are no longer moved inside their own frame notifications.
   - summary: >-
       The native button move is only partly tested: leaving full screen (including the exit animation), becoming key, AppKit replacing the buttons, the reported block, and clicks on the moved buttons have no automated witness.
     evidence: |-

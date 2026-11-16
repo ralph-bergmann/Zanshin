@@ -3159,10 +3159,10 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in Story 11.26 (bmad-build-auto, 2026-11-16)
 
-- **Under a Settings zoom other than 100 % the top bar does not keep 12·zoom to the top edge: its native top is 34 − 22·zoom (1 pt at 150 %, about 14 at 90 %).** Medium.
+- ~~**Under a Settings zoom other than 100 % the top bar does not keep 12·zoom to the top edge: its native top is 34 − 22·zoom (1 pt at 150 %, about 14 at 90 %).**~~ — RESOLVED 2026-11-16 (spec-11-27-traffic-lights-hover-and-zoom, commit 73d56a4a): Ralph chose 12 × zoom; the lights move to tlMidY × zoom and the bar keeps the reference line. Medium.
   - `app/lib/src/features/window/zanshin_window_root.dart:94,110` divides the measured block by the zoom while `chromeH`/`chromeInset` scale; the runner moves the lights to a fixed 34 pt (`app/macos/Runner/MainWindowChrome.swift`, `buttonMidY`). Pre-existing interplay: before this story it was 26 − 22·zoom (−7 at 150 %).
   - **Follow-up:** decide the rule under zoom (lights at 34·zoom need a taller titlebar than 52 pt, or the bar stops centring on the lights under zoom); none until Ralph wants it.
-- **The top bar may jump for one frame when AppKit lays the titlebar out again.** Medium (unverified).
+- ~~**The top bar may jump for one frame when AppKit lays the titlebar out again.**~~ — RESOLVED 2026-11-16 (spec-11-27-traffic-lights-hover-and-zoom, commit 73d56a4a): real (4 block reports per hover); the bar no longer reads the block's y, and the buttons are no longer moved inside their own frame notifications. Medium (unverified).
   - `WindowChromeHost` and `MainWindowChrome` both observe the buttons' frame changes synchronously; the host may send the system block (centre 26), or a mixed block while the buttons move one by one, before the runner's move lands.
   - **Follow-up:** watch resize and a theme switch in the running app (console session); if it shows, let the host measure on the next run-loop turn.
 - **The native button move is only partly tested: leaving full screen (incl. the exit animation), becoming key, AppKit replacing the buttons, the reported block and clicks on the moved buttons have no automated witness.** Medium.
