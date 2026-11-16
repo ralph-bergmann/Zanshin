@@ -43,6 +43,9 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_session.dart:506
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-11-29-sync-refusal-hints, commit d6c10ef6): ProjectOpenFailed carries
+      the hints and the Projects window's open-failure notice shows them.
   - summary: >-
       A malformed or unreadable config-id still reads "<id_path>: invalid config ID …" /
       "<id_path>: <io error>" instead of the CLI's secure-config text.

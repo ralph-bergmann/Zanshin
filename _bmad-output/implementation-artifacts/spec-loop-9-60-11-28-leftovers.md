@@ -36,6 +36,9 @@ deferred:
     location: >-
       app/lib/src/features/sync/push_sheet.dart:261
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-11-29-sync-refusal-hints, commit d6c10ef6): the push sheet's plan and
+      push error notes (and its commit-check, change and fix-it errors) show the hints.
   - summary: >-
       Conversion's trunk() alias step puts a ConfigError's Display into jj.convert_failed, so its
       context carries the 'config error: ' label and its code differs from the CLI's.
