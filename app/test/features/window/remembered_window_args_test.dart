@@ -19,6 +19,31 @@ void main() {
     );
   });
 
+  test("the project window's restore carries the traffic lights' line, which the runner requires for main", () {
+    expect(
+      restoreArguments(
+        window: 42,
+        key: 'main',
+        chrome: WindowChromeKind.main,
+        frame: WindowFrameMode.full,
+        level: WindowLevel.normal,
+        buttonMidY: 51,
+      ),
+      <String, Object>{
+        'window': 42,
+        'key': 'main',
+        'chrome': 'main',
+        'frame': 'full',
+        'level': 'normal',
+        'buttonMidY': 51.0,
+      },
+    );
+  });
+
+  test("a zoom change's placeButtons: the window handle and the new line", () {
+    expect(placeButtonsArguments(window: 42, buttonMidY: 37.4), <String, Object>{'window': 42, 'buttonMidY': 37.4});
+  });
+
   test("a dialog window's restore names the secondary chrome, the position-only frame and the floating level", () {
     expect(
       restoreArguments(

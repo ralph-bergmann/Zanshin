@@ -89,8 +89,8 @@ class ZanshinWindowRoot extends StatelessWidget {
                     appearance: appearance.copyWith(
                       theme: ZsTheme.of(Theme.of(context).brightness),
                       fullScreen: chrome?.fullScreen,
-                      // In zoomed units, so the bar keeps its rule (block end + 12) under zoom; the native buttons
-                      // themselves never scale.
+                      // In zoomed units, so the bar keeps its rule (block end + 12) under zoom; the buttons keep the
+                      // system's size, and the runner moves the project window's to the zoomed line (AppWindows.zoom).
                       trafficLights: _zoomedRect(chrome?.trafficLights, zoom),
                       inactive: !_tracker.isActive(View.of(context).viewId),
                     ),

@@ -1,6 +1,7 @@
 /* TrafficLights — a MOCK of the system's window buttons (cards, the UI kit). In the app AppKit draws them, the project window moves them
-   to centre y 34 (sync #27; dialogs keep the system's 26) and the top bar is laid out from their frames (tokens/spacing.css › chrome:
-   first island at block end + 12, the bar centred on the block). Reference geometry (macOS 27): 14 × 14, pitch 23, block x 19–79.
+   to centre y --tl-mid-y × zoom (sync #27, #28; dialogs keep the system's 26, their header centred on the measured block) and the top
+   bar takes only x from their frames (tokens/spacing.css › chrome: first island at block end + 12, the bar centred on --tl-mid-y, never
+   on the block's y). Reference geometry (macOS 27): 14 × 14, pitch 23, block x 19–79.
    Zanshin's one deviation, on purpose: at rest the system buttons are hidden and the app draws grey RINGS (TrafficLightOverlayView,
    --tl-ring) — also for buttons that are greyed out; hovering the group shows the system's own buttons: enabled ones in their colours
    with their symbols, disabled ones greyed (--tl-idle). Pressing darkens. No glow, ever. The same at rest in an inactive window. */

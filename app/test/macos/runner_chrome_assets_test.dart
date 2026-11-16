@@ -84,14 +84,15 @@ void main() {
     }
   });
 
-  test('the runner moves the project window buttons to the Dart reference centre line', () {
-    final String swift = File('macos/Runner/MainWindowChrome.swift').readAsStringSync();
-    final RegExpMatch? match = RegExp(r'static let buttonMidY: CGFloat = (\d+(?:\.\d+)?)').firstMatch(swift);
-    expect(match, isNotNull, reason: 'MainWindowChrome.buttonMidY');
-    final double buttonMidY = double.parse(match!.group(1)!);
-    const ZsMetrics metrics = ZsMetrics.standard;
-    expect(buttonMidY, metrics.tlMidY);
-    expect(buttonMidY, metrics.chromeInset + metrics.chromeH / 2);
+  // Dart sends the line (`projectButtonMidY`, `ZsMetrics.standard.tlMidY` × zoom); the runner keeps no constant of its
+  // own (Story 11.27).
+  test('the runner takes the project window button line from Dart: restore reads it, placeButtons moves it', () {
+    final String store = File('macos/Runner/WindowFrameStore.swift').readAsStringSync();
+    expect('args["buttonMidY"]'.allMatches(store), hasLength(2), reason: 'restore and placeButtons read the line');
+    expect(store, contains('case "placeButtons":'), reason: 'the store answers placeButtons');
+    final String chrome = File('macos/Runner/MainWindowChrome.swift').readAsStringSync();
+    expect(chrome, contains('var buttonMidY: CGFloat?'));
+    expect(chrome, isNot(contains('let buttonMidY')), reason: 'no runner constant');
   });
 
   test('the Runner target names AccentColor as the app accent in Debug, Release and Profile', () {

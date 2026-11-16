@@ -175,11 +175,12 @@ class ZsWindowScaffold extends StatelessWidget {
     };
     // The row centres its items in what the padding leaves; twice the block line's offset from the header's middle,
     // on one side, puts that centre on `--tl-mid-y` (window.css:29). Dialog windows keep the system's button
-    // position, so without a measured block the reference is the dialog's (`.zs-win`, window.css:26).
+    // position, so the header centres on the measured block's centre, and without one on the dialog's reference
+    // (`.zs-win`, window.css:26).
     final ZsAppearance? appearance = ZsAppearance.maybeOf(context);
-    final double midY = appearance?.trafficLights == null && !(appearance?.fullScreen ?? false)
-        ? ZsMetrics.dialogTlMidY
-        : metrics.tlMidY;
+    final double midY = (appearance?.fullScreen ?? false)
+        ? metrics.tlMidY
+        : appearance?.trafficLights?.center.dy ?? ZsMetrics.dialogTlMidY;
     final double shift = midY - metrics.windowHdH / 2;
     return DecoratedBox(
       decoration: BoxDecoration(

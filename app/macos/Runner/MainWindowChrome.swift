@@ -35,15 +35,25 @@ import FlutterMacOS
 /// drag interceptor and the `--tl-ring` rings, greyed buttons included.
 ///
 /// The project window moves its traffic lights down so they centre on the top
-/// bar, 12 pt from the window's top edge like every other side (Story 11.26):
-/// their centre line sits at `buttonMidY` from the top. AppKit lays the titlebar
-/// out again on resize, key, a theme change and leaving full screen, so the move
-/// is re-applied on each and whenever a button's frame changes. Dialog windows
+/// bar, 12 × zoom pt from the window's top edge like every other side (Stories
+/// 11.26, 11.27): their centre line sits at `buttonMidY` from the top, a value
+/// Dart sends with `restore` and on every zoom change. AppKit lays the titlebar
+/// out again on hover, resize, key, a theme change and leaving full screen, so
+/// the move is re-applied on each and whenever a button's frame changes.
+///
+/// Never inside a button's own frame notification: AppKit drops a move made
+/// there and lays the titlebar out again, a ping-pong of about 25 rounds per
+/// hover. A frame change only marks the placement pending and asks the overlay
+/// for a layout pass; the move runs in `TrafficLightOverlayView.layout()` and in
+/// a main run-loop observer just before Core Animation commits. Dialog windows
 /// keep the system's position, and full screen is left to AppKit.
 final class MainWindowChrome {
     /// The project window's traffic-light centre line from the window's top edge:
-    /// the top bar's centre (`--tl-mid-y` = `--chrome-inset` 12 + `--chrome-h` 44 / 2).
-    static let buttonMidY: CGFloat = 34
+    /// the top bar's centre (`--tl-mid-y` × zoom, from Dart); nil for a dialog
+    /// window, which keeps the system's position. A new line moves the buttons at once.
+    var buttonMidY: CGFloat? {
+        didSet { placeWindowButtons() }
+    }
 
     private weak var window: NSWindow?
     private let kind: WindowChromeKind
@@ -54,23 +64,33 @@ final class MainWindowChrome {
     /// Frame observers of `placedButtons`.
     private var buttonFrameObservers: [NSObjectProtocol] = []
 
+    /// A button's frame changed since the last placement.
+    private var placementPending = false
+
+    /// Places pending buttons just before Core Animation commits (order 2_000_000).
+    private var placementObserver: CFRunLoopObserver?
+
     /// Click-through overlay that paints the neutral resting state of the window
     /// control buttons (close, minimize, zoom). Kept as a strong reference so the
     /// overlay can be re-attached whenever AppKit rebuilds the titlebar.
     private var trafficLightOverlay: TrafficLightOverlayView?
 
-    init(window: NSWindow, kind: WindowChromeKind) {
+    init(window: NSWindow, kind: WindowChromeKind, buttonMidY: CGFloat?) {
         self.window = window
         self.kind = kind
+        self.buttonMidY = buttonMidY
 
         setupWindowAppearance()
         setupWindowButtons()
     }
 
-    /// Removes the notification observers when the chrome is deallocated
+    /// Removes the notification and run-loop observers when the chrome is deallocated
     deinit {
         NotificationCenter.default.removeObserver(self)
         buttonFrameObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        if let placementObserver = placementObserver {
+            CFRunLoopObserverInvalidate(placementObserver)
+        }
     }
 
     /// Add a toolbar to move the window control buttons (close, minimize, zoom) a little bit down.
@@ -143,6 +163,9 @@ final class MainWindowChrome {
             object: window
         )
 
+        if kind == .main {
+            observeRunLoop()
+        }
         placeWindowButtons()
         installTrafficLightOverlay()
 
@@ -164,7 +187,8 @@ final class MainWindowChrome {
     /// button AppKit moved into another window (the full-screen reveal bar), AppKit
     /// owns the position.
     private func placeWindowButtons() {
-        guard kind == .main, let window = self.window else { return }
+        placementPending = false
+        guard kind == .main, let midY = buttonMidY, let window = self.window else { return }
 
         let buttons = [
             window.standardWindowButton(.closeButton),
@@ -175,7 +199,7 @@ final class MainWindowChrome {
 
         guard !window.styleMask.contains(.fullScreen) else { return }
         // Window coordinates have their origin bottom left.
-        let targetMidY = window.frame.height - Self.buttonMidY
+        let targetMidY = window.frame.height - midY
         for button in buttons where !button.isHidden && button.window === window {
             guard let host = button.superview else { continue }
             let dy = targetMidY - button.convert(button.bounds, to: nil).midY
@@ -187,6 +211,10 @@ final class MainWindowChrome {
 
     /// Re-applies the move whenever AppKit lays a button out again; observes the
     /// current buttons only, so replaced ones are dropped.
+    ///
+    /// The observer only marks the placement pending: a move inside the button's
+    /// own frame notification is dropped by AppKit, which then lays the titlebar
+    /// out again. The overlay's next layout pass or the run-loop observer moves it.
     private func observeFrames(of buttons: [NSButton]) {
         guard buttons.count != placedButtons.count || !zip(buttons, placedButtons).allSatisfy({ $0 === $1 })
         else { return }
@@ -200,9 +228,24 @@ final class MainWindowChrome {
                 object: button,
                 queue: nil
             ) { [weak self] _ in
-                self?.placeWindowButtons()
+                self?.placementPending = true
+                self?.trafficLightOverlay?.needsLayout = true
             }
         }
+    }
+
+    /// Places pending buttons on every main run-loop turn, just before Core
+    /// Animation commits (order 2_000_000), so a frame AppKit set back outside a
+    /// layout pass is corrected before it reaches the screen.
+    private func observeRunLoop() {
+        let observer = CFRunLoopObserverCreateWithHandler(
+            nil, CFRunLoopActivity.beforeWaiting.rawValue, true, 1_999_999
+        ) { [weak self] _, _ in
+            guard let self = self, self.placementPending else { return }
+            self.placeWindowButtons()
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        placementObserver = observer
     }
 
     /// Creates - or re-attaches - the overlay that paints the resting state of the
@@ -248,6 +291,7 @@ final class MainWindowChrome {
         }
 
         let overlay = TrafficLightOverlayView(buttons: buttons)
+        overlay.onLayout = { [weak self] in self?.placeWindowButtons() }
         // Stack the overlay above every existing titlebar subview so that it covers
         // the buttons. It never becomes the hit-test result, so the buttons keep
         // receiving all mouse events.
@@ -346,6 +390,10 @@ final class TrafficLightOverlayView: NSView {
     /// `true` while the rings must stay hidden regardless of hover (fullscreen)
     private var isSuppressed = false
 
+    /// Runs after each layout pass of the overlay: the chrome places the buttons
+    /// there, outside their own frame notifications.
+    var onLayout: (() -> Void)?
+
     /// `true` while the native buttons are the visible representation of the
     /// cluster, i.e. on hover and while suppressed
     private var revealsNativeButtons: Bool {
@@ -406,6 +454,11 @@ final class TrafficLightOverlayView: NSView {
     /// window buttons underneath
     override func hitTest(_ point: NSPoint) -> NSView? {
         return nil
+    }
+
+    override func layout() {
+        super.layout()
+        onLayout?()
     }
 
     override var acceptsFirstResponder: Bool {

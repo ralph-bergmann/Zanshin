@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import 'remembered_dialog_window_controller.dart';
@@ -43,6 +44,11 @@ const defaultWindowSize = Size(1200, 800);
 /// Smallest content size of the project window (decision 16.37; DS readme.md:193), the default of every project
 /// window; a dialog window passes its own ([DialogWindowSpec.constraints]) and never takes this one.
 const defaultWindowConstraints = BoxConstraints(minWidth: 880, minHeight: 560);
+
+/// The project window's traffic-light centre line at [zoom], in native points from the window's top edge: the top
+/// bar's centre, `--tl-mid-y` × the zoom (30.6 · 34 · 37.4 · 42.5 · 51 at 90–150 %), so the bar keeps 12 × zoom to the
+/// top edge (Story 11.27).
+double projectButtonMidY(double zoom) => ZsMetrics.standard.tlMidY * zoom;
 
 /// How a dialog window is made: a parentless `DialogWindowControllerMacOS` (Story 11.12 item 1).
 ///
@@ -120,7 +126,7 @@ const revsetConfigsWindowSpec = DialogWindowSpec(
 );
 
 /// What [AppWindows] asks its [AppWindowFactory] for: the window [key] titled [title], with [dialog]'s spec or, for a
-/// project window, of [size] within [constraints]; its lifecycle runs through [delegate].
+/// project window, of [size] within [constraints]; its lifecycle runs through [delegate], at [zoom].
 @immutable
 class AppWindowRequest {
   /// The request for the window [key].
@@ -131,6 +137,7 @@ class AppWindowRequest {
     required this.constraints,
     this.size,
     this.dialog,
+    this.zoom = 1,
   });
 
   /// The window's key, also its frame key.
@@ -150,6 +157,9 @@ class AppWindowRequest {
 
   /// The dialog window's spec, or null for a project window.
   final DialogWindowSpec? dialog;
+
+  /// The app-wide zoom the window opens at; a project window's traffic lights follow it ([projectButtonMidY]).
+  final double zoom;
 }
 
 /// Creates the native window behind [AppWindows.create]: a `WindowController` for a project window, a
@@ -160,8 +170,9 @@ class AppWindowRequest {
 typedef AppWindowFactory = Future<BaseWindowController> Function(AppWindowRequest request);
 
 /// What the native window for [request] is made of: for a project window a [ProjectWindowPlan] of [request]'s size
-/// ([defaultWindowSize] without one) within its constraints; for a dialog window a [DialogWindowPlan] from its
-/// [DialogWindowSpec] — size, constraints, resizable, frame and level.
+/// ([defaultWindowSize] without one) within its constraints, its traffic lights on [projectButtonMidY] at the
+/// request's zoom; for a dialog window a [DialogWindowPlan] from its [DialogWindowSpec] — size, constraints,
+/// resizable, frame and level.
 ///
 /// Pure, so a test pins every request kind's plan; [createRememberedWindow] only carries it out.
 NativeWindowPlan planNativeWindow(AppWindowRequest request) {
@@ -172,6 +183,7 @@ NativeWindowPlan planNativeWindow(AppWindowRequest request) {
       title: request.title,
       size: request.size ?? defaultWindowSize,
       constraints: request.constraints,
+      buttonMidY: projectButtonMidY(request.zoom),
     );
   }
   return DialogWindowPlan(
@@ -201,6 +213,19 @@ typedef AppExit = Future<void> Function();
 
 Future<void> _exitProcess() => ServicesBinding.instance.exitApplication(AppExitType.required);
 
+/// Moves the project [window]'s traffic lights to [buttonMidY] native points from its top edge, after a zoom change.
+///
+/// The seam exists for tests: the real placer ([placeRememberedWindowButtons]) needs the runner.
+typedef WindowButtonPlacer = Future<void> Function(WindowController window, double buttonMidY);
+
+/// The real [WindowButtonPlacer]: tells the runner through a [RememberedWindowController]; any other controller has
+/// no runner chrome to move.
+Future<void> placeRememberedWindowButtons(WindowController window, double buttonMidY) async {
+  if (window is RememberedWindowController) {
+    await window.placeButtons(buttonMidY);
+  }
+}
+
 /// A window this instance keys: its `entry`, whether it keeps the process running, its spec `constraints` at Actual
 /// Size and whether it is sized to its content (which scales its own minimum, Story 11.20).
 typedef _OpenWindow = ({WindowEntry entry, bool keepsAppAlive, BoxConstraints constraints, bool contentSized});
@@ -220,7 +245,11 @@ typedef _OpenWindow = ({WindowEntry entry, bool keepsAppAlive, BoxConstraints co
 /// - **Close guards** ([addCloseGuard], [mayClose]) are the hook for 10.22's "Discard changes?": closing the project
 ///   and quitting ask them first.
 class AppWindows {
-  AppWindows({this.createController = createRememberedWindow, this.exitProcess = _exitProcess});
+  AppWindows({
+    this.createController = createRememberedWindow,
+    this.exitProcess = _exitProcess,
+    this.placeButtons = placeRememberedWindowButtons,
+  });
 
   /// Builds the native window controller. Defaults to the real one; a test
   /// passes a factory over the generic controllers instead.
@@ -229,6 +258,9 @@ class AppWindows {
   /// Injected for tests as well: the test binding refuses a required
   /// application exit outright.
   final AppExit exitProcess;
+
+  /// Moves a project window's traffic lights to the zoomed line; a test records the calls instead.
+  final WindowButtonPlacer placeButtons;
 
   /// The open windows by key.
   final _open = <String, _OpenWindow>{};
@@ -279,6 +311,7 @@ class AppWindows {
 
   /// Sets the zoom: every open window with a minimum, except one sized to its content (whose content scales its own),
   /// gets its spec's constraints × [value]; a window below its new minimum grows to it, a larger one keeps its frame.
+  /// The project window's traffic lights move to [projectButtonMidY] at [value]; dialog windows keep the system's.
   set zoom(double value) {
     if (value == _zoom) {
       return;
@@ -301,6 +334,11 @@ class AppWindows {
           if (grown != current) {
             window.setSize(grown);
           }
+          unawaited(
+            placeButtons(window, projectButtonMidY(value)).catchError((Object error, StackTrace stackTrace) {
+              _log.warning("Moving the project window's traffic lights failed", error, stackTrace);
+            }),
+          );
         case final DialogWindowController dialog:
           dialog.setConstraints(constraints);
           if (grown != current) {
@@ -388,6 +426,7 @@ class AppWindows {
         constraints: constraints,
         size: size,
         dialog: dialog,
+        zoom: _zoom,
       ),
     );
     final entry = WindowEntry(controller: controller, builder: capture(builder));

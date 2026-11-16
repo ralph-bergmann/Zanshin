@@ -108,8 +108,9 @@ void main() {
       );
       expect(watches(), <String>['watchWindowChrome:${tester.view.viewId}']);
       expect(ZsAppearance.of(tester.element(find.byType(FloatingShell))).trafficLights, _block.trafficLights);
-      expect(chromeOf(tester), <double>[92, 5, 61]);
-      expect(shellLayout(tester), (const Offset(92, 5), 61.0));
+      // The block's x places the first island; its y never moves the bar (Story 11.27).
+      expect(chromeOf(tester), <double>[92, 12, 68]);
+      expect(shellLayout(tester), (const Offset(92, 12), 68.0));
     },
   );
 
@@ -127,8 +128,8 @@ void main() {
     shell.chromeChanges.add((viewId: viewId, chrome: _block));
     await tester.pumpAndSettle();
     expect(ZsAppearance.of(tester.element(find.byType(FloatingShell))).fullScreen, isFalse);
-    expect(chromeOf(tester), <double>[92, 5, 61]);
-    expect(shellLayout(tester), (const Offset(92, 5), 61.0));
+    expect(chromeOf(tester), <double>[92, 12, 68]);
+    expect(shellLayout(tester), (const Offset(92, 12), 68.0));
   });
 
   testWidgets('while the watch is unanswered the window keeps the reference geometry', (tester) async {

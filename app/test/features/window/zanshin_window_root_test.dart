@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin/src/features/window/window_zoom.dart';
 import 'package:zanshin/src/features/window/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/window/zanshin_window_root.dart';
@@ -291,7 +292,13 @@ void main() {
     expect(zoomed.devicePixelRatio, window.devicePixelRatio * 1.25);
     expect(ZsAppearance.of(content(tester)).trafficLights, const Rect.fromLTWH(16, 16, 48, 12));
     // The bar's rule in zoomed units: the first island at the block's end + 12.
-    expect(ZsMetrics.of(content(tester)).chromeFirstX, 16 + 48 + 12);
+    final metrics = ZsMetrics.of(content(tester));
+    expect(metrics.chromeFirstX, 16 + 48 + 12);
+    // Whatever the block's y, the bar stays 12 and the content 68 in zoomed units, centred on the line the runner puts
+    // the project window's lights on: 42.5 native at 125 % (Story 11.27).
+    expect((metrics.chromeBarY, metrics.chromeTop), (12, 68));
+    expect((metrics.chromeBarY + metrics.chromeH / 2) * 1.25, projectButtonMidY(1.25));
+    expect(projectButtonMidY(1.25), 42.5);
 
     // A stored value off the steps snaps; 95 is a tie and goes to 90.
     await tester.runAsync(() => store.update((s) => s.copyWith.appearance(zoom: 95)));

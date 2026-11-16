@@ -39,13 +39,15 @@ enum WindowLevel {
 
 /// The `restore` arguments both remembered controllers send on `zanshin/window_frames`: the NSWindow handle
 /// [window], the frame [key], the [chrome] kind, the [frame] mode and the [level], each a name the runner parses
-/// strictly (`main|secondary`, `full|position`, `normal|floating`).
+/// strictly (`main|secondary`, `full|position`, `normal|floating`), and the traffic lights' centre line
+/// [buttonMidY], which the runner requires for the main chrome (sent only when given).
 Map<String, Object> restoreArguments({
   required int window,
   required String key,
   required WindowChromeKind chrome,
   required WindowFrameMode frame,
   required WindowLevel level,
+  double? buttonMidY,
 }) => <String, Object>{
   'window': window,
   'key': key,
@@ -55,6 +57,14 @@ Map<String, Object> restoreArguments({
     WindowLevel.normal => 'normal',
     WindowLevel.floatingWhileActive => 'floating',
   },
+  'buttonMidY': ?buttonMidY,
+};
+
+/// The `placeButtons` arguments the project window sends on `zanshin/window_frames` after a zoom change: the NSWindow
+/// handle [window] and the traffic lights' new centre line [buttonMidY], in native points from the top edge.
+Map<String, Object> placeButtonsArguments({required int window, required double buttonMidY}) => <String, Object>{
+  'window': window,
+  'buttonMidY': buttonMidY,
 };
 
 /// The channel the remembered controllers restore their frames over; the runner also calls `reopen` on it.
@@ -103,14 +113,33 @@ sealed class NativeWindowPlan {
 }
 
 /// A project window's plan, carried out by [RememberedWindowController]: resizable, of [size], with the main chrome,
-/// the full frame and the normal level.
+/// the full frame, the normal level and its traffic lights on [buttonMidY].
 final class ProjectWindowPlan extends NativeWindowPlan {
-  /// The project window [key] titled [title], of [size] within [constraints].
-  const ProjectWindowPlan({required super.key, required super.title, required this.size, required super.constraints})
-    : super(resizable: true, chrome: WindowChromeKind.main, frame: WindowFrameMode.full, level: WindowLevel.normal);
+  /// The project window [key] titled [title], of [size] within [constraints], its traffic lights on [buttonMidY].
+  const ProjectWindowPlan({
+    required super.key,
+    required super.title,
+    required this.size,
+    required super.constraints,
+    required this.buttonMidY,
+  }) : super(resizable: true, chrome: WindowChromeKind.main, frame: WindowFrameMode.full, level: WindowLevel.normal);
 
   /// The first-launch content size; afterwards the remembered frame wins.
   final Size size;
+
+  /// The traffic lights' centre line from the window's top edge, in native points: the top bar's centre at the zoom.
+  final double buttonMidY;
+
+  /// The `restore` arguments with `buttonMidY`, which the runner requires for the main chrome.
+  @override
+  Map<String, Object> runnerArguments({required int window}) => restoreArguments(
+    window: window,
+    key: key,
+    chrome: chrome,
+    frame: frame,
+    level: level,
+    buttonMidY: buttonMidY,
+  );
 }
 
 /// A dialog window's plan, carried out by `RememberedDialogWindowController`: of [size] (null: sized to its content),
@@ -181,4 +210,10 @@ class RememberedWindowController extends WindowControllerMacOS {
   /// Identifies the remembered frame, e.g. `main`; the project window keeps the one key `main` whichever project it
   /// shows (decision 16.42 j).
   final String key;
+
+  /// Moves the traffic lights' centre line to [buttonMidY] native points from the window's top edge (a zoom change).
+  Future<void> placeButtons(double buttonMidY) => windowFramesChannel.invokeMethod<void>(
+    'placeButtons',
+    placeButtonsArguments(window: windowHandle.address, buttonMidY: buttonMidY),
+  );
 }

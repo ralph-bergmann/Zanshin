@@ -388,25 +388,26 @@ void main() {
       expect(fullScreen.chromeLeft, 76);
     });
 
-    test('a measured traffic-light block places the chrome', () {
-      final measured = ZsMetrics.resolve(const ZsAppearance(trafficLights: Rect.fromLTWH(19, 19, 60, 14)));
-      expect(measured.chromeFirstX, 91);
-      expect(measured.chromeBarY, 4);
-      expect(measured.chromeTop, 60);
-      expect(measured.tlSize, ZsMetrics.standard.tlSize);
-      expect(measured.tlPitch, ZsMetrics.standard.tlPitch);
-      // The block the runner moves the project window's buttons to (centre y 34): bar 12, content 68.
-      final moved = ZsMetrics.resolve(const ZsAppearance(trafficLights: Rect.fromLTWH(19, 27, 60, 14)));
-      expect(moved.chromeFirstX, 91);
-      expect(moved.chromeBarY, 12);
-      expect(moved.chromeTop, 68);
-      // Another block, centre y 27: the bar's centre line and the first island follow it.
-      final shifted = ZsMetrics.resolve(const ZsAppearance(trafficLights: Rect.fromLTWH(20, 20, 60, 14)));
-      expect(shifted.chromeFirstX, 92);
-      expect(shifted.chromeBarY, 5);
-      expect(shifted.chromeBarY + shifted.chromeH / 2, 27);
-      expect(shifted.chromeTop, 61);
-    });
+    // The block's y never moves the bar: the runner puts the project window's lights on the reference line, and a
+    // transient report (AppKit mid-layout, a zoom change a frame late) only moves y. x and width follow the block.
+    for (final (Rect block, double firstX) in const <(Rect, double)>[
+      (Rect.fromLTWH(19, 27, 60, 14), 91),
+      (Rect.fromLTWH(19, 19, 60, 14), 91),
+      (Rect.fromLTWH(20, 20, 60, 14), 92),
+      (Rect.fromLTWH(20, 40, 70, 14), 102),
+    ]) {
+      test('the measured block $block sets the first island at $firstX; the bar stays at 12, the content at 68', () {
+        final measured = ZsMetrics.resolve(ZsAppearance(trafficLights: block));
+        expect(measured.tlX, block.left);
+        expect(measured.tlBlockW, block.width);
+        expect(measured.chromeFirstX, firstX);
+        expect(measured.tlMidY, ZsMetrics.standard.tlMidY);
+        expect(measured.chromeBarY, 12);
+        expect(measured.chromeTop, 68);
+        expect(measured.tlSize, ZsMetrics.standard.tlSize);
+        expect(measured.tlPitch, ZsMetrics.standard.tlPitch);
+      });
+    }
 
     test('full screen wins over a block; no report keeps the reference geometry', () {
       final fullScreen = ZsMetrics.resolve(

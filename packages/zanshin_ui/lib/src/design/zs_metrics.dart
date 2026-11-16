@@ -124,7 +124,7 @@ class ZsMetrics {
   });
 
   /// The metrics [appearance] shows: the density sets the row step, card heights and graph gaps, full screen moves
-  /// the chrome, a measured traffic-light block places it, increased contrast widens the focus ring.
+  /// the chrome, a measured traffic-light block sets its x, increased contrast widens the focus ring.
   factory ZsMetrics.resolve(ZsAppearance appearance) {
     // DS tokens/spacing.css:55-57; compact is `standard`.
     ZsMetrics metrics = switch (appearance.density) {
@@ -149,10 +149,12 @@ class ZsMetrics {
       // DS tokens/spacing.css:52; the chrome values derived from the block follow.
       metrics = metrics.copyWith(tlBlockW: 0, tlX: 0, tlMidY: 34);
     } else if (block != null) {
-      // DS tokens/spacing.css:25-30: the bar derives from the measured block (in the project window the runner has
-      // moved it to the reference centre line), the reference only stands in for it.
-      // `tlSize` and `tlPitch` keep the reference: only mocks draw the buttons.
-      metrics = metrics.copyWith(tlX: block.left, tlBlockW: block.width, tlMidY: block.center.dy);
+      // DS tokens/spacing.css:25-30: the first island follows the measured block's x and width, which come from the
+      // system. The centre line stays the reference: the runner puts the project window's lights on it, and a
+      // transient report (AppKit re-laying the titlebar mid-move, a zoom change that reaches the runner a frame later)
+      // only moves y, so reading it would make the bar jump. Dialog headers centre on the block themselves
+      // (`ZsWindowScaffold`). `tlSize` and `tlPitch` keep the reference: only mocks draw the buttons.
+      metrics = metrics.copyWith(tlX: block.left, tlBlockW: block.width);
     }
     if (appearance.increasedContrast) {
       // DS tokens/contrast.css:21.
@@ -349,7 +351,8 @@ class ZsMetrics {
   final double tlBlockW;
 
   /// `--tl-mid-y` (DS tokens/spacing.css:31): the project window's traffic-light centre line, where the runner moves
-  /// the buttons so the top bar keeps `--chrome-inset` to the top edge.
+  /// the buttons (× the zoom, in native points) so the top bar keeps `--chrome-inset` to the top edge. A measured
+  /// block never changes it ([ZsMetrics.resolve]).
   final double tlMidY;
 
   /// `.zs-win{--tl-mid-y:26px}` (DS components/window/window.css:26): dialog windows keep the system's button

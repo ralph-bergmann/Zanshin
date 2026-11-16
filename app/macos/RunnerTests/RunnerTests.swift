@@ -94,10 +94,9 @@ class RunnerTests: XCTestCase {
 
   func testTheProjectWindowCentresItsButtonsOnTheTopBar() {
     let window = plainWindow()
-    let chrome = MainWindowChrome(window: window, kind: .main)
+    let chrome = MainWindowChrome(window: window, kind: .main, buttonMidY: 34)
     settle(window)
-    assertCentred(window, at: MainWindowChrome.buttonMidY, "on open")
-    XCTAssertEqual(MainWindowChrome.buttonMidY, 34)
+    assertCentred(window, at: 34, "on open")
 
     window.setFrame(NSRect(x: 100, y: 100, width: 1200, height: 760), display: false)
     settle(window)
@@ -114,8 +113,46 @@ class RunnerTests: XCTestCase {
     guard let close = buttons(window).first else { return XCTFail("no close button") }
     let up: CGFloat = (close.superview?.isFlipped ?? false) ? -8 : 8
     close.setFrameOrigin(NSPoint(x: close.frame.minX, y: close.frame.minY + up))
+    // AppKit drops a move made inside the button's own frame notification, so the chrome must not make one there.
+    XCTAssertEqual(midsFromTop(window).first ?? 0, 26, accuracy: 0.5, "no move inside the frame notification")
     settle(window)
     assertCentred(window, at: 34, "after a button was set back")
+
+    // The overlay's layout pass alone puts it back, without a run-loop turn.
+    close.setFrameOrigin(NSPoint(x: close.frame.minX, y: close.frame.minY + up))
+    window.contentView?.superview?.layoutSubtreeIfNeeded()
+    assertCentred(window, at: 34, "after a layout pass")
+
+    // The run-loop observer alone puts it back, with the overlay's layout path switched off.
+    guard let overlay = close.superview?.subviews.compactMap({ $0 as? TrafficLightOverlayView }).first else {
+      return XCTFail("no traffic-light overlay")
+    }
+    overlay.onLayout = nil
+    close.setFrameOrigin(NSPoint(x: close.frame.minX, y: close.frame.minY + up))
+    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+    assertCentred(window, at: 34, "after a run-loop turn")
+
+    withExtendedLifetime(chrome) { window.close() }
+  }
+
+  func testTheButtonsFollowTheLineDartSends() {
+    let window = plainWindow()
+    let chrome = MainWindowChrome(window: window, kind: .main, buttonMidY: 34)
+    settle(window)
+    assertCentred(window, at: 34, "at 100 %")
+
+    // 150 %: the highest line the titlebar holds.
+    chrome.buttonMidY = 51
+    settle(window)
+    assertCentred(window, at: 51, "at 150 %")
+    for button in buttons(window) {
+      guard let host = button.superview else { return XCTFail("a button without a superview") }
+      XCTAssertTrue(host.bounds.contains(button.frame), "inside the titlebar at 150 %: \(button.frame) in \(host.bounds)")
+    }
+
+    chrome.buttonMidY = 30.6
+    settle(window)
+    assertCentred(window, at: 30.6, "at 90 %")
 
     withExtendedLifetime(chrome) { window.close() }
   }
@@ -128,7 +165,7 @@ class RunnerTests: XCTestCase {
     settle(reference)
 
     let window = plainWindow()
-    let chrome = MainWindowChrome(window: window, kind: .secondary)
+    let chrome = MainWindowChrome(window: window, kind: .secondary, buttonMidY: nil)
     settle(window)
 
     let expected = midsFromTop(reference)
@@ -137,9 +174,83 @@ class RunnerTests: XCTestCase {
     for (mid, native) in zip(actual, expected) {
       XCTAssertEqual(mid, native, accuracy: 0.5)
     }
-    XCTAssertNotEqual(actual.first ?? 0, MainWindowChrome.buttonMidY, accuracy: 0.5)
+    XCTAssertNotEqual(actual.first ?? 0, 34, accuracy: 0.5)
 
     withExtendedLifetime(chrome) { window.close() }
     reference.close()
   }
+
+  // MARK: - The line over `zanshin/window_frames` (Story 11.27)
+
+  /// Calls `method` on `zanshin/window_frames` through `messenger`; the decoded reply: nil, or the `FlutterError`.
+  private func call(_ messenger: FakeMessenger, _ method: String, _ arguments: [String: Any]) -> Any? {
+    let codec = FlutterStandardMethodCodec.sharedInstance()
+    var reply: Any?
+    var replied = false
+    messenger.handlers["zanshin/window_frames"]?(
+      codec.encode(FlutterMethodCall(methodName: method, arguments: arguments))
+    ) { data in
+      replied = true
+      reply = data.flatMap { codec.decodeEnvelope($0) }
+    }
+    XCTAssertTrue(replied, "\(method) answered")
+    return reply
+  }
+
+  private func handle(of window: NSWindow) -> Int {
+    Int(bitPattern: Unmanaged.passUnretained(window).toOpaque())
+  }
+
+  func testTheStoreTakesTheLineWithRestoreAndPlaceButtons() {
+    let key = "xctest-story-11-27"
+    defer { UserDefaults(suiteName: "\(Bundle.main.bundleIdentifier!).window_frames")?.removeObject(forKey: key) }
+    let messenger = FakeMessenger()
+    let store = WindowFrameStore(messenger: messenger)
+    let window = plainWindow()
+    let restore: [String: Any] = [
+      "window": handle(of: window), "key": key, "chrome": "main", "frame": "full", "level": "normal",
+    ]
+
+    // The main chrome needs a numeric line.
+    XCTAssertEqual((call(messenger, "restore", restore) as? FlutterError)?.code, "bad-args")
+    let mistyped = restore.merging(["buttonMidY": "34"]) { $1 }
+    XCTAssertEqual((call(messenger, "restore", mistyped) as? FlutterError)?.code, "bad-args")
+
+    XCTAssertNil(call(messenger, "restore", restore.merging(["buttonMidY": 34.0]) { $1 }))
+    settle(window)
+    assertCentred(window, at: 34, "restored on the line Dart sent")
+
+    XCTAssertNil(call(messenger, "placeButtons", ["window": handle(of: window), "buttonMidY": 51.0]))
+    settle(window)
+    assertCentred(window, at: 51, "moved by placeButtons")
+
+    XCTAssertEqual(
+      (call(messenger, "placeButtons", ["window": handle(of: window)]) as? FlutterError)?.code, "bad-args")
+    // A window the store does not hold (one closed meanwhile) is skipped, never dereferenced.
+    let other = plainWindow()
+    XCTAssertNil(call(messenger, "placeButtons", ["window": handle(of: other), "buttonMidY": 30.6]))
+    settle(window)
+    assertCentred(window, at: 51, "an unknown handle moves nothing")
+
+    withExtendedLifetime(store) { window.close() }
+    other.close()
+  }
+}
+
+/// Stands in for the engine's messenger: keeps each channel's handler so a test can call it.
+private final class FakeMessenger: NSObject, FlutterBinaryMessenger {
+  var handlers: [String: FlutterBinaryMessageHandler] = [:]
+
+  func send(onChannel channel: String, message: Data?) {}
+
+  func send(onChannel channel: String, message: Data?, binaryReply callback: FlutterBinaryReply?) {}
+
+  func setMessageHandlerOnChannel(
+    _ channel: String, binaryMessageHandler handler: FlutterBinaryMessageHandler?
+  ) -> FlutterBinaryMessengerConnection {
+    handlers[channel] = handler
+    return 1
+  }
+
+  func cleanUpConnection(_ connection: FlutterBinaryMessengerConnection) {}
 }

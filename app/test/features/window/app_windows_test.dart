@@ -11,6 +11,7 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_windows.dart';
 
@@ -143,6 +144,11 @@ void main() {
       same(createRememberedWindow),
       reason: 'the real factory carries the plan out',
     );
+    expect(
+      AppWindows().placeButtons,
+      same(placeRememberedWindowButtons),
+      reason: "the real placer tells the runner a zoom change's line",
+    );
     expect(plans, hasLength(4));
     final [NativeWindowPlan project, NativeWindowPlan projects, NativeWindowPlan settings, NativeWindowPlan configs] =
         plans;
@@ -160,6 +166,7 @@ void main() {
       'chrome': 'main',
       'frame': 'full',
       'level': 'normal',
+      'buttonMidY': 34.0,
     });
 
     expect(
@@ -615,6 +622,54 @@ void main() {
     expect(configs.constraints, const BoxConstraints(minWidth: 1230, minHeight: 690));
     expect(configs.size, const Size(1230, 690));
     expect(planNativeWindow(configs).constraints, configs.constraints, reason: 'the plan takes the zoomed values');
+    // The project window's traffic lights open on the zoomed line: 34 × 1.5 (Story 11.27).
+    expect(main.zoom, 1.5);
+    expect(planNativeWindow(main).runnerArguments(window: 1)['buttonMidY'], 51);
+    expect(planNativeWindow(settings).runnerArguments(window: 2), isNot(contains('buttonMidY')));
+  });
+
+  test('the project window line is --tl-mid-y × the zoom at every step: 30.6 · 34 · 37.4 · 42.5 · 51', () {
+    expect(projectButtonMidY(1), ZsMetrics.standard.tlMidY);
+    expect(projectButtonMidY(1), ZsMetrics.standard.chromeInset + ZsMetrics.standard.chromeH / 2);
+    expect(<double>[0.9, 1, 1.1, 1.25, 1.5].map(projectButtonMidY), <Matcher>[
+      for (final double line in <double>[30.6, 34, 37.4, 42.5, 51]) moreOrLessEquals(line),
+    ]);
+  });
+
+  testWidgets('a zoom change moves the project window lights to the zoomed line, never a dialog window', (
+    tester,
+  ) async {
+    final placed = <(WindowController, double)>[];
+    final factory = FakeWindowFactory();
+    final registry = WindowRegistry();
+    final windows = AppWindows(
+      createController: factory.call,
+      exitProcess: () async {},
+      placeButtons: (window, buttonMidY) async => placed.add((window, buttonMidY)),
+    )..attach(registry);
+    addTearDown(() {
+      for (final WindowEntry entry in registry.windows) {
+        entry.controller.destroy();
+      }
+    });
+    await windows.openOrActivate(key: mainWindowKey, title: 'Zanshin', builder: _nothing);
+    await windows.openOrActivate(
+      key: projectsWindowKey,
+      title: 'Projects',
+      builder: _nothing,
+      dialog: projectsWindowSpec,
+    );
+    await windows.openOrActivate(key: settingsWindowKey, title: 'General', builder: _nothing, dialog: _settings);
+    final BaseWindowController project = windows.controllerOf(mainWindowKey)!;
+
+    windows
+      ..zoom = 1.1
+      ..zoom = 1.5
+      // The same zoom again moves nothing.
+      ..zoom = 1.5;
+
+    expect(placed.map((call) => call.$1), <BaseWindowController>[project, project], reason: 'the project window only');
+    expect(placed.map((call) => call.$2), <Matcher>[moreOrLessEquals(37.4), moreOrLessEquals(51)]);
   });
 
   testWidgets('a zoom change grows a window below its new minimum, keeps a larger one and skips Settings', (

@@ -299,33 +299,30 @@ void main() {
   /// The first island's rect, the bar's top-left island (PLACE's empty island).
   Rect firstIsland(WidgetTester tester) => tester.getRect(find.byType(ShellEmptyIsland).first);
 
-  for (final (WindowChrome chrome, double firstX, double barY, double top)
-      in const <(WindowChrome, double, double, double)>[
-        // Where the runner moves the project window's buttons (Story 11.26): the bar 12 from the top.
-        (WindowChrome(trafficLights: Rect.fromLTWH(19, 27, 60, 14)), 91, 12, 68),
-        (WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14)), 91, 4, 60),
-        (WindowChrome(trafficLights: Rect.fromLTWH(20, 20, 60, 14)), 92, 5, 61),
-      ]) {
-    testWidgets(
-      'the block ${chrome.trafficLights} reaches the window root: first island $firstX, bar $barY, top $top',
-      (
-        tester,
-      ) async {
-        final BuildContext probe = await pumpApp(tester, '{}', _shell(), chrome: chrome);
-        final Rect block = chrome.trafficLights!;
+  // The runner puts the project window's buttons on the reference line (Stories 11.26, 11.27), so whatever y a report
+  // carries, the bar stays 12 from the top; only the first island's x follows the block.
+  for (final (WindowChrome chrome, double firstX) in const <(WindowChrome, double)>[
+    (WindowChrome(trafficLights: Rect.fromLTWH(19, 27, 60, 14)), 91),
+    (WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14)), 91),
+    (WindowChrome(trafficLights: Rect.fromLTWH(20, 20, 60, 14)), 92),
+  ]) {
+    testWidgets('the block ${chrome.trafficLights} reaches the window root: first island $firstX, bar 12, top 68', (
+      tester,
+    ) async {
+      final BuildContext probe = await pumpApp(tester, '{}', _shell(), chrome: chrome);
+      final Rect block = chrome.trafficLights!;
 
-        expect(shell.calls, contains('watchWindowChrome:${tester.view.viewId}'));
-        expect(ZsAppearance.of(probe).trafficLights, block);
-        final metrics = ZsMetrics.of(probe);
-        expect(<double>[metrics.chromeFirstX, metrics.chromeBarY, metrics.chromeTop], <double>[firstX, barY, top]);
-        final Rect island = firstIsland(tester);
-        expect(island.topLeft, Offset(firstX, barY));
-        expect(island.left, block.right + 12, reason: 'the first island starts at block end + 12');
-        expect(island.center.dy, moreOrLessEquals(block.center.dy, epsilon: 1), reason: 'the bar centres on the block');
-        expect(tester.getRect(find.byType(WindowDragArea)), Rect.fromLTWH(0, 0, 1440, top));
-        expect(top, island.bottom + 12, reason: 'the content starts at bar bottom + 12');
-      },
-    );
+      expect(shell.calls, contains('watchWindowChrome:${tester.view.viewId}'));
+      expect(ZsAppearance.of(probe).trafficLights, block);
+      final metrics = ZsMetrics.of(probe);
+      expect(<double>[metrics.chromeFirstX, metrics.chromeBarY, metrics.chromeTop], <double>[firstX, 12, 68]);
+      final Rect island = firstIsland(tester);
+      expect(island.topLeft, Offset(firstX, 12));
+      expect(island.left, block.right + 12, reason: 'the first island starts at block end + 12');
+      expect(island.center.dy, moreOrLessEquals(34, epsilon: 1), reason: 'the bar centres on the reference line');
+      expect(tester.getRect(find.byType(WindowDragArea)), const Rect.fromLTWH(0, 0, 1440, 68));
+      expect(island.bottom + 12, 68, reason: 'the content starts at bar bottom + 12');
+    });
   }
 
   testWidgets('full screen reaches the window root and moves the chrome; leaving it brings the block back', (
@@ -343,8 +340,8 @@ void main() {
     shell.chromeChanges.add((viewId: viewId, chrome: block));
     await tester.pumpAndSettle();
     expect(ZsAppearance.of(probe()).fullScreen, isFalse);
-    expect(firstIsland(tester).topLeft, const Offset(91, 4));
-    expect(tester.getRect(find.byType(WindowDragArea)), const Rect.fromLTWH(0, 0, 1440, 60));
+    expect(firstIsland(tester).topLeft, const Offset(91, 12));
+    expect(tester.getRect(find.byType(WindowDragArea)), const Rect.fromLTWH(0, 0, 1440, 68));
 
     shell.chromeChanges.add((viewId: viewId, chrome: const WindowChrome(fullScreen: true)));
     await tester.pumpAndSettle();

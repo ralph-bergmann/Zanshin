@@ -38,8 +38,15 @@ enum WindowLevelMode: String {
 /// (`reopen`).
 ///
 /// `restore {window, key, chrome: main|secondary, frame: full|position,
-/// level: normal|floating}` runs, in this order: the chrome (`MainWindowChrome`
-/// of that kind) → `isRestorable = false` → the frame → the observers.
+/// level: normal|floating, buttonMidY}` runs, in this order: the chrome
+/// (`MainWindowChrome` of that kind) → `isRestorable = false` → the frame → the
+/// observers. The `main` chrome requires `buttonMidY`, the traffic-light centre
+/// line from the top edge (`ZsMetrics.standard.tlMidY` × zoom); `secondary`
+/// takes none and keeps the system's position.
+///
+/// `placeButtons {window, buttonMidY}` moves an open window's traffic lights to
+/// a new line (a zoom change); a window that has closed in the meantime is
+/// skipped.
 /// - **Frame `full`** restores the saved size and origin.
 /// - **Frame `position`** saves the frame the same way but restores only the
 ///   origin, by the saved top edge (`origin.y + height`), and keeps that top
@@ -114,36 +121,64 @@ final class WindowFrameStore {
     }
 
     private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard call.method == "restore" else {
+        switch call.method {
+        case "restore":
+            handleRestore(call.arguments, result: result)
+        case "placeButtons":
+            handlePlaceButtons(call.arguments, result: result)
+        default:
             result(FlutterMethodNotImplemented)
-            return
         }
+    }
+
+    private func handleRestore(_ arguments: Any?, result: @escaping FlutterResult) {
         // Every argument is parsed strictly: defaulting a missing or mistyped
         // one would silently hand back a stock titled window - no custom chrome,
         // and `isRestorable` left on, which lets AppKit's state restoration
         // override the frame restored just below.
-        guard let args = call.arguments as? [String: Any],
+        guard let args = arguments as? [String: Any],
             let handle = args["window"] as? Int,
             let key = args["key"] as? String,
             let kind = (args["chrome"] as? String).flatMap(WindowChromeKind.init(rawValue:)),
             let mode = (args["frame"] as? String).flatMap(WindowFrameMode.init(rawValue:)),
             let level = (args["level"] as? String).flatMap(WindowLevelMode.init(rawValue:)),
+            // The project window's line comes from Dart (required); a dialog keeps the system's position (none).
+            case let buttonMidY = kind == .main ? (args["buttonMidY"] as? Double).map({ CGFloat($0) }) : nil,
+            kind == .secondary || buttonMidY != nil,
             let pointer = UnsafeRawPointer(bitPattern: handle)
         else {
             result(
                 FlutterError(
                     code: "bad-args",
-                    message: "expected a window handle, a key, a chrome (main|secondary), a frame (full|position) "
-                        + "and a level (normal|floating)",
+                    message: "expected a window handle, a key, a chrome (main|secondary), a frame (full|position), "
+                        + "a level (normal|floating) and, for main, a numeric buttonMidY",
                     details: nil))
             return
         }
         let window = Unmanaged<NSWindow>.fromOpaque(pointer).takeUnretainedValue()
-        restore(window, key: key, kind: kind, mode: mode, level: level)
+        restore(window, key: key, kind: kind, mode: mode, level: level, buttonMidY: buttonMidY)
         result(nil)
     }
 
-    /// Applies the chrome of `kind`, takes the geometry away from AppKit's state
+    /// Moves the open window's traffic lights to the new line. The window is found
+    /// among the open chromes by its address, never by dereferencing the handle:
+    /// it may have closed since Dart sent it.
+    private func handlePlaceButtons(_ arguments: Any?, result: @escaping FlutterResult) {
+        guard let args = arguments as? [String: Any],
+            let handle = args["window"] as? Int,
+            let buttonMidY = args["buttonMidY"] as? Double
+        else {
+            result(
+                FlutterError(
+                    code: "bad-args", message: "expected a window handle and a numeric buttonMidY", details: nil))
+            return
+        }
+        chrome.first { UInt(bitPattern: $0.key) == UInt(bitPattern: handle) }?.value.buttonMidY = CGFloat(buttonMidY)
+        result(nil)
+    }
+
+    /// Applies the chrome of `kind` (its traffic lights on `buttonMidY`, nil for
+    /// the system's position), takes the geometry away from AppKit's state
     /// restoration, applies the frame saved under `key` in `mode` (or the first
     /// placement), sets the `level`, and keeps saving this window's frame under
     /// that key from now on.
@@ -152,10 +187,11 @@ final class WindowFrameStore {
     /// means, so a saved frame applied under the old style mask would lose the
     /// titlebar height on every launch.
     private func restore(
-        _ window: NSWindow, key: String, kind: WindowChromeKind, mode: WindowFrameMode, level: WindowLevelMode
+        _ window: NSWindow, key: String, kind: WindowChromeKind, mode: WindowFrameMode, level: WindowLevelMode,
+        buttonMidY: CGFloat?
     ) {
         let id = ObjectIdentifier(window)
-        chrome[id] = MainWindowChrome(window: window, kind: kind)
+        chrome[id] = MainWindowChrome(window: window, kind: kind, buttonMidY: buttonMidY)
 
         // The store is the single owner of every window's geometry. AppKit's
         // own state restoration would restore its stale frame asynchronously
