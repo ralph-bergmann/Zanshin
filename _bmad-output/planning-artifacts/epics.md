@@ -15237,3 +15237,59 @@ Nothing NEEDS DESIGN.
 **Related:** 11.4, 11.12, 11.20.
 
 ---
+
+### Story 11.27: The traffic lights hold still on hover and follow the zoom; the top bar keeps 12 × zoom [UI/native]
+*(Added 2026-11-16, Ralph — console session, after Ralph's screen recording of Story 11.26; Ralph chose "Variante A" the same day.)*
+
+**Motivation.** Ralph's recording of 11.26 shows two faults:
+- **Hover.** Over the traffic lights the green (zoom) button jumps 8 pt up and stays there, and the top bar jumps 4 pt up with it.
+- **Zoom.** Under a Settings zoom other than 100 % the gap above the bar changes. It is 34 − 22 × zoom: 14 pt at 90 %, 1 pt at 150 %. The other sides keep 12 × zoom.
+
+Ralph wants the elements to look right first. Dropping the move is no option: with the lights at the system position (centre 26) the bar can either sit centred on them, 4 pt from the top, or 12 × zoom from the top, off-centre.
+
+**Root cause, measured 2026-11-16 in the running app** (a temporary probe, removed again):
+- `MainWindowChrome` moves the buttons synchronously inside their own `NSView.frameDidChangeNotification`. AppKit lays the titlebar out again in reply. On every hover in and out, at launch and on key changes this ping-pongs about 25 rounds (about 150 ms).
+- A move issued inside a button's own notification is dropped. AppKit lays the zoom button out last, so after a hover it stays at AppKit's place (centre 26).
+- The bar follows the measured block. `WindowChromeHost` reports the union of the three buttons, and `ZsMetrics` uses its centre as `tlMidY`. One stray button moves the bar by half its offset. The plugin sent 4 block reports per hover, including the misplaced one.
+
+**What worked (probe-verified).** Never move a button inside its frame notification. Mark the position dirty, set the overlay's `needsLayout`, and correct the buttons from two places:
+- `TrafficLightOverlayView.layout()`, which runs in AppKit's display pass after the titlebar's layout;
+- a main run-loop observer at `beforeWaiting`, order 1_999_999, just before Core Animation's commit at 2_000_000.
+
+Result: one correction per change and no feedback loop. A sampler after each commit saw no misplaced button over repeated hovers, and the zoom button's tiling menu still opens.
+
+**What failed (do not retry).** AppKit anchors the buttons to the window's top edge (titlebar 66 pt, centre 26):
+- Shifting `NSTitlebarView`'s bounds origin and moving `NSTitlebarContainerView`: AppKit re-anchors the buttons, and the shift runs away.
+- A taller `.top` titlebar accessory, and a 68 pt toolbar item: no effect.
+
+**Scope.**
+1. **The project window's buttons follow the zoom.** Their centre line is `tlMidY × zoom` from the window's top edge: 30.6 pt at 90 %, 34 at 100 %, 51 at 150 %.
+   - The value comes from Dart (the DS geometry, `ZsMetrics.standard.tlMidY` 34 = `--chrome-inset` 12 + `--chrome-h` 44 / 2). It travels with the window's `restore` call and on every zoom change, over `zanshin/window_frames` or the zoom path of `AppWindows`.
+   - The runner keeps no second copy of 34 beyond a start value.
+   - Dialog windows keep the system position.
+2. **The move stops fighting AppKit,** as in "What worked" above. The existing triggers stay (setup, resize, key, leaving full screen, replaced buttons, frame changes); none of them moves a button inside its own frame notification. The rings follow as before.
+3. **The project window's bar no longer derives its height from the measured block.**
+   - Its line is the reference `tlMidY` (34 in zoomed units, so 12 × zoom to the top edge).
+   - The block still supplies `tlX` and `tlBlockW`.
+   - Dialog windows keep the measured centre line (`ZsWindowScaffold`, `ZsMetrics.dialogTlMidY` fallback).
+   - Why: transient reports (AppKit's re-layout, a zoom change that reaches the runner a frame later) must never move the bar.
+4. **DS:** the readme's chrome geometry says the lights' centre is `--tl-mid-y` × zoom in the project window, with a DESIGN-SYSTEM-SYNC entry. No token changes; the publish waits for a console session.
+
+**Non-goals.**
+- Dialog windows (Settings, Projects, Configurations) and full screen stay unchanged.
+- Zoom steps above 150 %: the titlebar is 66 pt, so a centre line above about 59 pt would leave it. Zoom stops at 150 today (`zoomSteps`).
+
+**Depends on.** 11.26, 11.20 (done).
+
+**Witnesses.**
+- Tests:
+  - A Dart test: the project window's bar line ignores the block's y and keeps x and width.
+  - Runner XCTests: the target line follows the value Dart sends, and no move happens inside a frame notification.
+- At 90, 100, 110, 125 and 150 % a native screenshot measures 12 × zoom pt from the top edge to the bar, the same as to the rail, with the lights centred on the bar.
+- Hovering the lights, opening the zoom button's tiling menu and leaving keeps all three on one line, and the bar does not move. Native screenshots before, during and after.
+- Resize, full screen in and out, key changes and a theme switch keep them in place; dialogs are unchanged.
+- The console session checks in the running app.
+
+**Related:** 11.26 (its ledger items "Under a Settings zoom other than 100 %…" and "The top bar may jump for one frame…" are this story's inbound items), 11.20 (zoom), 11.4, 11.12.
+
+---
