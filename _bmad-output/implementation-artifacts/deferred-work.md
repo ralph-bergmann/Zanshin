@@ -3197,3 +3197,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **`git push`'s commit check maps an `immutable_heads()` resolution failure to `jj.config_error` without hints, while the CLI raises a revset resolution error with its hints.** Low.
   - `crates/zanshin-jj/src/push.rs:595-596` (`cfg_text` on `resolve_expression`'s `RevsetError`); CLI @ v0.47.0 `cli/src/commands/git/push.rs:834-836` `.resolve()?` → `From<RevsetResolutionError>`. Pre-existing (Stories 9.20 / 9.58).
   - **Follow-up:** map it through `mutate::rev` (resolution code and hints) and update the registry's push sentence.
+
+## Surfaced in the 9.60 / 11.28 story-loop fix-up (bmad-build-auto, 2026-11-16)
+
+- **`write_error`'s doc says its `set_value` / `delete_value` instantiation cannot fail, because those calls only fail on a non-inline TABLE target; jj-lib also fails `set_value` when a parent key holds a non-table value.** Low.
+  - jj-lib 0.47.0 `src/config.rs:432-440` returns `ConfigUpdateError::WouldOverwriteValue` for a non-table parent. The two remote writers' `as_str()` check looks only at the target, and `env_layer` (`crates/zanshin-jj/src/config.rs:671`) and `write_repo_presets` (`:2436-2450`) also call `set_value`. With a malformed repo config (e.g. `remotes.origin = "x"`) that instantiation may be reachable. Coverage is unaffected (one shared body). Pre-existing doc text (spec-loop-9-60-11-28-fixup-coverage-config).
+  - **Follow-up:** a test that writes a remote setting into a repo config whose `remotes.<name>` is a string; if it refuses, correct the doc and keep the test.
