@@ -47,6 +47,22 @@ import FlutterMacOS
 /// for a layout pass; the move runs in `TrafficLightOverlayView.layout()` and in
 /// a main run-loop observer just before Core Animation commits. Dialog windows
 /// keep the system's position, and full screen is left to AppKit.
+///
+/// The titlebar container moves with them: it is twice the line high, pinned to
+/// the window's top edge. AppKit decides from its own layout whether the pointer
+/// is over the button group, and only shows the × − + symbols then; with moved
+/// buttons alone that area stays 8 pt above them (measured 2026-11-16). Electron's
+/// `window_buttons_proxy.mm` resizes the container the same way. AppKit resets the
+/// container with the buttons, so the same placement restores both.
+///
+/// Fallback if a macOS update breaks this (buttons jump, symbols missing): own
+/// buttons instead of the system's. Take fresh ones from
+/// `NSWindow.standardWindowButton(_:for:)`, put them in a view of our own, hide
+/// the system buttons, and answer `_mouseInGroup(_:)` (private API) on that view
+/// for the symbols. Electron did this until 2021 (`window_buttons_view.mm`); the
+/// test project `window_buttons/justatest` shows it working. Its open points:
+/// full screen (hide our buttons), anchoring to the top edge, and accessibility
+/// (the window's own button attributes then point at the hidden originals).
 final class MainWindowChrome {
     /// The project window's traffic-light centre line from the window's top edge:
     /// the top bar's centre (`--tl-mid-y` × zoom, from Dart); nil for a dialog
@@ -200,6 +216,15 @@ final class MainWindowChrome {
         guard !window.styleMask.contains(.fullScreen) else { return }
         // Window coordinates have their origin bottom left.
         let targetMidY = window.frame.height - midY
+        // The container keeps AppKit's hover area for the symbols on the buttons (see the class doc).
+        if let container = buttons.first(where: { $0.window === window })?.superview?.superview {
+            let frame = NSRect(
+                x: container.frame.minX, y: window.frame.height - midY * 2,
+                width: container.frame.width, height: midY * 2)
+            if container.frame != frame {
+                container.frame = frame
+            }
+        }
         for button in buttons where !button.isHidden && button.window === window {
             guard let host = button.superview else { continue }
             let dy = targetMidY - button.convert(button.bounds, to: nil).midY

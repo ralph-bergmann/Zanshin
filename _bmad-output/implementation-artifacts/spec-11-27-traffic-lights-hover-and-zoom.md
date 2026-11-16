@@ -98,6 +98,12 @@ deferred:
 
 ## Spec Change Log
 
+- **2026-11-16 — follow-up from a console session (Ralph's fork): the hover symbols.** After this story the lights sat right, but hovering showed coloured buttons without × − +.
+  - Cause (measured in a scratch AppKit app with a copy of `MainWindowChrome` and in the real app): AppKit answers "pointer in the button group" (`NSThemeFrame` `_mouseInGroup:`) from its own titlebar layout, not from where the buttons stand. With the deferred move that area stayed 8 pt above the buttons. 11.26 showed the symbols only because it moved inside AppKit's layout (the ping-pong).
+  - Fix: `placeWindowButtons()` also sets the titlebar container (`button.superview.superview`) to twice the line high, pinned to the window's top edge, before moving the buttons (as Electron's `window_buttons_proxy.mm`). AppKit resets the container with the buttons on hover; the deferred correction restores both. The class doc names the fallback: own buttons from `NSWindow.standardWindowButton(_:for:)` with `_mouseInGroup:` (private API).
+  - Decided by Ralph the same day: stay with moving the system buttons; keep own buttons documented as the fallback. Rejected in the probes: a 74 pt container without moving the buttons (hover stops reacting).
+  - Witnesses: `RunnerTests` `assertContainerFollows` at 90 / 100 / 150 %, after a resize and after AppKit resets the container (6/6 green by hand); `cargo make test` green; real app at 100 % and 150 %: symbols shown, lights centred, the project menu in the bar clickable, the zoom button's Move & Resize menu, full screen in and out. Not checked: 90 % in the app, an appearance switch, focus changes between two windows.
+
 ## Review Triage Log
 
 ### 2026-11-16 — Review pass

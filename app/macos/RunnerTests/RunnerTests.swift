@@ -92,6 +92,16 @@ class RunnerTests: XCTestCase {
     }
   }
 
+  /// The titlebar container is twice the line high and pinned to the top edge, which keeps AppKit's hover area for
+  /// the × − + symbols on the moved buttons.
+  private func assertContainerFollows(_ window: NSWindow, line midY: CGFloat, _ message: String, line: UInt = #line) {
+    guard let container = buttons(window).first?.superview?.superview else {
+      return XCTFail("no titlebar container: \(message)", line: line)
+    }
+    XCTAssertEqual(container.frame.height, midY * 2, accuracy: 0.5, message, line: line)
+    XCTAssertEqual(container.frame.maxY, window.frame.height, accuracy: 0.5, message, line: line)
+  }
+
   func testTheProjectWindowCentresItsButtonsOnTheTopBar() {
     let window = plainWindow()
     let chrome = MainWindowChrome(window: window, kind: .main, buttonMidY: 34)
@@ -101,6 +111,7 @@ class RunnerTests: XCTestCase {
     window.setFrame(NSRect(x: 100, y: 100, width: 1200, height: 760), display: false)
     settle(window)
     assertCentred(window, at: 34, "after a resize")
+    assertContainerFollows(window, line: 34, "after a resize")
 
     window.appearance = NSAppearance(named: .darkAqua)
     settle(window)
@@ -132,6 +143,15 @@ class RunnerTests: XCTestCase {
     RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
     assertCentred(window, at: 34, "after a run-loop turn")
 
+    // On hover AppKit resets the container to its own height together with the buttons; one placement restores both.
+    guard let container = close.superview?.superview else { return XCTFail("no titlebar container") }
+    container.frame = NSRect(
+      x: container.frame.minX, y: window.frame.height - 66, width: container.frame.width, height: 66)
+    close.setFrameOrigin(NSPoint(x: close.frame.minX, y: close.frame.minY + up))
+    settle(window)
+    assertCentred(window, at: 34, "after the container was reset")
+    assertContainerFollows(window, line: 34, "after the container was reset")
+
     withExtendedLifetime(chrome) { window.close() }
   }
 
@@ -140,11 +160,13 @@ class RunnerTests: XCTestCase {
     let chrome = MainWindowChrome(window: window, kind: .main, buttonMidY: 34)
     settle(window)
     assertCentred(window, at: 34, "at 100 %")
+    assertContainerFollows(window, line: 34, "at 100 %")
 
     // 150 %: the highest line the titlebar holds.
     chrome.buttonMidY = 51
     settle(window)
     assertCentred(window, at: 51, "at 150 %")
+    assertContainerFollows(window, line: 51, "at 150 %")
     for button in buttons(window) {
       guard let host = button.superview else { return XCTFail("a button without a superview") }
       XCTAssertTrue(host.bounds.contains(button.frame), "inside the titlebar at 150 %: \(button.frame) in \(host.bounds)")
@@ -153,6 +175,7 @@ class RunnerTests: XCTestCase {
     chrome.buttonMidY = 30.6
     settle(window)
     assertCentred(window, at: 30.6, "at 90 %")
+    assertContainerFollows(window, line: 30.6, "at 90 %")
 
     withExtendedLifetime(chrome) { window.close() }
   }
