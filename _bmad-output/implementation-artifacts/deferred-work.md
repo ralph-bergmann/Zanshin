@@ -3211,7 +3211,7 @@ Ralph and Claude went through the inspector point by point; each point was check
   - **Follow-up:** render each as the CLI does (`warning::caused_by`) and pin each with a whole-text oracle witness.
 - **The push sheet shows a refused push's `context` only, never its hints, so the commit check's new "Did you mean" hint (and every other push refusal hint) never reaches the user.** Low.
   - `app/lib/src/features/sync/push_sheet.dart:261-264` (`_Note(text: error.context ?? error.code)` for `planError` / `pushError`); the hints ride `ZanshinFfiException.hints`. Pre-existing UI behavior.
-  - **Follow-up:** a UI story that shows a thrown push error's hints under its note (as the rejection rows already show theirs, `push_sheet.dart:504`).
+  - **Follow-up:** a UI story that shows a thrown push error's hints under its note (as the rejection rows already show theirs, `push_sheet.dart:504`). Covered by Story 11.29 (Ralph wants it, 2026-11-16).
 - **Conversion's `trunk()` alias step puts a `ConfigError`'s Display into `jj.convert_failed`, so its context carries the `config error: ` label, and its code differs from the CLI's.** Low.
   - `crates/zanshin-jj/src/convert.rs:567-569` (`RepoError::ConvertFailed { reason: e.to_string() }`); the CLI's `write_repo_presets` raises a load fault as `Config error:`, a save fault as `Error:` (`From<ConfigFileSaveError>`, user error) and a secure-config fault as `Internal error: Failed to determine the secure config for a repo` (`cli/src/command_error.rs:409-413,951-955` @ v0.47.0). Pinned only as `ConvertFailed { .. }` by `crates/zanshin-jj/tests/it/convert_alias_write_failure.rs`. Pre-existing.
   - **Follow-up:** map each fault as the CLI does (code and text) and update that test.

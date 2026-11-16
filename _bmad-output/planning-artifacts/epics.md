@@ -15344,3 +15344,27 @@ Result: one correction per change and no feedback loop. A sampler after each com
 **Related:** 11.13, 11.17, 11.26, 11.27.
 
 ---
+
+### Story 11.29: A refused fetch or push shows jj's hints [UI]
+*(Added 2026-11-16, Ralph — console session; "Neue Reste auch". Takes in the ledger item "The push sheet shows a refused push's `context` only, never its hints…" from the 9.60 / 11.28 leftover run.)*
+
+**Motivation.** When jj refuses a fetch or a push, it often says what to do next in a hint. Since Stories 9.60 and the 9.60 / 11.28 leftover run, these hints reach Dart on `ZanshinFfiException.hints`. Two examples: a bad `remotes.<r>.*` pattern refuses with the revset parse hint, and push's commit check refuses with the "Did you mean" hint when `immutable_heads()` does not resolve. The sync surfaces show only `error.context ?? error.code`, so the user never sees the hint. The graph's toasts already show hints (`graph_toasts.dart`), and so do the push sheet's rejection rows (`push_sheet.dart`, `rejection.hints`).
+
+**Scope (read in the code 2026-11-16).**
+1. The push sheet's two error notes, `push-plan-error` and `push-error` (`app/lib/src/features/sync/push_sheet.dart:261-264`), show each hint on its own line under the context, verbatim, the way the rejection rows do.
+2. The fetch-failed toast (`sync_model.dart` `_fetchFailedEntry`) and the push-failed toast (`_pushFailedEntry`) show the hints under the message, the way `graph_toasts.dart` does.
+3. Any other place in the sync feature that shows a `ZanshinFfiException` as `context ?? code` (`push_sheet_model.dart`) shows its hints the same way, if the text reaches the user.
+
+**Non-goals.** Error surfaces outside the sync feature: the inspector, the undo timeline, Settings, bookmarks, home. Changing the hints' text, which is jj's and stays verbatim, not localized.
+
+**Depends on.** 11.8 (sync, done), 11.22 (push help, done), 9.60 (hints on `jj.config_error`, done).
+
+**Witnesses.**
+- Tests:
+  - A widget test: the push sheet's plan error and push error show their hints below the context, and a refusal with no hints looks as it does today.
+  - A widget test: the fetch-failed and push-failed toasts show their hints.
+- The catalogue (Widgetbook) gets a push-sheet state with a hinted refusal, checked against the DS in Paper and Night.
+
+**Related:** 11.8, 11.22, 9.60.
+
+---
