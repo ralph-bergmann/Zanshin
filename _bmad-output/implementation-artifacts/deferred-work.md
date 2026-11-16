@@ -3230,3 +3230,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **A malformed or unreadable `config-id` still reads "<id_path>: invalid config ID (expected 20 ASCII hex characters)" / "<id_path>: <io error>", where the CLI prints "Internal error: Failed to determine the secure config for a repo" / "Caused by: Found an invalid config ID" (probed with the pinned binary, 2026-11-16).** Low.
   - `crates/zanshin-jj/src/config.rs:544-554` (`secure_config_path`, checked before jj-lib runs); `config_cmd.rs:852-856` (`io_error`).
   - **Follow-up:** render these as jj-lib's `SecureConfigError` and the CLI's message (`secure_config_error`), pinned by an oracle witness with a broken `config-id`.
+
+## Surfaced in Story 11.29 (bmad-build-auto, 2026-11-16)
+
+- **The Widgetbook state "Push sheet › Refused with hints" and the hint tooltips on the error toasts were not checked in the running catalogue against the DS in Paper and Night.** Medium (unverified).
+  - The unattended run allows only synchronous commands; widget tests pin the text, the order and the tooltips. `app/widgetbook/folders/sync.dart` (`_Sheet.refused`); `sync_model.dart` / `home_page.dart` toast `tooltip`.
+  - **Follow-up:** a console session opens the state and an error toast with hints through Marionette in Paper and Night and compares them with the DS error note and toast.
