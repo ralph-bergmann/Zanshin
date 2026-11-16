@@ -23,6 +23,9 @@ deferred:
     location: >-
       crates/zanshin-jj/src/config.rs (file_error, migrate, workspace_value_error); crates/zanshin-jj/src/revset.rs (build_aliases_map)
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-loop-9-60-11-28-leftovers-2, commit 405ecb2f): each carries the
+      CLI's message and Caused by lines, pinned by whole-text oracle witnesses.
   - summary: >-
       The push sheet shows a refused push's context only, never its hints, so the commit check's
       new "Did you mean" hint (and every other push refusal hint) never reaches the user.
@@ -44,6 +47,9 @@ deferred:
     location: >-
       crates/zanshin-jj/src/convert.rs:567
     severity: low
+    resolved: >-
+      2026-11-16 — fixed (spec-loop-9-60-11-28-leftovers-2, commit 405ecb2f): secure-config, load
+      and save faults map as the CLI does, code and text.
 ---
 
 <intent-contract>
