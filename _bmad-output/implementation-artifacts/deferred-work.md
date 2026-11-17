@@ -3247,7 +3247,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in the console session on the composer's Commit / Split button (2026-11-17)
 
-- **The composer's button reads "Commit" on `@` and "Split" elsewhere, so a part picked on `@` looks like it cannot be split; the Squash button only opens a menu, which nothing shows.** Medium (confusing UI). → Story 10.48.
+- ~~**The composer's button reads "Commit" on `@` and "Split" elsewhere, so a part picked on `@` looks like it cannot be split; the Squash button only opens a menu, which nothing shows.**~~ — RESOLVED 2026-11-17 (spec-10-48-split-buttons, commit 7c82a1e9): Split ▾ Commit on `@` with a part picked, Squash runs on a click, the preview and menu rows show where a bookmark lands. Medium (confusing UI). → Story 10.48.
   - `graph_inspector.dart` `_composer` ~:872-914 and the label ~:3951; the Squash menu ~:2554-2576. Ralph read the button, not the text around it; he had never clicked Squash.
   - **Follow-up:** Story 10.48 (DECIDED, Ralph): split buttons for the composer (Split ▾ Commit) and Squash (Squash ▾ Absorb), the verb follows the pick, the preview and menu rows show where a bookmark lands (`split.legacy-bookmark-behavior`, jj-vcs/jj#3419). Designed in `design/Inspector Extras Study.html` §1–3, approved 2026-11-17.
 
