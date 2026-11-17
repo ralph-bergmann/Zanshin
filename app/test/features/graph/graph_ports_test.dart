@@ -256,7 +256,7 @@ void main() {
   );
 
   test(
-    'Story 10.48: splitLegacyBookmarks reads split.legacy-bookmark-behavior in the workspace; a non-boolean is null, '
+    'splitLegacyBookmarks reads split.legacy-bookmark-behavior in the workspace; a non-boolean is null, '
     'a refused read throws',
     () async {
       final ProjectRepo repo = await openRepo('legacy');

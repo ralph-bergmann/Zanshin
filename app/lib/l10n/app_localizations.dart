@@ -1922,133 +1922,133 @@ abstract class AppLocalizations {
   /// **'Tree'**
   String get inspectorFileListTree;
 
-  /// Story 10.49: tooltip of the file list's funnel button while no file mask is ticked.
+  /// Tooltip of the file list's funnel button while no file mask is ticked.
   ///
   /// In en, this message translates to:
   /// **'Hide files by name'**
   String get fileMasksButtonTooltip;
 
-  /// Story 10.49: tooltip of the file list's funnel button while file masks are ticked.
+  /// Tooltip of the file list's funnel button while file masks are ticked.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{Hiding files matching 1 mask} other{Hiding files matching {count} masks}}'**
   String fileMasksButtonActiveTooltip(int count);
 
-  /// Story 10.49: accessible name of the file masks popover.
+  /// Accessible name of the file masks popover.
   ///
   /// In en, this message translates to:
   /// **'Hide files'**
   String get fileMasksPopoverLabel;
 
-  /// Story 10.49: the file masks popover's heading.
+  /// The file masks popover's heading.
   ///
   /// In en, this message translates to:
   /// **'Hide files matching'**
   String get fileMasksTitle;
 
-  /// Story 10.49: placeholder of the file masks popover's field; ↵ adds the mask.
+  /// Placeholder of the file masks popover's field; ↵ adds the mask.
   ///
   /// In en, this message translates to:
   /// **'Add a mask, e.g. *.g.dart  ↵'**
   String get fileMasksPlaceholder;
 
-  /// Story 10.49: accessible name of the file masks popover's field.
+  /// Accessible name of the file masks popover's field.
   ///
   /// In en, this message translates to:
   /// **'New file mask'**
   String get fileMasksFieldLabel;
 
-  /// Story 10.49: accessible name of a ticked file mask's checkbox.
+  /// Accessible name of a ticked file mask's checkbox.
   ///
   /// In en, this message translates to:
   /// **'Stop hiding {mask}'**
   String fileMasksStopHiding(String mask);
 
-  /// Story 10.49: accessible name of an unticked file mask's checkbox.
+  /// Accessible name of an unticked file mask's checkbox.
   ///
   /// In en, this message translates to:
   /// **'Hide {mask}'**
   String fileMasksHideMask(String mask);
 
-  /// Story 10.49: accessible name of a file mask's remove button.
+  /// Accessible name of a file mask's remove button.
   ///
   /// In en, this message translates to:
   /// **'Remove {mask}'**
   String fileMasksRemove(String mask);
 
-  /// Story 10.49: tooltip of a file mask's remove button.
+  /// Tooltip of a file mask's remove button.
   ///
   /// In en, this message translates to:
   /// **'Remove from the list'**
   String get fileMasksRemoveTooltip;
 
-  /// Story 10.49: the file masks popover's footer: the mask syntax.
+  /// The file masks popover's footer: the mask syntax.
   ///
   /// In en, this message translates to:
   /// **'* and ? match inside a name, ** across folders. A mask with “/” matches the path. Separate several with commas.'**
   String get fileMasksFooter;
 
-  /// Story 10.49: the hint row below the file list while ticked masks hide files.
+  /// The hint row below the file list while ticked masks hide files.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 file hidden} other{{count} files hidden}}'**
   String fileMasksHidden(int count);
 
-  /// Story 10.49: the hint row while the hidden files are shown.
+  /// The hint row while the hidden files are shown.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 file matches your masks} other{{count} files match your masks}}'**
   String fileMasksMatching(int count);
 
-  /// Story 10.49: appended to the hint row when every hidden file is picked.
+  /// Appended to the hint row when every hidden file is picked.
   ///
   /// In en, this message translates to:
   /// **' · all picked'**
   String get fileMasksAllPicked;
 
-  /// Story 10.49: appended to the hint row when some hidden files are picked.
+  /// Appended to the hint row when some hidden files are picked.
   ///
   /// In en, this message translates to:
   /// **' · some picked'**
   String get fileMasksSomePicked;
 
-  /// Story 10.49: appended to the hint row when no hidden file is picked.
+  /// Appended to the hint row when no hidden file is picked.
   ///
   /// In en, this message translates to:
   /// **' · none picked'**
   String get fileMasksNonePicked;
 
-  /// Story 10.49: accessible name of the hint row's checkbox; it picks or unpicks every hidden file.
+  /// Accessible name of the hint row's checkbox; it picks or unpicks every hidden file.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{Pick the hidden file} other{Pick the {count} hidden files}}'**
   String fileMasksPickHidden(int count);
 
-  /// Story 10.49: hint row button: list the hidden files again, dimmed, for this change.
+  /// Hint row button: list the hidden files again, dimmed, for this change.
   ///
   /// In en, this message translates to:
   /// **'Show'**
   String get fileMasksShow;
 
-  /// Story 10.49: hint row button while the hidden files are shown: hide them again.
+  /// Hint row button while the hidden files are shown: hide them again.
   ///
   /// In en, this message translates to:
   /// **'Hide'**
   String get fileMasksHideShown;
 
-  /// Story 10.49: hint row button: opens the file masks popover.
+  /// Hint row button: opens the file masks popover.
   ///
   /// In en, this message translates to:
   /// **'Masks…'**
   String get fileMasksMasks;
 
-  /// Story 10.49: tooltip of a file row a ticked mask hides, while the hidden files are shown. The path is the row's usual tooltip: its path, or `old → new` for a rename or copy.
+  /// Tooltip of a file row a ticked mask hides, while the hidden files are shown. The path is the row's usual tooltip: its path, or `old → new` for a rename or copy.
   ///
   /// In en, this message translates to:
   /// **'{path} · hidden by a file mask'**
   String fileMasksMaskedTooltip(String path);
 
-  /// Story 10.49: added to the accessible name of a file row a ticked mask hides.
+  /// Added to the accessible name of a file row a ticked mask hides.
   ///
   /// In en, this message translates to:
   /// **'hidden by a file mask'**
@@ -4382,19 +4382,19 @@ abstract class AppLocalizations {
   /// **'Side by side'**
   String get settingsDiffSideBySide;
 
-  /// Story 10.50: Settings › General › Diffs row and VoiceOver name of its choice: the font of the code in diffs and the config file.
+  /// Settings › General › Diffs row and VoiceOver name of its choice: the font of the code in diffs and the config file.
   ///
   /// In en, this message translates to:
   /// **'Code font'**
   String get settingsCodeFont;
 
-  /// Story 10.50: the Code font row's hint.
+  /// The Code font row's hint.
   ///
   /// In en, this message translates to:
   /// **'The monospaced fonts on this Mac.'**
   String get settingsCodeFontHint;
 
-  /// Story 10.50: Code font choice: the font that ships with the app (family is its name, JetBrains Mono).
+  /// Code font choice: the font that ships with the app (family is its name, JetBrains Mono).
   ///
   /// In en, this message translates to:
   /// **'{family} · built in'**
@@ -4412,25 +4412,25 @@ abstract class AppLocalizations {
   /// **'{family} is not installed. The code uses {fallback}.'**
   String settingsCodeFontMissingHint(String family, String fallback);
 
-  /// Story 10.50: Settings › General › Diffs row and VoiceOver name of its choice: the size of the code in points.
+  /// Settings › General › Diffs row and VoiceOver name of its choice: the size of the code in points.
   ///
   /// In en, this message translates to:
   /// **'Code size'**
   String get settingsCodeSize;
 
-  /// Story 10.50: the Code size row's hint.
+  /// The Code size row's hint.
   ///
   /// In en, this message translates to:
   /// **'Diffs and the config file. Zoom scales it like everything else.'**
   String get settingsCodeSizeHint;
 
-  /// Story 10.50: Code size choice in points.
+  /// Code size choice in points.
   ///
   /// In en, this message translates to:
   /// **'{size} pt'**
   String settingsCodeSizePoints(int size);
 
-  /// Story 10.50: Code size choice: the default size in points.
+  /// Code size choice: the default size in points.
   ///
   /// In en, this message translates to:
   /// **'{size} pt · default'**

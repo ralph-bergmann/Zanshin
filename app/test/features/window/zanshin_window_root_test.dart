@@ -277,7 +277,7 @@ void main() {
     expect(ZsMetrics.of(content(tester)), ZsMetrics.standard);
   });
 
-  testWidgets('the root provides the saved code style and follows the store (Story 10.50)', (tester) async {
+  testWidgets('the root provides the saved code style and follows the store', (tester) async {
     final SettingsStore store = await pumpContentSized(tester, '{"general": {"codeSize": 14}}');
     expect(CodeStyleScope.of(content(tester)).fontSize, 14);
     expect(CodeStyleScope.of(content(tester)).fontFamily, ZsType.monoFamily);

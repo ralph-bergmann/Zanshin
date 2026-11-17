@@ -47,7 +47,7 @@ class ZanshinApplication {
 
   /// Starts the app and answers its first window: the windows follow the stored zoom (Story 11.20) from before the
   /// first window, which is created at it, for the app's life; ⌘Q asks the close guards and closes the worker; the
-  /// native chrome follows the theme; the installed code fonts are read (Story 10.50); then the coordinator starts.
+  /// native chrome follows the theme; the installed code fonts are read; then the coordinator starts.
   BootFirstWindow start() {
     bindWindowZoom(_settings, _windows);
     _exitHandler.start();

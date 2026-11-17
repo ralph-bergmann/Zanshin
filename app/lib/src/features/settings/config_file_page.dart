@@ -118,7 +118,7 @@ class _ConfigEditingController extends ZsTextEditingController {
 /// - **The well** (`--code-bg`, `--radius-well`, 1 px `--fl-border`; `--accent-ring` while the editor has focus,
 ///   `--rem` with an error): a 30 px bar naming the file and its state (*Edited* with a gold dot · *✓ Saved* for 1.6 s
 ///   after a save), the changed-on-disk notice, then a gutter of line numbers (at least 44 px) beside the editor — the
-///   file's exact text in the Settings code style (Story 10.50; [CodeStyleScope]), no wrapping, scrolling both ways.
+///   file's exact text in the Settings code style ([CodeStyleScope]), no wrapping, scrolling both ways.
 ///   Tab moves focus; no tab characters.
 /// - **Save** (gold, ⌘S) writes the draft through jj, which checks it first; a refusal writes nothing and shows
 ///   jj's message under the well — with its spot marked (gutter number in `--rem`, the span wavy-underlined), its

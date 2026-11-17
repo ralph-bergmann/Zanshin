@@ -7,7 +7,7 @@ import 'package:inject_annotation/inject_annotation.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
-/// The installed fixed-pitch font families (Story 10.50), which the runner lists over `zanshin/fonts`: Flutter uses
+/// The installed fixed-pitch font families, which the runner lists over `zanshin/fonts`: Flutter uses
 /// an installed font by name but cannot list them, and it falls back silently on a missing one.
 @inject
 @singleton

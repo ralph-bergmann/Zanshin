@@ -157,7 +157,7 @@ typedef OperationChangeLine = ({bool added, String text});
 /// [settings], written and followed; `general.diffWordMarks` ([wordMarks], Story 5.14) is followed and only changes
 /// how the loaded diffs are drawn. Story 10.33: `general.diffWhitespace` ([whitespace]) is written and followed — while
 /// it ignores whitespace the focused file is also read at `-b` / `-w` ([focusedIgnoring]); the summary stays exact — and
-/// the diff options menu writes `diff.color-words.context` ([contextLines]) through the source. Story 10.49:
+/// the diff options menu writes `diff.color-words.context` ([contextLines]) through the source.
 /// `general.fileMasks` ([fileMasks]) is followed — the list shows [shownFiles] (every file while [showMasked], per
 /// selected commit), the first shown file starts focused, and the focus moves off a file that gets hidden.
 class OperationChangesModel extends ChangeNotifier {
@@ -227,7 +227,7 @@ class OperationChangesModel extends ChangeNotifier {
   /// The summary diff's refusal.
   ZanshinFfiException? get filesError => _filesError;
 
-  /// The compiled `general.fileMasks` (Story 10.49).
+  /// The compiled `general.fileMasks`.
   FileMaskMatcher get fileMasks => _masks;
 
   /// Whether a ticked mask hides [path].
@@ -975,7 +975,7 @@ class _CommitRow extends StatelessWidget {
   }
 }
 
-/// The selected commit's files and the focused file's diff, or the refusal in their place. Story 10.49: only the shown
+/// The selected commit's files and the focused file's diff, or the refusal in their place. Only the shown
 /// files are rows (hidden ones dimmed while shown); while ticked masks hide files the hint row follows the rows, without
 /// a checkbox, its Masks… the popover's anchor.
 class _Files extends StatefulWidget {

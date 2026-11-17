@@ -1201,7 +1201,7 @@ abstract interface class GraphDetails {
   /// `jj config set --user diff.color-words.context [lines]` ([writeDiffContext]); the config write reloads the diff.
   Future<void> setDiffContext(int lines);
 
-  /// `jj config get split.legacy-bookmark-behavior` in the workspace (Story 10.48): whether `jj split` moves the
+  /// `jj config get split.legacy-bookmark-behavior` in the workspace: whether `jj split` moves the
   /// change's bookmarks to the rest (jj's default, true); null when the value is no boolean.
   Future<bool?> splitLegacyBookmarks();
 }

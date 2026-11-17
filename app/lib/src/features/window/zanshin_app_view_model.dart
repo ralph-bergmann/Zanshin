@@ -50,7 +50,7 @@ class ZanshinAppViewModel extends ChangeNotifier {
   /// Persists the zoom [percent]; every window follows through the store.
   Future<void> setZoom(int percent) => _settings.update((s) => s.copyWith.appearance(zoom: zoomStepOf(percent)));
 
-  /// The style of code in diffs and the config file editor (Story 10.50), from the Settings code font and size.
+  /// The style of code in diffs and the config file editor, from the Settings code font and size.
   TextStyle get codeStyle => codeTextStyle(_settings.value.general, _codeFonts.families);
 
   /// The mode `MaterialApp` should use.

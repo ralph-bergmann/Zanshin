@@ -55,7 +55,7 @@ const _keys = <String>[_at, _mutable, _merge, _left, _right, _root];
 /// fake details read the key behind the prefix.
 var _commit = 'c';
 
-/// The bookmarks on @ (Story 10.48); none unless a test sets them.
+/// The bookmarks on @; none unless a test sets them.
 var _atRefs = const <GraphRef>[];
 
 /// @ → m → the merge of p and q (both immutable) → the root, at operation [op].
@@ -502,11 +502,11 @@ String _tooltipOf(WidgetTester tester, String identifier) =>
 Finder _part(String identifier) =>
     find.byWidgetPredicate((widget) => widget is ZsControlCore && widget.identifier == identifier);
 
-/// The split button [identifier] (Story 10.48).
+/// The split button [identifier].
 Finder _split(String identifier) =>
     find.byWidgetPredicate((widget) => widget is ZsSplitButton && widget.identifier == identifier);
 
-/// The Squash split button (Story 10.48; a menu button since 10.36).
+/// The Squash split button.
 Finder get _squashMenu => _split('inspector-squash-button');
 
 /// The Squash split button's menu row [identifier] (`inspector-squash`, `inspector-absorb`).
@@ -932,7 +932,7 @@ void main() {
     await unmount(tester);
   });
 
-  group('the Squash split button (Story 10.48)', () {
+  group('the Squash split button', () {
     testWidgets('a click on the label squashes into the parent; nothing opens', (tester) async {
       await pump(tester);
       await tester.tap(_part('inspector-squash-button'));
@@ -2438,14 +2438,14 @@ void main() {
     });
 
     testWidgets(
-      'a subset on @ (Story 10.48): Split ▾ Commit; a click splits @ by its key, the command shows the path',
+      'a subset on @: Split ▾ Commit; a click splits @ by its key, the command shows the path',
       (
         tester,
       ) async {
         await pump(tester, select: _at, width: 1000);
         await tap(tester, box('b.txt'));
         expect(checked(tester, 'b.txt'), isFalse);
-        expect(checked(tester, 'Select all'), isNull, reason: 'some files checked: mixed (Story 10.26)');
+        expect(checked(tester, 'Select all'), isNull, reason: 'some files checked: mixed');
         await type(tester, 'inspector-composer-summary', 'Fix');
         expect(shown(tester), 'jj split -r wwwwwwww -m Fix root:a.txt');
         expect((inspector.composerVerb, inspector.composerAlternative), (ComposerVerb.split, ComposerVerb.commit));
@@ -2519,7 +2519,7 @@ void main() {
       await unmount(tester);
     });
 
-    group('where the bookmarks land (Story 10.48)', () {
+    group('where the bookmarks land', () {
       Finder chip(String part, String name) => find.byKey(ValueKey<String>('inspector-composer-bookmark-$part-$name'));
       List<String?> notes(WidgetTester tester) => <String?>[
         for (final ZsMenuItem row
@@ -3158,7 +3158,7 @@ void main() {
       final ZsColors colors = ZsColors.of(tester.element(composer));
       expect(edgeOf(tester, 1), isNull, reason: "an unpicked part's rows carry no edge");
       expect(edgeOf(tester, 0)!.left, BorderSide(color: colors.accentLine, width: 2));
-      // A part on @: the button splits, Commit is the chevron's alternative (Story 10.48).
+      // A part on @: the button splits, Commit is the chevron's alternative.
       expect(shown(tester), "jj split -r wwwwwwww -i -m ''");
       // Selected: every file has a pick (a.txt k1+k3: +1 −2, b.sh ±1, d.txt +2); Rest: a.txt's k2 (+2).
       expect(find.descendant(of: composer, matching: find.text('4 files')), findsOneWidget);
@@ -5241,7 +5241,7 @@ void main() {
     });
   });
 
-  group('Story 10.49: file masks', () {
+  group('file masks', () {
     // The study's 24 files (design extras-study.jsx `MASK_FILES`).
     const study = <String>[
       '.claude/skills/create-package/SKILL.md',

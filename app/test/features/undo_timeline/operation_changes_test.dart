@@ -232,7 +232,7 @@ void main() {
     });
   });
 
-  testWidgets('Story 10.49: a masked file is not listed; the hint has no box; Show lists it dimmed; Masks… opens the '
+  testWidgets('a masked file is not listed; the hint has no box; Show lists it dimmed; Masks… opens the '
       'popover', (tester) async {
     addTearDown(() => settleSettingsWrites(tester, settings));
     settings.addFileMask('*.g.dart');
@@ -267,7 +267,7 @@ void main() {
     });
   });
 
-  testWidgets('Story 10.49: unticking the last hiding mask in the popover keeps it open; the hint goes', (
+  testWidgets('unticking the last hiding mask in the popover keeps it open; the hint goes', (
     tester,
   ) async {
     addTearDown(() => settleSettingsWrites(tester, settings));
@@ -294,7 +294,7 @@ void main() {
     });
   });
 
-  testWidgets('Story 10.49: Hide moves the focus off the shown hidden file to the next shown one', (tester) async {
+  testWidgets('Hide moves the focus off the shown hidden file to the next shown one', (tester) async {
     addTearDown(() => settleSettingsWrites(tester, settings));
     settings.addFileMask('*.g.dart');
     final changes = FakeOperationChangesSource(
@@ -316,7 +316,7 @@ void main() {
     });
   });
 
-  testWidgets('Story 10.49: Show is per commit: another commit starts with its masked file hidden', (tester) async {
+  testWidgets('Show is per commit: another commit starts with its masked file hidden', (tester) async {
     addTearDown(() => settleSettingsWrites(tester, settings));
     settings.addFileMask('*.g.dart');
     final changes = FakeOperationChangesSource(
@@ -349,7 +349,7 @@ void main() {
     });
   });
 
-  testWidgets('Story 10.49: a newly masked focused file gives the focus to the next shown one', (tester) async {
+  testWidgets('a newly masked focused file gives the focus to the next shown one', (tester) async {
     addTearDown(() => settleSettingsWrites(tester, settings));
     final changes = FakeOperationChangesSource(
       testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten()]),
@@ -375,7 +375,7 @@ void main() {
     });
   });
 
-  test('Story 10.49: a jj config write keeps Show and the focus on a shown hidden file', () async {
+  test('a jj config write keeps Show and the focus on a shown hidden file', () async {
     settings.addFileMask('b.txt');
     await pumpEventQueue();
     final FakeOperationChangesSource changes = rewriteSource();

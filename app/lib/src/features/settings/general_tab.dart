@@ -287,7 +287,7 @@ class SettingsGeneralTab extends StatelessWidget {
     );
   }
 
-  /// Story 10.50: the built-in font first, then the installed fixed-pitch families with the [saved] one added in order
+  /// The built-in font first, then the installed fixed-pitch families with the [saved] one added in order
   /// when it is not among them (marked missing once the list is known; nothing is written).
   Widget _codeFontRow(AppLocalizations s, String? saved) {
     const builtIn = 'JetBrains Mono'; // l10n-ignore: the built-in font's name
@@ -324,7 +324,7 @@ class SettingsGeneralTab extends StatelessWidget {
     );
   }
 
-  /// Story 10.50: the design's sizes in points, a hand-edited [saved] size added in order as it draws (clamped).
+  /// The design's sizes in points, a hand-edited [saved] size added in order as it draws (clamped).
   Widget _codeSizeRow(AppLocalizations s, int saved) {
     final int size = saved.clamp(codeSizeMin, codeSizeMax);
     final List<int> sizes = <int>{...codeSizeChoices, size}.toList()..sort();

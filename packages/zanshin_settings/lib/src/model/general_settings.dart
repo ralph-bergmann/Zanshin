@@ -69,15 +69,15 @@ abstract class GeneralSettings with _$GeneralSettings {
     /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
     String? editor,
 
-    /// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
+    /// The file masks of the inspector and the operation view, newest first; one list for the app. A file without the key gets
     /// [defaultFileMasks]; an empty saved list stays empty.
     @Default(defaultFileMasks) List<FileMask> fileMasks,
 
-    /// Settings › General › Diffs › "Code font" (Story 10.50): the font family of the code in diffs and the config
+    /// Settings › General › Diffs › "Code font": the font family of the code in diffs and the config
     /// file editor; null for the built-in JetBrains Mono. A family that is not installed stays saved.
     String? codeFont,
 
-    /// Settings › General › Diffs › "Code size" (Story 10.50): the code's size in points, before the app zoom; 11 by
+    /// Settings › General › Diffs › "Code size": the code's size in points, before the app zoom; 11 by
     /// default.
     @Default(11) int codeSize,
   }) = _GeneralSettings;
@@ -86,10 +86,10 @@ abstract class GeneralSettings with _$GeneralSettings {
   factory GeneralSettings.fromJson(Map<String, Object?> json) => _$GeneralSettingsFromJson(json);
 }
 
-/// The masks a fresh install starts with (Story 10.49): both unticked, so nothing is hidden until a tick.
+/// The masks a fresh install starts with: both unticked, so nothing is hidden until a tick.
 const defaultFileMasks = <FileMask>[FileMask(mask: '*.g.dart, *.freezed.dart'), FileMask(mask: '*.lock')];
 
-/// One entry of the file-mask list (Story 10.49): IntelliJ-style masks, comma-separated, and whether it hides files.
+/// One entry of the file-mask list: IntelliJ-style masks, comma-separated, and whether it hides files.
 @freezed
 abstract class FileMask with _$FileMask {
   /// Creates entry [mask]; inactive unless [active].

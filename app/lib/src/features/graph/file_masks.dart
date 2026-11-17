@@ -15,7 +15,7 @@ import '../shell/calm_controller.dart';
 import '../shell/shell_scope.dart';
 import 'inspector_diff.dart' show InspectorTextButton;
 
-// File masks (Story 10.49; design `Inspector Extras Study.html` §4): one app-wide list of IntelliJ-style masks in
+// File masks (design `Inspector Extras Study.html` §4): one app-wide list of IntelliJ-style masks in
 // `general.fileMasks`; ticked ones hide matching rows from the inspector's and the operation view's file lists.
 
 /// The compiled masks of one `general.fileMasks` value: build it once per settings value, never per row.
@@ -135,7 +135,7 @@ extension FileMaskEdits on SettingsStore {
   );
 }
 
-/// The funnel in a file list's header (Story 10.49): the `filter` glyph and, while [active] entries are ticked, their
+/// The funnel in a file list's header: the `filter` glyph and, while [active] entries are ticked, their
 /// number; 24 high, padding 0 6, radius 7, `--text-dim`, `--accent` while any is ticked, hover or [open] `--fl-hover`
 /// with `--text`.
 class FileMasksButton extends StatelessWidget {
@@ -198,7 +198,7 @@ class FileMasksButton extends StatelessWidget {
   }
 }
 
-/// The row below a file list while ticked masks hide some of its files (Story 10.49): 30 high, 6 above, a 1 px
+/// The row below a file list while ticked masks hide some of its files: 30 high, 6 above, a 1 px
 /// `--fl-border` line on top, 11.5 `--text-dim`. When [pickable] its 22 px check column holds the hidden files' pick
 /// state ([picked]: all / some / none), always shown; then "N files hidden" ("N files match your masks" while
 /// [showing]) with the pick part when [pickable], and the buttons Show / Hide and Masks….
@@ -307,7 +307,7 @@ class FileMasksHint extends StatelessWidget {
   }
 }
 
-/// Hosts the masks popover on the widget [builder] returns (Story 10.49; the host pattern of the graph's View options):
+/// Hosts the masks popover on the widget [builder] returns (the host pattern of the graph's View options):
 /// a [RawMenuAnchor] on [controller] — anyone holding it opens the popover here — 6 below the anchor, left edges
 /// aligned, kept 8 inside the window. Esc and a click outside close it; Esc gives the focus back to what had it when
 /// it opened. The popover counts each entry's matches among [paths] (the shown change's files).
@@ -463,7 +463,7 @@ class _MasksLayout extends SingleChildLayoutDelegate {
   bool shouldRelayout(_MasksLayout oldDelegate) => oldDelegate.anchor != anchor;
 }
 
-/// The masks popover (Story 10.49; design extras-study.jsx `MaskPopover`): a [ZsPopover] 360 wide — the title "Hide
+/// The masks popover (design extras-study.jsx `MaskPopover`): a [ZsPopover] 360 wide — the title "Hide
 /// files matching", a mono field (focused on open; ↩ adds its text and clears it), one 28-high row per entry (its
 /// checkbox, the entry in mono, how many of [paths] it matches, a × on hover or keyboard focus; a click on the row
 /// toggles it) and the syntax footer.

@@ -52,7 +52,7 @@ final class ZsMenuItem extends ZsMenuEntry {
     this.onHighlight,
   });
 
-  /// A quiet second line under the label (Story 10.48: where a verb leaves the bookmarks): 11 px `--text-dim`,
+  /// A quiet second line under the label (e.g. where a verb leaves the bookmarks): 11 px `--text-dim`,
   /// wrapping; the row grows to fit it.
   final String? note;
 

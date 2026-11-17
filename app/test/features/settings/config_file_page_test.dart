@@ -160,7 +160,7 @@ void main() {
       expect(rig.env.configFileWrites, isEmpty, reason: 'both off while nothing changed');
     });
 
-    testWidgets("Story 10.50: the editor and the gutter draw in the scope's code style; the gutter widens to fit", (
+    testWidgets("the editor and the gutter draw in the scope's code style; the gutter widens to fit", (
       tester,
     ) async {
       double gutter() => tester.getTopLeft(find.byType(EditableText)).dx;

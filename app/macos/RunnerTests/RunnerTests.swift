@@ -72,7 +72,7 @@ class RunnerTests: XCTestCase {
     XCTAssertNotNil(MenuStateChannel.Payload(["checked": [], "enabled": [:], "titles": [:]]))
   }
 
-  // MARK: - Code fonts (Story 10.50)
+  // MARK: - Code fonts
 
   func testFontsChannelKeepsFixedPitchFamiliesOnly() {
     XCTAssertEqual(FontsChannel.monospacedFamilies(of: ["Helvetica", "Menlo"]), ["Menlo"])

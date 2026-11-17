@@ -27,7 +27,7 @@ abstract interface class ProjectsEnvironment {
   /// user-level ones without it. Throws [ZanshinFfiException] when the read fails.
   Future<JjIdentity> identity({String? workspaceRoot});
 
-  /// `jj config get NAME` (9.28) for the workspace at [workspaceRoot], or the user-level stack without it: the
+  /// `jj config get NAME` for the workspace at [workspaceRoot], or the user-level stack without it: the
   /// effective value as text, jj's built-in defaults included. Throws [ZanshinFfiException] when the read fails.
   Future<String?> configGet(String name, {String? workspaceRoot});
 

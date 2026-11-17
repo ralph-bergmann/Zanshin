@@ -39,7 +39,7 @@ final _log = Logger('zanshin.inspector');
 /// The describe form's two fields.
 typedef InspectorDraft = ({String summary, String details});
 
-/// What the composer runs (Story 10.48): `jj commit` or `jj split`.
+/// What the composer runs: `jj commit` or `jj split`.
 enum ComposerVerb {
   /// `jj commit` (@ only).
   commit,
@@ -79,14 +79,14 @@ enum ComposerPart {
 /// - **Composer** (Story 10.25): the checked files of the selection — @ starts with all, another change with none,
 ///   reset on a selection change, kept to the still-listed paths on a reload — and a composer draft per change key;
 ///   [runComposer] runs [composerAction] (`jj commit` / `jj split -r`); the verb follows the pick ([composerVerb], on @
-///   with [composerAlternative], Story 10.48), and the preview shows where the change's bookmarks land
+///   with [composerAlternative]), and the preview shows where the change's bookmarks land
 ///   ([bookmarksLandOn], `split.legacy-bookmark-behavior` read at start and on [configChanged]). [squash] asks
 ///   `squashPlan` first and opens the
 ///   squash form with the combined description when jj would open its editor.
 /// - **File list** (Story 10.39): flat or tree is `general.diffFileList` in [settings] ([fileList]); the tree's
 ///   collapsed folders live here for the session ([collapsed]); a folder picks and marks Viewed all of its files
 ///   ([togglePicks], [setViewedAll]). [files] does what touches the disk.
-/// - **File masks** (Story 10.49): `general.fileMasks` in [settings] ([fileMasks]) hides the rows of the files a ticked
+/// - **File masks**: `general.fileMasks` in [settings] ([fileMasks]) hides the rows of the files a ticked
 ///   mask matches ([maskedPaths]; [shownFiles] is what the list shows) unless [showMasked] — per change, off again on
 ///   a selection change. The focus moves off a file that gets hidden. Picks, Viewed and the composer keep every file.
 class InspectorViewModel extends ChangeNotifier {
@@ -336,7 +336,7 @@ class InspectorViewModel extends ChangeNotifier {
 
   List<String> get _listed => <String>[for (final FileChange file in _entry?.fileChanges ?? const []) file.path];
 
-  /// The compiled `general.fileMasks` (Story 10.49).
+  /// The compiled `general.fileMasks`.
   FileMaskMatcher get fileMasks => _masks;
 
   /// Whether a ticked mask hides [path].
@@ -974,7 +974,7 @@ class InspectorViewModel extends ChangeNotifier {
     return at != null && at.layout.workingCopyIndex == at.node;
   }
 
-  /// The verb the composer's button names and runs on a click (Story 10.48): on @ a part (a partial pick, or some
+  /// The verb the composer's button names and runs on a click: on @ a part (a partial pick, or some
   /// files whole) is Split, everything whole — or nothing picked — Commit; another change is always Split; null when
   /// it shows no composer.
   ComposerVerb? get composerVerb {
@@ -993,7 +993,7 @@ class InspectorViewModel extends ChangeNotifier {
 
   /// What the composer runs for the selection with [verb] (default [composerVerb]) — `jj commit` on @ (no paths when
   /// every file is checked), `jj split -r` with the checked paths (a renamed file with its source); with a partial
-  /// pick both take the hunk selection instead (Story 10.26); null when it shows no composer, nothing is checked or
+  /// pick both take the hunk selection instead; null when it shows no composer, nothing is checked or
   /// [verb] is neither [composerVerb] nor [composerAlternative].
   GraphAction? composerActionAs([ComposerVerb? verb]) => _composer(verb, short: false);
 
@@ -1011,7 +1011,7 @@ class InspectorViewModel extends ChangeNotifier {
   /// command line shortens the message, never the change id or the paths.
   String? composerCommandCut(int keep, {ComposerVerb? verb}) => _composer(verb, short: true, keep: keep)?.command;
 
-  /// The selection's local bookmarks, by name in jj's order (Story 10.48): what the composer's preview places.
+  /// The selection's local bookmarks, by name in jj's order: what the composer's preview places.
   List<String> get composerBookmarks {
     final ({GraphLayout layout, int node})? at = _mutableNode;
     if (at == null) {
@@ -2747,7 +2747,7 @@ class _Actions extends StatelessWidget {
                 icon: ZI.workingCopyAt,
                 identifier: 'inspector-edit',
               ),
-            // Story 10.48: the label squashes into the parent (the squash form first when both changes carry a
+            // The label squashes into the parent (the squash form first when both changes carry a
             // description); the chevron offers both verbs.
             ZsSplitButton(
               label: strings.inspectorSquashMenu,
@@ -2843,7 +2843,7 @@ class InspectorSplit {
 /// without further repeats; Space toggles the current file's pick on a mutable change; V toggles its Viewed mark; ↩
 /// shows its diff. The current row is the focused file's (`--fl-on`), with a 1.5 px `--accent` ring while the list has
 /// focus, and is scrolled into view. Or the text that takes the split's place: the stale state, a refusal, an empty
-/// change. Story 10.49: the rows are the model's shown files; the funnel before the flat / tree switch opens the file
+/// change. The rows are the model's shown files; the funnel before the flat / tree switch opens the file
 /// masks popover, and while ticked masks hide files a [FileMasksHint] sits below the list.
 class _Changes extends StatefulWidget {
   const _Changes({required this.model, required this.data, required this.wide});
@@ -3525,7 +3525,7 @@ class InspectorFileRow extends StatelessWidget {
     super.key,
   });
 
-  /// Whether a ticked file mask hides it and it shows anyway (Story 10.49): the row at .55 with the `eye-off` glyph
+  /// Whether a ticked file mask hides it and it shows anyway: the row at .55 with the `eye-off` glyph
   /// after the name.
   final bool masked;
 
@@ -3973,8 +3973,8 @@ class _SheenPainter extends CustomPainter {
 /// gap 10, a top `--fl-border` over `--fl-sheen`. Summary and Details (md; ↩ in Summary or ⌘↩ run), the result preview
 /// (the rest — on @ the new working copy — above the selected part), the command [InspectorViewModel.composerAction]
 /// runs (cut inside its message when it does not fit), Cancel (split only) and the gold Commit / Split — on @ with a
-/// part picked the split button Split ▾ Commit (Story 10.48), whose highlighted menu row the command, the placeholder
-/// and the bookmark chips follow. When Split would take everything only its hint and Cancel show (Story 10.40), the
+/// part picked the split button Split ▾ Commit, whose highlighted menu row the command, the placeholder
+/// and the bookmark chips follow. When Split would take everything only its hint and Cancel show, the
 /// draft kept; a refusal shows in the warn colour.
 class _Composer extends StatefulWidget {
   const _Composer({required this.model, required this.data, required this.shortId, required this.blocked});
@@ -3995,7 +3995,7 @@ class _ComposerState extends State<_Composer> {
   late final _summary = ZsTextEditingController(text: _initial.summary);
   late final _details = ZsTextEditingController(text: _initial.details);
 
-  /// The verb of the split button's highlighted menu row (Story 10.48), which the preview follows meanwhile.
+  /// The verb of the split button's highlighted menu row, which the preview follows meanwhile.
   ComposerVerb? _highlighted;
 
   /// The verb the preview shows: the highlighted row's while it is one of the composer's verbs, else the button's.
@@ -4273,7 +4273,7 @@ class _ComposerState extends State<_Composer> {
       onPressed: model.clearPicks,
       identifier: 'inspector-composer-cancel',
     );
-    // Where a verb leaves the bookmarks, said under its menu row while the two verbs differ (Story 10.48).
+    // Where a verb leaves the bookmarks, said under its menu row while the two verbs differ.
     String? landsNote(ComposerVerb verb) {
       if (!model.composerBookmarksDiffer) {
         return null;

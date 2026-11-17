@@ -350,7 +350,7 @@ class SettingsViewModel extends ChangeNotifier {
   /// The project window's graph, which a trunk or immutable write re-requests.
   final ValueListenable<GraphMenuBinding?> graph;
 
-  /// The installed fixed-pitch families for the Code font row (Story 10.50).
+  /// The installed fixed-pitch families for the Code font row.
   final InstalledCodeFonts codeFonts;
 
   final SettingsReadsOf _readsOf;

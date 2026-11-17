@@ -872,7 +872,7 @@ void main() {
     leftLineCount: leftLineCount,
   );
 
-  group('Story 10.50: the code style', () {
+  group('the code style', () {
     TextStyle code({String? font, int size = 11}) =>
         codeTextStyle(GeneralSettings(codeFont: font, codeSize: size), font == null ? null : <String>[font]);
 

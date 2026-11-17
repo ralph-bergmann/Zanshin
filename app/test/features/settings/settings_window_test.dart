@@ -293,7 +293,7 @@ void main() {
       expect(rows.toSet(), hasLength(5));
     });
 
-    group('Story 10.50: Code font and Code size', () {
+    group('Code font and Code size', () {
       const builtIn = 'JetBrains Mono · built in';
 
       testWidgets('they sit right after Layout: the built-in font and 11 pt · default', (tester) async {

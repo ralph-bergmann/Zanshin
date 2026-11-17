@@ -25,11 +25,11 @@ mixin _$GeneralSettings {
 @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll) DiffWhitespaceSetting get diffWhitespace;/// The inspector's file list (Story 10.39); [DiffFileListSetting.flat] by default.
 @JsonKey(unknownEnumValue: DiffFileListSetting.flat) DiffFileListSetting get diffFileList;/// Settings › General › Editor (Story 10.39): what Open in Editor starts — null for none, `idea`, `code` or
 /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
- String? get editor;/// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
+ String? get editor;/// The file masks of the inspector and the operation view, newest first; one list for the app. A file without the key gets
 /// [defaultFileMasks]; an empty saved list stays empty.
- List<FileMask> get fileMasks;/// Settings › General › Diffs › "Code font" (Story 10.50): the font family of the code in diffs and the config
+ List<FileMask> get fileMasks;/// Settings › General › Diffs › "Code font": the font family of the code in diffs and the config
 /// file editor; null for the built-in JetBrains Mono. A family that is not installed stays saved.
- String? get codeFont;/// Settings › General › Diffs › "Code size" (Story 10.50): the code's size in points, before the app zoom; 11 by
+ String? get codeFont;/// Settings › General › Diffs › "Code size": the code's size in points, before the app zoom; 11 by
 /// default.
  int get codeSize;
 /// Create a copy of GeneralSettings
@@ -256,10 +256,10 @@ class _GeneralSettings implements GeneralSettings {
 /// Settings › General › Editor (Story 10.39): what Open in Editor starts — null for none, `idea`, `code` or
 /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
 @override final  String? editor;
-/// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
+/// The file masks of the inspector and the operation view, newest first; one list for the app. A file without the key gets
 /// [defaultFileMasks]; an empty saved list stays empty.
  final  List<FileMask> _fileMasks;
-/// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
+/// The file masks of the inspector and the operation view, newest first; one list for the app. A file without the key gets
 /// [defaultFileMasks]; an empty saved list stays empty.
 @override@JsonKey() List<FileMask> get fileMasks {
   if (_fileMasks is EqualUnmodifiableListView) return _fileMasks;
@@ -267,10 +267,10 @@ class _GeneralSettings implements GeneralSettings {
   return EqualUnmodifiableListView(_fileMasks);
 }
 
-/// Settings › General › Diffs › "Code font" (Story 10.50): the font family of the code in diffs and the config
+/// Settings › General › Diffs › "Code font": the font family of the code in diffs and the config
 /// file editor; null for the built-in JetBrains Mono. A family that is not installed stays saved.
 @override final  String? codeFont;
-/// Settings › General › Diffs › "Code size" (Story 10.50): the code's size in points, before the app zoom; 11 by
+/// Settings › General › Diffs › "Code size": the code's size in points, before the app zoom; 11 by
 /// default.
 @override@JsonKey() final  int codeSize;
 
