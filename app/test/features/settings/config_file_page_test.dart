@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kSecondaryMouseButton;
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,14 +174,24 @@ void main() {
       // 11 lines: two digits.
       big.env.configFileTexts[ConfigScope.user] = '\n' * 10;
       await big.openConfig();
-      final TextStyle style = tester.widget<EditableText>(big.editor).style;
+      final EditableText editor = tester.widget<EditableText>(big.editor);
+      final TextStyle style = editor.style;
       expect((style.fontFamily, style.fontSize), ('Menlo', 40));
-      final TextStyle numbers = tester
-          .widget<RichText>(find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().endsWith('10\n11')))
-          .text
-          .style!;
-      expect((numbers.fontFamily, numbers.fontSize), ('Menlo', 40));
+      final StrutStyle strut = editor.strutStyle;
+      expect((strut.fontSize, strut.height, strut.forceStrutHeight), (40, 1.65, true), reason: 'lines 1.65 × size');
+      final Finder numbersText = find.byWidgetPredicate(
+        (w) => w is RichText && w.text.toPlainText().endsWith('10\n11'),
+      );
+      final RichText numbers = tester.widget<RichText>(numbersText);
+      expect((numbers.text.style!.fontFamily, numbers.text.style!.fontSize), ('Menlo', 40));
+      expect(numbers.strutStyle, strut, reason: 'the numbers stay level with their lines');
       expect(gutter(), greaterThan(narrow), reason: 'two digits at 40 are wider than 44 px');
+      final RenderParagraph paragraph = tester.renderObject<RenderParagraph>(numbersText);
+      expect(
+        paragraph.size.width - paragraph.getMaxIntrinsicWidth(double.infinity),
+        greaterThanOrEqualTo(10),
+        reason: "wide numbers keep off the well's left edge",
+      );
     });
 
     testWidgets('Project › Edit… edits the repo file', (tester) async {

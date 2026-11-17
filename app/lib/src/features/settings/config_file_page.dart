@@ -530,8 +530,8 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
           textDirection: TextDirection.ltr,
           textScaler: MediaQuery.textScalerOf(context),
         )..layout();
-        // The numbers' 10 px right padding beside their width.
-        final double gutterWidth = math.max(_minGutter, numbers.width.ceilToDouble() + 10);
+        // The numbers' 10 px right padding and as much room on their left, so wide numbers keep off the well's edge.
+        final double gutterWidth = math.max(_minGutter, numbers.width.ceilToDouble() + 20);
         numbers.dispose();
         final double width = math.max(box.maxWidth - gutterWidth, textWidth + 24 + 4);
         return Stack(

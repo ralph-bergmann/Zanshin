@@ -281,6 +281,11 @@ void main() {
     final SettingsStore store = await pumpContentSized(tester, '{"general": {"codeSize": 14}}');
     expect(CodeStyleScope.of(content(tester)).fontSize, 14);
     expect(CodeStyleScope.of(content(tester)).fontFamily, ZsType.monoFamily);
+    expect(
+      find.ancestor(of: find.byType(CodeStyleScope), matching: find.byType(WindowZoomBox)),
+      findsOneWidget,
+      reason: 'the zoom multiplies the code size',
+    );
 
     await tester.runAsync(() => store.update((s) => s.copyWith.general(codeSize: 12)));
     await tester.pumpAndSettle();

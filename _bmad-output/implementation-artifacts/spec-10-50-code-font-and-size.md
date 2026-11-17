@@ -5,7 +5,7 @@ created: '2026-11-17'
 status: 'done'
 baseline_revision: 'fec9b30bd66094f8a6f2dd36ef1611dee195ea56'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: ['oversized']
@@ -16,6 +16,13 @@ deferred:
       config_file_page.dart `_editor` takes CodeStyleScope as epic Story 10.50 item 5 asks; DS settings.css:104 still reads --fs-md/19.5px. A DS change goes through the design-artifacts skill in a console session.
     location: >-
       app/lib/src/features/settings/config_file_page.dart
+    severity: low
+  - summary: >-
+      Code comments, docstrings and ARB descriptions name the story ("Story 10.50"), which the global writing rule forbids, while about 130 files in app/lib already do the same.
+    evidence: |-
+      The new doc comments in code_font.dart, zanshin_application.dart, settings_view_model.dart, general_settings.dart and 8 app_en.arb descriptions (copied into app_localizations.dart) carry the id; the project convention predates this story. Changing only this story's comments would make the code inconsistent, so it is a project-wide decision.
+    location: >-
+      app/lib/l10n/app_en.arb, app/lib/src/features/window/code_font.dart
     severity: low
 ---
 
@@ -129,6 +136,34 @@ deferred:
   - `[false]` `[reject]` (intent) additions the intent does not ask for (clamp, off-list entries, 240 px cap, unknown-list rule, config gutter) — each keeps a stated rule working (a hand-edited file, a missing font, a large size); none changes a specified behavior.
   - `[low]` `[patch]` (intent) JetBrains Mono twice when installed — same as the blind row; patched with it.
 
+### 2026-11-17 — Review pass (follow-up)
+- verdicts: 24 findings — high 0, medium 1, low 18, false 4, maybe-false 1
+- findings:
+  - `[false]` `[reject]` (blind) a failed CoreText cast answers `[]`, so every saved family reads as missing — `CTFontManagerCopyAvailableFontFamilyNames` returns a CFArray of CFStrings, whose bridge to `[String]` does not fail; `[]` would need a Mac without fonts.
+  - `[maybe-false]` `[reject]` (blind) CoreText's display names may be localized and then fail the `CTFontCopyFamilyName` equality, dropping e.g. a Japanese monospaced family — would need a run under a non-English system locale; if true it only hides a localized family from the list (the app is English-only), so low.
+  - `[low]` `[patch]` (blind) the XCTest covers one branch of the filter (not the "resolves to another family" drop, not the handler) — patched with the verification-gap row below: the filter test also drops "Zanshin Gone Mono".
+  - `[low]` `[reject]` (blind) an installed JetBrains Mono, picked and then uninstalled, reads "JetBrains Mono (not installed) — using JetBrains Mono"; a newer installed copy is hidden — needs installing and removing the same family by hand; the label stays true (the bundled face draws); a fix adds a special case for one name.
+  - `[low]` `[patch]` (blind) a widened config editor gutter (large sizes) puts the numbers against the well's left edge — patched: `config_file_page.dart` gutter = `max(44, digits + 20)` (10 px each side); the config test checks the inset at 40 pt.
+  - `[low]` `[patch]` (blind) nothing tests that the font list is read at app start — patched with the verification-gap row below.
+  - `[low]` `[patch]` (blind) the zoom witness (the scope sits inside `WindowZoomBox`) is untested — patched: `zanshin_window_root_test.dart` checks that the `CodeStyleScope` has a `WindowZoomBox` ancestor.
+  - `[low]` `[reject]` (blind) the operation view's diff under the scope is untested — it embeds `InspectorDiffView`, which reads the scope itself; no line of `operation_changes.dart` changed, and its `_Text` notes keep `ZsType.code` untouched.
+  - `[low]` `[patch]` (blind) `epic-10-context.md` says code blocks never use `ZsType.code`, which a later story could apply to the protected notes — patched: the rule names code lines and the notes that keep `ZsType.code`.
+  - `[low]` `[patch]` (blind) the witnesses the build cannot meet (SF Mono, "Monaspace Argon", NSFontManager) are not in the ledger — patched: the sprint-status DONE note records CoreText, SF Mono not system-installed, and "Monaspace Argon Var".
+  - `[low]` `[defer]` (blind) story ids in new comments and ARB descriptions break the global writing rule — pre-existing project convention (about 130 files in `app/lib`); a project-wide decision. Deferred.
+  - `[false]` `[reject]` (blind) inside a window the code style is no longer `== ZsType.code` — the fallback list `[monoFamily, sansFamily]` is what the intent specifies, and no code in `app/lib` compares a style with `ZsType.code`.
+  - `[false]` `[reject]` (edge) a non-String element in the runner's answer throws an uncaught `TypeError` — the runner answers only `[String]` or not-implemented; nothing else reaches the channel.
+  - `[low]` `[reject]` (edge) a hand-edited `"codeFont": ""` passes an empty family — only a hand edit meets it; the fallbacks still draw JetBrains Mono; a fix adds a guard for an input the UI never writes.
+  - `[low]` `[reject]` (edge) a hand-edited proportional family (Helvetica) reads "not installed" — only a hand edit meets it, and the fallback that follows is right; a second label adds a branch.
+  - `[low]` `[patch]` (verification-gap) the config editor's strut (1.65 × size, shared with the gutter) is unchecked — patched: the config test checks `strutStyle` 40 / 1.65 / forced and that the gutter's strut equals it.
+  - `[medium]` `[patch]` (verification-gap) the Swift handler of `zanshin/fonts` is never driven — patched: `testFontsChannelAnswersMonospacedFamiliesFromTheMac` sends `monospacedFamilies` through `FakeMessenger`, waits for the main-queue reply (Menlo in, Helvetica out) and checks an unknown method is not implemented.
+  - `[low]` `[patch]` (verification-gap) the read at app start is unchecked — patched: `zanshin_application_test.dart` mocks `zanshin/fonts` and expects one `monospacedFamilies` call from `start()`.
+  - `[false]` `[reject]` (intent) the filter uses CoreText, not `NSFontManager` — no bad outcome: both gave the same 10 families on this Mac, the switch was the first pass's thread-safety patch, and it is now in the sprint-status note.
+  - `[low]` `[defer]` (intent) carried — the config file editor's default changes from 12/19.5 to the code style; already deferred in the first pass (DS sync), not deferred again.
+  - `[low]` `[patch]` (intent) a failed read after a good one keeps the known list, untested — patched: `code_font_test.dart` "a failed read after a good one keeps the known list".
+  - `[low]` `[reject]` (intent) the missing-font label may ellipsize in the 240 px trigger — the open list shows the whole text, and the visible start already says "(not installed)"; widening the trigger is a layout change for a rare state.
+  - `[low]` `[patch]` (intent) code size × zoom is untested — same as the blind zoom row; patched with it.
+  - `[low]` `[reject]` (intent) no end-to-end test from a Settings write through the window root to the diff — the window-root test covers root → scope, the diff tests cover scope → lines; the real-app Marionette check is the console session's.
+
 ## Design Notes
 
 The scope sits inside each window root's `WindowZoomBox`, so every window (project, Settings, Undo Timeline's operation view in the project window) gets the same style from one getter, `ZanshinAppViewModel.codeStyle`. Line numbers are measured with the same style, so the column grows with the size. The config file editor moves from 12 px / 19.5 to the code style (11 px / 1.65 at the default), as the epic's scope item 5 and the study's hint ("Diffs and the config file") ask.
@@ -139,6 +174,7 @@ The scope sits inside each window root's `WindowZoomBox`, so every window (proje
 - `flutter test` in `packages/zanshin_settings`, `dart analyze`, `dart format --set-exit-if-changed .` -- pass.
 - `flutter test test/features/window test/features/graph/inspector_diff_test.dart test/features/settings test/features/undo_timeline test/widgetbook` in `app`, `dart analyze`, `dart format --set-exit-if-changed lib test widgetbook` -- pass.
 - `cargo make --allow-private test-runner` -- XCTests pass.
+- Follow-up pass: `flutter test test/features/window test/features/settings test/app test/features/graph/inspector_diff_test.dart test/features/undo_timeline` in `app` -- pass; `cargo make --allow-private test-runner` -- 9 XCTests pass.
 
 ## Auto Run Result
 
@@ -174,3 +210,26 @@ Status: done (commit `6b421a4029d12de66b86160c09735ae5228dbe4f`).
 - The filter now uses CoreText (`CTFontManagerCopyAvailableFontFamilyNames`, default face `.traitMonoSpace`) instead of the spec's `NSFontManager` wording, for thread safety off the main thread; on this Mac both give the same 10 families. Variable fonts list under their family name (Ralph's Monaspace shows as "Monaspace Argon Var"); SF Mono is not a system-installed family here, so it is not listed.
 - The config file editor draws smaller by default (11 / 1.65 instead of 12 / 19.5), as the epic asks; the DS sync is deferred.
 - No visual check in the running app; the Marionette check against the study is the console session's.
+
+### Follow-up review pass (2026-11-17)
+
+**Summary.** A fresh four-layer review of the change. Patched: the config editor's gutter keeps 10 px on the numbers' left when it widens; tests for the runner's channel handler (XCTest through `FakeMessenger`), the filter's "resolves to another family" drop, the config editor's strut, the read at app start, the scope inside the zoom box and a failed re-read keeping the known list; the epic context's rule now names the notes that keep `ZsType.code`; the sprint-status note records the witness deviations.
+
+**Files changed.**
+- `app/lib/src/features/settings/config_file_page.dart` — gutter width `digits + 20`.
+- `app/macos/RunnerTests/RunnerTests.swift` — handler test, missing-family filter case.
+- `app/test/features/settings/config_file_page_test.dart` — strut and left-inset checks.
+- `app/test/app/zanshin_application_test.dart` — start reads `zanshin/fonts`.
+- `app/test/features/window/zanshin_window_root_test.dart` — scope inside `WindowZoomBox`.
+- `app/test/features/window/code_font_test.dart` — failed re-read keeps the list.
+- `_bmad-output/implementation-artifacts/epic-10-context.md`, `sprint-status.yaml`, `deferred-work.md` — ledger.
+
+**Review.** 24 findings (medium 1, low 18, false 4, maybe-false 1). Patched entries: medium 1 (channel handler test), low 7. Deferred: story ids in comments (project-wide convention; mirrored in deferred-work.md); the config editor's DS sync stays deferred from the first pass (carried). Rejected with reasons in the triage log: the `[]` cast, localized CoreText names (maybe-false, low if true), JetBrains Mono installed then removed, the operation view's own test, `ZsType.code` equality, non-String answers, an empty or proportional hand-edited family, the CoreText switch, the ellipsized label, an end-to-end test.
+
+**Follow-up review: not recommended** — a follow-up pass patched no `high` (counts: medium 1, low 7).
+
+**Verification (targeted, per the run's gate rule — no full gate).**
+- `app`: `flutter test test/features/window test/features/settings test/app test/features/graph/inspector_diff_test.dart test/features/undo_timeline` — 512 pass; after the last edit `flutter test` of the three touched test files — 32 pass; `dart analyze` clean; `dart format --set-exit-if-changed lib test widgetbook` 0 changed.
+- `cargo make --allow-private test-runner` — 9 XCTests pass, the new handler test included.
+
+**Residual risks.** Localized CoreText family names on a non-English system are unchecked. The Marionette check in the running app is still the console session's.

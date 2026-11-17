@@ -2,6 +2,7 @@
 
 import 'dart:ui' show AppExitResponse;
 
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
@@ -47,8 +48,21 @@ void main() {
           if (call.startsWith('setWindowAppearance')) call,
       ];
 
+      final fonts = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('zanshin/fonts'), (
+        call,
+      ) async {
+        fonts.add(call.method);
+        return null;
+      });
+      addTearDown(
+        () =>
+            tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('zanshin/fonts'), null),
+      );
+
       final BootFirstWindow first = app.start();
 
+      expect(fonts, <String>['monospacedFamilies'], reason: 'the code fonts are read at start');
       expect(graph.windows.zoom, 1.25, reason: 'the first window is created at the stored zoom');
       expect(appearances(), <String>['setWindowAppearance:dark']);
       expect(first.kind, BootWindowKind.projects, reason: 'nothing stored to reopen');

@@ -3265,3 +3265,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **The config file editor now draws in the code style (11 pt × 1.65 by default, Settings › Code size) while the design system still gives it 12/19.5.** Low.
   - `app/lib/src/features/settings/config_file_page.dart` `_editor` takes `CodeStyleScope` (epic Story 10.50 item 5); DS `settings.css:104` still reads `--fs-md`/19.5px, so the next DS sync sees a mismatch.
   - **Follow-up:** a DESIGN-SYSTEM-SYNC entry through the `design-artifacts` skill in a console session: the config editor follows Settings › Code size.
+
+## Surfaced in the follow-up review of Story 10.50 (bmad-build-auto, 2026-11-17)
+
+- **Code comments, docstrings and ARB descriptions name the story ("Story 10.50"), which the global writing rule forbids, while about 130 files in `app/lib` already do the same.** Low.
+  - New doc comments in `app/lib/src/features/window/code_font.dart:10`, `zanshin_application.dart`, `settings_view_model.dart`, `general_settings.dart` and 8 descriptions in `app/lib/l10n/app_en.arb` (copied into `app_localizations.dart`).
+  - **Follow-up:** Ralph decides for the whole project: keep the convention, or drop story ids from comments and ARB descriptions in one sweep (and say so in project-context.md).

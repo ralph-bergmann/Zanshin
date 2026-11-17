@@ -81,6 +81,17 @@ void main() {
       await empty.refresh();
       expect(empty.families, isNull);
     });
+
+    test('a failed read after a good one keeps the known list', () async {
+      var fail = false;
+      final fonts = InstalledCodeFonts.withReader(
+        () async => fail ? throw PlatformException(code: 'x') : const ['Menlo'],
+      );
+      await fonts.refresh();
+      fail = true;
+      await fonts.refresh();
+      expect(fonts.families, ['Menlo']);
+    });
   });
 
   testWidgets('without a scope the code style is ZsType.code', (tester) async {

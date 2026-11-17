@@ -76,6 +76,32 @@ class RunnerTests: XCTestCase {
 
   func testFontsChannelKeepsFixedPitchFamiliesOnly() {
     XCTAssertEqual(FontsChannel.monospacedFamilies(of: ["Helvetica", "Menlo"]), ["Menlo"])
+    // CoreText answers a missing family with another font, which must not count.
+    XCTAssertEqual(FontsChannel.monospacedFamilies(of: ["Menlo", "Zanshin Gone Mono"]), ["Menlo"])
+  }
+
+  func testFontsChannelAnswersMonospacedFamiliesFromTheMac() {
+    let messenger = FakeMessenger()
+    let channel = FontsChannel(messenger: messenger)
+    let codec = FlutterStandardMethodCodec.sharedInstance()
+    let answered = expectation(description: "monospacedFamilies answered")
+    var families: [String]?
+    messenger.handlers["zanshin/fonts"]?(
+      codec.encode(FlutterMethodCall(methodName: "monospacedFamilies", arguments: nil))
+    ) { data in
+      families = data.flatMap { codec.decodeEnvelope($0) } as? [String]
+      answered.fulfill()
+    }
+    wait(for: [answered], timeout: 10)
+    XCTAssertTrue(families?.contains("Menlo") ?? false, "Menlo is listed")
+    XCTAssertFalse(families?.contains("Helvetica") ?? true, "Helvetica is not")
+
+    var unknown: Data? = Data()
+    messenger.handlers["zanshin/fonts"]?(codec.encode(FlutterMethodCall(methodName: "other", arguments: nil))) {
+      unknown = $0
+    }
+    XCTAssertNil(unknown, "an unknown method is not implemented")
+    withExtendedLifetime(channel) {}
   }
 
   // MARK: - Traffic-light position (Story 11.26)
