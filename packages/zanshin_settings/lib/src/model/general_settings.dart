@@ -69,7 +69,7 @@ abstract class GeneralSettings with _$GeneralSettings {
     /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
     String? editor,
 
-    /// The inspector's file masks (Story 10.49), newest first; one list for the app. A file without the key gets
+    /// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
     /// [defaultFileMasks]; an empty saved list stays empty.
     @Default(defaultFileMasks) List<FileMask> fileMasks,
   }) = _GeneralSettings;

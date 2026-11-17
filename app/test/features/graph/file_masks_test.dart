@@ -51,6 +51,8 @@ void main() {
       expect(_hides('docs/*.png', 'img.png'), isFalse);
       expect(_hides('docs/*.png', 'docs/sub/x.png'), isFalse, reason: '* stays inside a name');
       expect(_hides('/docs/*.png', 'docs/packages.png'), isTrue, reason: 'a leading / is dropped');
+      expect(_hides('/pubspec.lock', 'pubspec.lock'), isTrue, reason: 'a leading / makes a root-only path mask');
+      expect(_hides('/pubspec.lock', 'app/pubspec.lock'), isFalse);
     });
 
     test('a name glob matches the file name in any folder', () {
@@ -70,6 +72,8 @@ void main() {
       expect(_hides('packages/**/*.g.dart', 'app/a.g.dart'), isFalse);
       expect(_hides('docs/**', 'docs/a/b/c.png'), isTrue);
       expect(_hides('docs/**', 'app/docs/x'), isFalse);
+      expect(_hides('a**b', 'axyb'), isTrue, reason: '** inside a name');
+      expect(_hides('src/a**b', 'src/a/x/b'), isTrue, reason: 'a lone ** crosses folders');
     });
 
     test('? is one character but /; the rest is literal; case-sensitive', () {

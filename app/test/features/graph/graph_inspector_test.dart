@@ -5443,6 +5443,13 @@ void main() {
       expect(find.byType(InspectorDiffView), findsNothing);
       expect(find.byType(InspectorFileRow), findsNothing);
       expect(hint(tester), '4 files hidden · none picked');
+      inspector.toggleShowMasked();
+      await settle(tester);
+      expect(inspector.focusedPath, 'a.g.dart', reason: 'files shown again: the first one');
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).path, 'a.g.dart');
+      inspector.toggleShowMasked();
+      await settle(tester);
+      expect(inspector.focusedPath, isNull);
       // The empty list still takes keys without failing.
       tester
           .widget<Focus>(find.byWidgetPredicate((w) => w is Focus && w.focusNode?.debugLabel == 'inspector files'))
@@ -5453,6 +5460,28 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await settle(tester);
       expect(tester.takeException(), isNull);
+      await unmount(tester);
+    });
+
+    testWidgets('a refresh of the same change keeps Show and the focus on a shown hidden file', (tester) async {
+      filesOf(_mutable, <String>['a.dart', 'b.g.dart']);
+      settings.addFileMask('*.g.dart');
+      await pump(tester);
+      await settle(tester);
+      inspector
+        ..toggleShowMasked()
+        ..focus('b.g.dart');
+      await settle(tester);
+      details.files[_mutable] = <FileChange>[
+        const FileChange(path: 'a.dart', kind: FileChangeKind.modified),
+        const FileChange(path: 'b.g.dart', kind: FileChangeKind.modified),
+        const FileChange(path: 'c.dart', kind: FileChangeKind.added),
+      ];
+      await reload(tester);
+      await settle(tester);
+      expect(_fileRow('c.dart'), findsOneWidget, reason: 'the change was read again');
+      expect(inspector.showMasked, isTrue);
+      expect(inspector.focusedPath, 'b.g.dart');
       await unmount(tester);
     });
 

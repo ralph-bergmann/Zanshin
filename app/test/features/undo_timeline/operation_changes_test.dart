@@ -364,7 +364,33 @@ void main() {
       settings.addFileMask('b.txt');
       await tester.pump();
       expect(find.byType(InspectorDiffView), findsNothing, reason: 'every file hidden: no diff');
+      await tester.tap(_id('inspector-masked-show'));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).path,
+        'a.txt',
+        reason: 'files shown again: the first one',
+      );
     });
+  });
+
+  test('Story 10.49: a jj config write keeps Show and the focus on a shown hidden file', () async {
+    settings.addFileMask('b.txt');
+    await pumpEventQueue();
+    final FakeOperationChangesSource changes = rewriteSource();
+    final model = OperationChangesModel(changes, operation: opId(1), settings: settings);
+    await pumpEventQueue();
+    expect(model.focusedPath, 'a.txt');
+    model
+      ..toggleShowMasked()
+      ..focus('b.txt');
+    await pumpEventQueue();
+    changes.configWrites.fire();
+    await pumpEventQueue();
+    expect(model.showMasked, isTrue);
+    expect(model.focusedPath, 'b.txt');
+    model.dispose();
   });
 
   testWidgets('selecting another commit reads its files', (tester) async {

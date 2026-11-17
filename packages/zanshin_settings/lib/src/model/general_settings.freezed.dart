@@ -25,7 +25,7 @@ mixin _$GeneralSettings {
 @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll) DiffWhitespaceSetting get diffWhitespace;/// The inspector's file list (Story 10.39); [DiffFileListSetting.flat] by default.
 @JsonKey(unknownEnumValue: DiffFileListSetting.flat) DiffFileListSetting get diffFileList;/// Settings › General › Editor (Story 10.39): what Open in Editor starts — null for none, `idea`, `code` or
 /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
- String? get editor;/// The inspector's file masks (Story 10.49), newest first; one list for the app. A file without the key gets
+ String? get editor;/// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
 /// [defaultFileMasks]; an empty saved list stays empty.
  List<FileMask> get fileMasks;
 /// Create a copy of GeneralSettings
@@ -250,10 +250,10 @@ class _GeneralSettings implements GeneralSettings {
 /// Settings › General › Editor (Story 10.39): what Open in Editor starts — null for none, `idea`, `code` or
 /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
 @override final  String? editor;
-/// The inspector's file masks (Story 10.49), newest first; one list for the app. A file without the key gets
+/// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
 /// [defaultFileMasks]; an empty saved list stays empty.
  final  List<FileMask> _fileMasks;
-/// The inspector's file masks (Story 10.49), newest first; one list for the app. A file without the key gets
+/// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
 /// [defaultFileMasks]; an empty saved list stays empty.
 @override@JsonKey() List<FileMask> get fileMasks {
   if (_fileMasks is EqualUnmodifiableListView) return _fileMasks;

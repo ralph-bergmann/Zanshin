@@ -275,10 +275,16 @@ class OperationChangesModel extends ChangeNotifier {
     return null;
   }
 
-  /// Moves the focus off a file that got hidden.
+  /// Moves the focus off a file that got hidden; files shown again after all were hidden focus the first one.
   void _focusShown() {
     final String? focused = _focused;
-    if (focused == null || _shown(focused)) {
+    if (focused == null) {
+      if (_shownNear(null) case final String first) {
+        focus(first);
+      }
+      return;
+    }
+    if (_shown(focused)) {
       return;
     }
     if (_shownNear(focused) case final String next) {
