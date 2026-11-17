@@ -17,6 +17,8 @@ deferred:
     location: >-
       app/lib/src/features/settings/config_file_page.dart
     severity: low
+    resolved: >-
+      2026-11-17 — fixed (spec-10-50-closing-config-editor-code-size, commit c0298ae6): DS sync #33, `.zs-cfg-ed` takes `--type-code` and the gutter widens with its numbers.
   - summary: >-
       Code comments, docstrings and ARB descriptions name the story ("Story 10.50"), which the global writing rule forbids, while about 130 files in app/lib already do the same.
     evidence: |-
