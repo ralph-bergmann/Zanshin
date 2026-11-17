@@ -1,7 +1,7 @@
 // Inspector — reading and shaping one change. The title is the describe field; checkboxes pick hunks; the composer turns a selection
 // into a commit (@: jj commit) or a split (jj split -r). Files, hunks and bookmarks can be dragged onto another change.
 (() => {
-const { Island, IconButton, Button, MenuButton, Menu, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch, SplitDivider } = window.ZanshinDesignSystem_a33847;
+const { Island, IconButton, Button, MenuButton, SplitButton, Menu, Flag, AtBadge, Icon, FileRow, DiffView, DiffHunk, Segmented, Checkbox, TextField, BookmarkChip, HatchSwatch, SplitDivider } = window.ZanshinDesignSystem_a33847;
 // Story 10.39: the kit's workspace root, so copied paths are absolute as in the app.
 const ZK_ROOT = "/Users/you/code/zanshin/";
 // The tree (Story 10.39): folders by name, then files by name; a folder holding only one folder joins with it; closed folders hide their rows.
@@ -251,11 +251,14 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
     : [
       isWC ? <Button key="new" onClick={() => onNew(c.id)} title="jj new — leave this change as it is and start a new one">New change</Button>
         : <Button key="edit" variant={composing ? "default" : "primary"} icon={<AtBadge size="sm"/>} onClick={onEdit} title="Move the working copy here — jj edit">Edit</Button>,
-      <MenuButton key="sq" title="Squash or absorb into earlier changes" onSelect={(id) => id === "squash" && onSquash()} items={[
-        { id: "squash", label: "Squash into parent", cmd: "jj squash -r " + c.id.slice(0, 8), disabled: !canSquash, title: canSquash ? "jj squash -r " + c.id.slice(0, 8) : "The parent can’t be rewritten" },
+      // Story 10.48: a split button — the label squashes into the parent, the chevron offers both verbs.
+      <SplitButton key="sq" label="Squash" onRun={onSquash} disabled={!canSquash}
+        title={canSquash ? "jj squash -r " + c.id.slice(0, 8) : "Cannot squash merge commits without a specified destination"}
+        onSelect={(id) => id === "squash" && onSquash()} items={[
+        { id: "squash", label: "Squash into parent", cmd: "jj squash -r " + c.id.slice(0, 8), disabled: !canSquash, title: canSquash ? "jj squash -r " + c.id.slice(0, 8) : "Cannot squash merge commits without a specified destination" },
         // The kit keeps no line history, so nothing is ever absorbable here.
         { id: "absorb", label: "Absorb into ancestors", cmd: "jj absorb --from " + c.id.slice(0, 8), disabled: true, title: "Nothing to absorb: no hunk belongs to an earlier change." },
-      ]}>Squash</MenuButton>,
+      ]} />,
       <Button key="ab" variant="danger" className="zk-push" onClick={onAbandon} title="jj abandon">Abandon</Button>,
     ];
 

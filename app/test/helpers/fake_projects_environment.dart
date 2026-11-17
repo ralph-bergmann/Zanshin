@@ -86,6 +86,25 @@ class FakeProjectsEnvironment implements ProjectsEnvironment {
   @override
   Listenable get configWrites => _writes;
 
+  /// What [configGet] answers, by name; a missing name answers null.
+  final configValues = <String, String>{};
+
+  /// When set, [configGet] throws it.
+  ZanshinFfiException? configGetFailure;
+
+  /// Every [configGet] read as `<name> <workspaceRoot>`.
+  final configGetReads = <String>[];
+
+  @override
+  Future<String?> configGet(String name, {String? workspaceRoot}) async {
+    configGetReads.add('$name $workspaceRoot');
+    final ZanshinFfiException? failure = configGetFailure;
+    if (failure != null) {
+      throw failure;
+    }
+    return configValues[name];
+  }
+
   @override
   Future<List<ConfigEntry>> configList({required String name, String? workspaceRoot}) async => <ConfigEntry>[
     for (final ConfigEntry entry in configEntries[name] ?? const <ConfigEntry>[])

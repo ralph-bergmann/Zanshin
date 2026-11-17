@@ -255,6 +255,25 @@ void main() {
     },
   );
 
+  test(
+    'Story 10.48: splitLegacyBookmarks reads split.legacy-bookmark-behavior in the workspace; a non-boolean is null, '
+    'a refused read throws',
+    () async {
+      final ProjectRepo repo = await openRepo('legacy');
+      final env = FakeProjectsEnvironment();
+      final details = RepoGraphDetails(repo, env, root: pathOf('legacy'));
+      const key = 'split.legacy-bookmark-behavior';
+      expect(await details.splitLegacyBookmarks(), isNull, reason: 'a missing name');
+      expect(env.configGetReads.single, '$key ${pathOf('legacy')}');
+      for (final (String value, bool? legacy) in <(String, bool?)>[('true', true), ('false', false), ('"yes"', null)]) {
+        env.configValues[key] = value;
+        expect(await details.splitLegacyBookmarks(), legacy, reason: value);
+      }
+      env.configGetFailure = const ZanshinFfiException('jj.config_error', 'bad config');
+      await expectLater(details.splitLegacyBookmarks(), throwsA(isA<ZanshinFfiException>()));
+    },
+  );
+
   test('Story 10.40: the operation view reads the workspace stack too; the repo or workspace layer says so', () async {
     final ProjectRepo repo = await openRepo('op-context');
     final env = FakeProjectsEnvironment();

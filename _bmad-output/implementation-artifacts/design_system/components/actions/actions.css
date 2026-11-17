@@ -46,6 +46,36 @@
 .zs-menubtn.is-icon>span{gap:2px}
 .zs-menubtn.is-active .zs-menubtn-glyph{color:var(--accent)}
 
+/* SplitButton (2026-11-17, Story 10.48; sync #31, from the Inspector Extras Study `.xs-split`) — one shape, two parts: the label runs,
+   the chevron opens the alternatives. The shape carries the variant's rest fill and ring; a 1px divider inset 7 top and bottom
+   (--fl-border; the primary's gold at 45%); each part its own control (focus ring inside, hover, pressed, disabled .4) painting its
+   half's step: default --fl-on / --fl-press, primary gold 16% / 28%. Sizes 30 (padding 0 12, the chevron 0 7) and 26 (0 10 / 0 6, radius 8, 12px).
+   Only default and primary exist. */
+.zs-splitbtn{position:relative;display:inline-flex;align-items:stretch;height:var(--control-md);border-radius:var(--radius-btn);background:var(--fl-hover);flex-shrink:0}
+.zs-splitbtn--sm{height:var(--control-sm);border-radius:8px}
+/* each part sits in a slot that carries a disabled part's title: a disabled button takes no hover */
+.zs-splitbtn-slot{display:inline-flex;align-items:stretch}
+.zs-splitbtn-part{display:inline-flex;align-items:center;gap:7px;padding:0 12px;border:0;font:var(--type-control);white-space:nowrap;color:var(--text-muted);background:transparent;cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
+.zs-splitbtn--sm .zs-splitbtn-part{padding:0 10px;font-size:12px}
+.zs-splitbtn-main{border-radius:var(--radius-btn) 0 0 var(--radius-btn)}
+.zs-splitbtn-chev{padding:0 7px;border-radius:0 var(--radius-btn) var(--radius-btn) 0}
+.zs-splitbtn--sm .zs-splitbtn-main{border-radius:8px 0 0 8px}
+.zs-splitbtn--sm .zs-splitbtn-chev{padding:0 6px;border-radius:0 8px 8px 0}
+.zs-splitbtn-chev>.zs-icon{opacity:.8}
+.zs-splitbtn-div{width:1px;margin:7px 0;background:var(--fl-border);flex-shrink:0}
+.zs-splitbtn-part:hover,.zs-splitbtn-part.st-hover{background:var(--fl-on);color:var(--text)}
+.zs-splitbtn-part:active,.zs-splitbtn-part.st-press{background:var(--fl-press);color:var(--text)}
+.zs-splitbtn-part:is(:focus-visible,.st-focus){outline-offset:var(--focus-offset-inset);animation-name:zs-focus-in-inset;color:var(--text)}
+.zs-splitbtn-part:disabled{opacity:var(--disabled-opacity);background:transparent}
+.zs-splitbtn--primary{background:linear-gradient(180deg,var(--primary-fill-a),var(--primary-fill-b));box-shadow:inset 0 0 0 1px var(--primary-ring)}
+.zs-splitbtn--primary .zs-splitbtn-part{color:var(--text)}
+.zs-splitbtn--primary .zs-splitbtn-part:hover,.zs-splitbtn--primary .zs-splitbtn-part.st-hover{background:color-mix(in oklch,var(--gold) 16%,transparent)}
+.zs-splitbtn--primary .zs-splitbtn-part:active,.zs-splitbtn--primary .zs-splitbtn-part.st-press{background:color-mix(in oklch,var(--gold) 28%,transparent)}
+.zs-splitbtn--primary .zs-splitbtn-chev>.zs-icon{color:var(--gold);opacity:1}
+.zs-splitbtn--primary>.zs-splitbtn-div{background:color-mix(in oklch,var(--gold) 45%,transparent)}
+.zs-splitbtn-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:var(--z-menu)}
+.zs-splitbtn-pop>.zs-menu{width:max-content}
+
 /* IconButton — 30 (sm, --control-md: panel close, the height of the row it sits in) · 36 (md, --control-lg: inside islands) · 40 (lg, rail: 52 − 2 × 6). on = toggled/open. Badge sits on the top-right corner. */
 .zs-ib{position:relative;display:grid;place-items:center;width:var(--control-lg);height:var(--control-lg);padding:0;border:0;border-radius:var(--radius-card);background:transparent;color:var(--text-muted);cursor:default;flex-shrink:0;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
 .zs-ib:hover,.zs-ib.st-hover{background:var(--fl-hover);color:var(--text)}

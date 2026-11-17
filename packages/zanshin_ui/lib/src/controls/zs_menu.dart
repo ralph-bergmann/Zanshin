@@ -47,7 +47,21 @@ final class ZsMenuItem extends ZsMenuEntry {
     this.identifier,
     this.tooltip,
     this.wrap,
+    this.note,
+    this.noteIcon,
+    this.onHighlight,
   });
+
+  /// A quiet second line under the label (Story 10.48: where a verb leaves the bookmarks): 11 px `--text-dim`,
+  /// wrapping; the row grows to fit it.
+  final String? note;
+
+  /// A `ZI` glyph before the [note], 10 px in `--text-faint`.
+  final String? noteIcon;
+
+  /// Called with true when the menu's highlight (pointer or keys) enters the row, with false when it leaves it or the
+  /// menu closes.
+  final ValueChanged<bool>? onHighlight;
 
   /// Wraps the built row (Story 10.10: a bookmark row that is also a drag source); null shows the row as it is.
   final Widget Function(Widget row)? wrap;
@@ -571,7 +585,10 @@ class ZsMenuPanel extends StatefulWidget {
 /// The panel's state; an owner activates a row through [activateEntry] (the select's press – drag – release).
 class ZsMenuPanelState extends State<ZsMenuPanel> {
   final _focus = FocusNode(debugLabel: 'ZsMenuPanel');
-  late int _hi = widget.highlight ?? -1;
+  late int _hiValue = widget.highlight ?? -1;
+
+  /// The row whose `ZsMenuItem.onHighlight` last heard true, or −1.
+  var _announced = -1;
   var _keyboard = false;
   var _blinkAt = -1;
   var _busy = false;
@@ -596,11 +613,62 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
   /// `padding:5px` (DS components/menus/menus.css:6).
   static const double _padding = 5;
 
+  int get _hi => _hiValue;
+
+  set _hi(int value) {
+    _hiValue = value;
+    if (!widget.closing) {
+      _announce(value);
+    }
+  }
+
+  ZsMenuItem? _itemAt(int index) => index >= 0 && index < widget.entries.length
+      ? switch (widget.entries[index]) {
+          final ZsMenuItem item => item,
+          _ => null,
+        }
+      : null;
+
+  /// Tells the rows' `onHighlight` that the highlight left the last one and entered [index].
+  void _announce(int index) {
+    if (index == _announced) {
+      return;
+    }
+    final ZsMenuItem? left = _itemAt(_announced);
+    _announced = index;
+    left?.onHighlight?.call(false);
+    _itemAt(index)?.onHighlight?.call(true);
+  }
+
+  /// The highlight is gone with the menu. Deferred: the panel closes and goes while the tree builds or is locked, and
+  /// the listener may rebuild its own widgets.
+  void _announceGone() {
+    final ValueChanged<bool>? listener = _itemAt(_announced)?.onHighlight;
+    _announced = -1;
+    if (listener != null) {
+      scheduleMicrotask(() => listener(false));
+    }
+  }
+
+  @override
+  void didUpdateWidget(ZsMenuPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.closing && !oldWidget.closing) {
+      _announceGone();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     if (widget.highlight != null) {
       _keyboard = true;
+      // The first highlight is set while the overlay builds: tell its row once that is over.
+      scheduleMicrotask(() {
+        if (mounted && !widget.closing && _announced == -1) {
+          _announce(_hi);
+        }
+      });
     }
     if (widget.takeFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -613,6 +681,7 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
 
   @override
   void dispose() {
+    _announceGone();
     _subTimer?.cancel();
     _typeTimer?.cancel();
     for (final Timer timer in _blinkTimers) {
@@ -1125,52 +1194,93 @@ class _Row extends StatelessWidget {
         child: cmdText,
       );
     }
-    Widget row = DecoratedBox(
-      decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(metrics.radiusMd)),
-      child: SizedBox(
-        height: _height + metrics.rowStep,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            spacing: 10,
-            children: <Widget>[
-              SizedBox(width: 16, child: Center(child: lead)),
-              Expanded(
-                child: dot == null
-                    ? labelText
-                    // `.zs-pm-l{display:flex;align-items:center;gap:8px;min-width:0}` (DS menus.css:58).
-                    : Row(
-                        spacing: 8,
-                        children: <Widget>[
-                          Flexible(child: labelText),
-                          _MenuDot(color: dot, ring: highlighted && !danger ? colors.accentInk : null),
-                        ],
-                      ),
-              ),
-              if (cmdText != null || shortcut != null || item.submenu != null)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+    final String? note = item.note;
+    final String? noteIcon = item.noteIcon;
+    final Widget line = Row(
+      spacing: 10,
+      children: <Widget>[
+        SizedBox(width: 16, child: Center(child: lead)),
+        Expanded(
+          child: dot == null
+              ? labelText
+              // `.zs-pm-l{display:flex;align-items:center;gap:8px;min-width:0}` (DS menus.css:58).
+              : Row(
                   spacing: 8,
                   children: <Widget>[
-                    ?cmdText,
-                    if (shortcut != null)
-                      Text(
-                        shortcut,
-                        style: zsSans(ZsType.fsMd).copyWith(color: side, letterSpacing: .02 * ZsType.fsMd),
-                        softWrap: false,
-                      ),
-                    if (item.submenu != null)
-                      Transform.translate(
-                        // `margin-right:-3px` (DS components/menus/menus.css:22).
-                        offset: const Offset(3, 0),
-                        child: ZanshinIcon(ZI.chevronRight, size: ZsIconSize.sm, color: chevron),
-                      ),
+                    Flexible(child: labelText),
+                    _MenuDot(color: dot, ring: highlighted && !danger ? colors.accentInk : null),
                   ],
+                ),
+        ),
+        if (cmdText != null || shortcut != null || item.submenu != null)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 8,
+            children: <Widget>[
+              ?cmdText,
+              if (shortcut != null)
+                Text(
+                  shortcut,
+                  style: zsSans(ZsType.fsMd).copyWith(color: side, letterSpacing: .02 * ZsType.fsMd),
+                  softWrap: false,
+                ),
+              if (item.submenu != null)
+                Transform.translate(
+                  // `margin-right:-3px` (DS components/menus/menus.css:22).
+                  offset: const Offset(3, 0),
+                  child: ZanshinIcon(ZI.chevronRight, size: ZsIconSize.sm, color: chevron),
                 ),
             ],
           ),
-        ),
-      ),
+      ],
+    );
+    final double height = _height + metrics.rowStep;
+    Widget row = DecoratedBox(
+      decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(metrics.radiusMd)),
+      child: note == null
+          ? SizedBox(
+              height: height,
+              child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: line),
+            )
+          // The row grows to fit its second line, 1 under the first, padding 5 above and below (Inspector Extras
+          // Study `.xs-mrow`, `.xs-msub`); the note starts under the label.
+          : ConstrainedBox(
+              constraints: BoxConstraints(minHeight: height),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: 1,
+                  children: <Widget>[
+                    line,
+                    Padding(
+                      padding: const EdgeInsets.only(left: 26),
+                      child: Row(
+                        spacing: 5,
+                        children: <Widget>[
+                          if (noteIcon != null)
+                            ZanshinIcon(
+                              noteIcon,
+                              size: ZsIconSize.xs,
+                              color: highlighted ? text : colors.textFaint,
+                            ),
+                          Flexible(
+                            child: Text(
+                              note,
+                              style: zsSans(ZsType.fsSm, height: ZsType.lhSnug).copyWith(
+                                color: highlighted ? text : colors.textDim,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
     );
     if (!item.enabled) {
       row = Opacity(opacity: metrics.disabledOpacity, child: row);
@@ -1180,7 +1290,7 @@ class _Row extends StatelessWidget {
       identifier: item.identifier,
       button: true,
       enabled: item.enabled,
-      label: <String>[item.label, ?item.dotLabel, ?item.cmd].join(', '),
+      label: <String>[item.label, ?item.dotLabel, ?item.note, ?item.cmd].join(', '),
       hint: item.tooltip,
       checked: checked,
       inMutuallyExclusiveGroup: checked != null && item.radio ? true : null,

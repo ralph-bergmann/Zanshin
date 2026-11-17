@@ -1069,9 +1069,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorSquashMenu => 'Squash';
 
   @override
-  String get inspectorSquashMenuTooltip => 'Squash or absorb into earlier changes';
-
-  @override
   String get inspectorAbsorb => 'Absorb into ancestors';
 
   @override
@@ -1094,6 +1091,48 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inspectorSplit => 'Split';
+
+  @override
+  String inspectorComposerBookmarkHere(String name) {
+    return '$name lands here';
+  }
+
+  @override
+  String inspectorComposerBookmarkPair(String first, String second) {
+    return '$first and $second';
+  }
+
+  @override
+  String inspectorComposerBookmarkCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count bookmarks',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String inspectorComposerBookmarksMove(String names, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'move',
+      one: 'moves',
+    );
+    return '$names $_temp0 to the new working copy';
+  }
+
+  @override
+  String inspectorComposerBookmarksStay(String names, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'stay',
+      one: 'stays',
+    );
+    return '$names $_temp0 on this change, with the selected part';
+  }
 
   @override
   String get inspectorSplitAllHint =>

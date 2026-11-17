@@ -259,6 +259,9 @@ class _Details implements GraphDetails {
   @override
   Future<void> setDiffContext(int lines) async {}
 
+  @override
+  Future<bool?> splitLegacyBookmarks() async => true;
+
   /// Every plan asked for, by change id; none combines a description, so the squash runs at once.
   final plans = <String>[];
 

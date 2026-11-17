@@ -51,6 +51,7 @@ const _covered = <String, String>{
   'HatchSwatch': 'graph/card/states',
   'Menu': 'controls/menu/state-matrix',
   'MenuButton': 'controls/menubutton/state-matrix',
+  'SplitButton': 'controls/splitbutton/state-matrix',
   'ProjectMenu': 'projects/project-capsule/menu-open',
   'DragGhost': 'materials/drag-ghost/kinds',
   'StaleNotice': 'graph/stale-notice/variants',

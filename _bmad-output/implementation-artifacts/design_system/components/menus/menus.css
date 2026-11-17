@@ -25,6 +25,13 @@
 .zs-menu-sc{font:var(--fs-md) var(--font-sans);color:var(--text-faint);letter-spacing:.02em}
 .zs-menu-chev{color:var(--text-dim);margin-right:-3px}
 .zs-menu-chk{display:grid;place-items:center;color:var(--accent-text)}
+/* a row's note — a quiet second line under the label (2026-11-17, Story 10.48: where a verb leaves the bookmarks; from the Inspector
+   Extras Study `.xs-msub`): 11px --text-dim, its glyph 10px --text-faint, wrapping; the row grows to fit, min 28; highlighted, both
+   take the row's ink */
+.zs-menu-item.has-note{height:auto;min-height:28px;padding-top:5px;padding-bottom:5px;row-gap:1px}
+.zs-menu-line{grid-column:2/-1;display:flex;align-items:center;gap:5px;font-size:11px;line-height:1.35;color:var(--text-dim);white-space:normal}
+.zs-menu-line>.zs-icon{color:var(--text-faint);flex-shrink:0}
+.zs-menu:not(.is-kbd) .zs-menu-item:not(:disabled):not(.is-blink):hover .zs-menu-line,.zs-menu-item.is-hi:not(:disabled) .zs-menu-line,.zs-menu-item.st-hover .zs-menu-line{color:inherit}
 .zs-menu:not(.is-kbd) .zs-menu-item:not(:disabled):not(.is-blink):hover,.zs-menu-item.is-hi:not(:disabled),.zs-menu-item.st-hover{background:var(--accent);color:var(--accent-ink)}
 .zs-menu:not(.is-kbd) .zs-menu-item:not(:disabled):not(.is-blink):hover :is(.zs-icon,.zs-menu-cmd,.zs-menu-sc,.zs-menu-chev,.zs-menu-chk),.zs-menu-item.is-hi:not(:disabled) :is(.zs-icon,.zs-menu-cmd,.zs-menu-sc,.zs-menu-chev,.zs-menu-chk),.zs-menu-item.st-hover :is(.zs-icon,.zs-menu-cmd,.zs-menu-sc,.zs-menu-chev,.zs-menu-chk){color:var(--accent-ink)}
 .zs-menu-item.is-blink{background:none!important;color:var(--text)!important}

@@ -314,5 +314,8 @@ class _Details implements GraphDetails {
   Future<void> setDiffContext(int lines) async {}
 
   @override
+  Future<bool?> splitLegacyBookmarks() async => true;
+
+  @override
   Future<SquashPlan> squashPlan(String changeId) async => const SquashPlan(combinedDescription: null);
 }

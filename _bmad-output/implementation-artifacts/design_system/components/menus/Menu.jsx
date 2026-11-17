@@ -5,14 +5,19 @@ import { AtBadge } from "../graph/AtBadge.jsx";
 
 // reads a motion token (ms) so code and tokens never drift; falls back where there is no document
 export const zsMs = (name, fallback) => { try { const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return isNaN(n) ? fallback : n; } catch (e) { return fallback; } };
-const zsActionable = (it) => it && it !== "sep" && !it.header && !it.note && !it.disabled;
+// a note row has a note and no label; a row with both shows the note as its second line (2026-11-17, Story 10.48)
+const zsNoteRow = (it) => it && it.note != null && it.label == null;
+const zsActionable = (it) => it && it !== "sep" && !it.header && !zsNoteRow(it) && !it.disabled;
 const zsText = (it) => (it.text != null ? it.text : typeof it.label === "string" ? it.label : "").toLowerCase();
 // is p inside the triangle a → b → c (the pointer's last spot and the submenu's near corners)?
 const zsInTri = (p, a, b, c) => { const s = (u, v, w) => (u.x - w.x) * (v.y - w.y) - (v.x - w.x) * (u.y - w.y); const d1 = s(p, a, b), d2 = s(p, b, c), d3 = s(p, c, a); return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)); };
 
 // Menu — every command menu: actions on a change (head names it, rows show the jj command), the text context menu, pull-downs,
-// the project menu, the Select list. items: [{ id, label, text, icon, cmd, shortcut, danger, disabled, checked, radio, submenu, title }]
-// · "sep" · { header }. `text` is what typeahead matches when the label is a node (mono <code>, a project row).
+// the project menu, the Select list. items: [{ id, label, text, icon, cmd, shortcut, danger, disabled, checked, radio, submenu, title,
+// note, noteIcon, onHighlight }] · "sep" · { header } · { note, icon } (a note row). `text` is what typeahead matches when the label is a
+// node (mono <code>, a project row). A row's `note` is a quiet second line under its label (11px --text-dim, `noteIcon` 10px
+// --text-faint; the highlighted row's ink) and the row grows to fit (min 28). `onHighlight(on)` hears the shared highlight enter and
+// leave the row, and false when the menu goes (the composer's preview follows the highlighted alternative, Story 10.48).
 // One highlight shared by mouse and keyboard (solid accent + ink; danger rows a red tint). Keyboard: ↑/↓ move (wrap), Home/End,
 // typing jumps (letters within --dur-typeahead extend the match), Return/Space activate, → opens a submenu, ← closes it, Esc closes.
 // Activation blinks the row (off --dur-blink · on --dur-blink), then onSelect; the parent closes the menu with its exit (closing).
@@ -24,8 +29,14 @@ export function Menu({ id, subject, workingCopy = false, items = [], onSelect, o
   const ref = React.useRef(null);
   const uid = React.useId();
   // note rows (why something is missing) aren't commands: the keyboard skips them, the menu points at them for VoiceOver
-  const notes = items.map((it, i) => (it && it.note ? uid + "-n" + i : null)).filter(Boolean).join(" ");
+  const notes = items.map((it, i) => (zsNoteRow(it) ? uid + "-n" + i : null)).filter(Boolean).join(" ");
   const [hi, setHi] = React.useState(highlight == null ? -1 : highlight);
+  React.useEffect(() => {
+    const it = items[hi];
+    if (!it || !it.onHighlight) return undefined;
+    it.onHighlight(true);
+    return () => it.onHighlight(false);
+  }, [hi]);
   const [kbd, setKbd] = React.useState(false);
   const [blinkAt, setBlinkAt] = React.useState(-1);
   const [sub, setSub] = React.useState(-1);
@@ -95,9 +106,9 @@ export function Menu({ id, subject, workingCopy = false, items = [], onSelect, o
       {items.map((it, i) => {
         if (it === "sep") return <div key={"sep" + i} className="zs-menu-sep" role="separator"></div>;
         if (it.header) return <div key={"h" + i} className="zs-menu-h" role="presentation">{it.header}</div>;
-        if (it.note) return <div key={"n" + i} id={uid + "-n" + i} className="zs-menu-note">{typeof it.icon === "string" ? <Icon name={it.icon} size="sm" /> : it.icon || <span></span>}<span>{it.note}</span></div>;
+        if (zsNoteRow(it)) return <div key={"n" + i} id={uid + "-n" + i} className="zs-menu-note">{typeof it.icon === "string" ? <Icon name={it.icon} size="sm" /> : it.icon || <span></span>}<span>{it.note}</span></div>;
         const check = it.checked !== undefined;
-        const cls = ["zs-menu-item", it.danger && "is-danger", i === hi && "is-hi", i === blinkAt && "is-blink"].filter(Boolean).join(" ");
+        const cls = ["zs-menu-item", it.danger && "is-danger", i === hi && "is-hi", i === blinkAt && "is-blink", it.note != null && "has-note"].filter(Boolean).join(" ");
         return (
           <div key={it.id || i} className="zs-menu-row" style={{ position: "relative" }} title={it.disabled ? it.title : undefined}>
             <button type="button" tabIndex={-1} className={cls} disabled={it.disabled} title={it.disabled ? undefined : it.title}
@@ -111,6 +122,7 @@ export function Menu({ id, subject, workingCopy = false, items = [], onSelect, o
                 {it.shortcut && <span className="zs-menu-sc">{it.shortcut}</span>}
                 {it.submenu && <Icon className="zs-menu-chev" name="chevron-right" size="sm" />}
               </span>
+              {it.note != null && <span className="zs-menu-line">{it.noteIcon && <Icon name={it.noteIcon} size="xs" />}<span>{it.note}</span></span>}
             </button>
             {it.submenu && sub === i && (
               <ZsSubmenu subRef={subEl} items={it.submenu} kbd={kbd} blink={blink} onSelect={onSelect}

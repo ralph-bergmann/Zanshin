@@ -1,0 +1,65 @@
+<!-- @dsCard group="Components" viewport="760x420" name="SplitButton" subtitle="The label runs, the divided chevron opens the alternatives — primary and secondary in every state, the label disabled, size 26, open with the bookmark lines, compared with Button and MenuButton" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.row{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:18px}.st{display:flex;flex-direction:column;align-items:flex-start;gap:6px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}.open{position:relative;height:150px}.open .zs-splitbtn-pop{position:absolute}.rule{max-width:700px;margin:0;font-size:12px;line-height:1.5;color:var(--text-dim)}.rule b{color:var(--text)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { SplitButton, MenuButton, Menu, Button, Icon } = window.ZanshinDesignSystem_a33847;
+  const COMPOSE = [
+    { id: "split", label: "Split", cmd: "jj split -r qkynoyuu", note: "feature moves to the new working copy", noteIcon: "bookmark" },
+    { id: "commit", label: "Commit", cmd: "jj commit", note: "feature stays on this change, with the selected part", noteIcon: "bookmark" },
+  ];
+  const SQUASH = [
+    { id: "squash", label: "Squash into parent", cmd: "jj squash -r wxkktntx", title: "jj squash -r wxkktntx" },
+    { id: "absorb", label: "Absorb into ancestors", cmd: "jj absorb --from wxkktntx", title: "jj absorb --from wxkktntx" },
+  ];
+  const DIFF = [
+    { id: "exact", label: "Show all whitespace", checked: true, radio: true },
+    { id: "change", label: "Ignore whitespace changes", checked: false, radio: true },
+    { id: "all", label: "Ignore all whitespace", checked: false, radio: true },
+  ];
+  const STATES = [["Rest", "", ""], ["Hover label", "st-hover", ""], ["Hover chevron", "", "st-hover"], ["Focus label", "st-focus", ""], ["Focus chevron", "", "st-focus"], ["Pressed", "st-press", ""]];
+  const Demo = () => (
+    <div className="col">
+      <div className="row">
+        {STATES.map(([l, m, c]) => (
+          <div key={l} className="st"><span className="lbl">Primary · {l}</span><SplitButton variant="primary" label="Split" items={COMPOSE} mainClassName={m} chevClassName={c} /></div>
+        ))}
+      </div>
+      <div className="row">
+        {STATES.slice(0, 3).map(([l, m, c]) => (
+          <div key={l} className="st"><span className="lbl">Secondary · {l}</span><SplitButton label="Squash" items={SQUASH} title="jj squash -r wxkktntx" mainClassName={m} chevClassName={c} /></div>
+        ))}
+        <div className="st"><span className="lbl">Label disabled</span><SplitButton label="Squash" items={SQUASH} disabled title="Cannot squash merge commits without a specified destination" /></div>
+        <div className="st"><span className="lbl">Size 26</span><SplitButton size="sm" label="Squash" items={SQUASH} /></div>
+      </div>
+      <div className="row">
+        <div className="st"><span className="lbl">Compared · Button — runs</span><Button variant="primary">Commit</Button></div>
+        <div className="st"><span className="lbl">MenuButton — only opens</span><MenuButton iconOnly icon="view-options" variant="ghost" items={DIFF} label="Diff options — Show all whitespace" /></div>
+        <div className="st"><span className="lbl">Open — the composer's Split ▾ Commit</span>
+          <span className="zs-splitbtn zs-splitbtn--primary open">
+            <button type="button" className="zs-splitbtn-part zs-splitbtn-main">Split</button>
+            <span className="zs-splitbtn-div" />
+            <button type="button" className="zs-splitbtn-part zs-splitbtn-chev st-hover" aria-haspopup="menu" aria-expanded="true"><Icon name="chevron-down" size="sm" /></button>
+            <div className="zs-splitbtn-pop"><Menu still items={COMPOSE} highlight={1} style={{ maxWidth: 360 }} /></div>
+          </span>
+        </div>
+      </div>
+      <p className="rule"><b>Rule.</b> Buttons that look the same work the same. A split button runs its label; only its chevron opens the alternatives. A menu button (one part, no divider) only opens a menu. The label always names the command that runs.</p>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

@@ -627,11 +627,9 @@
   "inspectorSquash": "Squash into parent",
   "@inspectorSquash": {"description": "Inspector action: jj squash -r, folding the change into its parent."},
   "inspectorSquashMenu": "Squash",
-  "@inspectorSquashMenu": {"description": "Inspector menu button that opens Squash into parent and Absorb into ancestors."},
-  "inspectorSquashMenuTooltip": "Squash or absorb into earlier changes",
-  "@inspectorSquashMenuTooltip": {"description": "Tooltip of the inspector's Squash menu button."},
+  "@inspectorSquashMenu": {"description": "Inspector split button: its label squashes the change into its parent; its chevron opens Squash into parent and Absorb into ancestors."},
   "inspectorAbsorb": "Absorb into ancestors",
-  "@inspectorAbsorb": {"description": "Inspector Squash menu row: jj absorb --from, each hunk moved into the earlier change that last changed its lines."},
+  "@inspectorAbsorb": {"description": "Inspector Squash split button's menu row: jj absorb --from, each hunk moved into the earlier change that last changed its lines."},
   "inspectorAbsorbNothing": "Nothing to absorb: no hunk belongs to an earlier change.",
   "@inspectorAbsorbNothing": {"description": "Why the inspector's Absorb into ancestors is disabled: jj would change nothing."},
   "inspectorDescriptionChangedMeanwhile": "The description changed meanwhile.",
@@ -643,9 +641,34 @@
   "inspectorDeselectAll": "Deselect all",
   "@inspectorDeselectAll": {"description": "The Changes header's checkbox while every file is checked: unchecks them all."},
   "inspectorCommit": "Commit",
-  "@inspectorCommit": {"description": "Composer on the working copy: runs jj commit with the checked files."},
+  "@inspectorCommit": {"description": "Composer on the working copy: runs jj commit with the checked files — the button while everything (or nothing) is picked, else the row under its chevron."},
   "inspectorSplit": "Split",
-  "@inspectorSplit": {"description": "Composer on another change: runs jj split with the checked files."},
+  "@inspectorSplit": {"description": "Composer: runs jj split with the checked files — on another change always, on the working copy while only a part is picked."},
+  "inspectorComposerBookmarkHere": "{name} lands here",
+  "@inspectorComposerBookmarkHere": {
+    "description": "Composer result preview: tooltip of a bookmark chip on the part where the run leaves the bookmark.",
+    "placeholders": {"name": {"type": "String", "example": "feature"}}
+  },
+  "inspectorComposerBookmarkPair": "{first} and {second}",
+  "@inspectorComposerBookmarkPair": {
+    "description": "Composer menu line: two bookmark names joined.",
+    "placeholders": {"first": {"type": "String", "example": "feature"}, "second": {"type": "String", "example": "main"}}
+  },
+  "inspectorComposerBookmarkCount": "{count, plural, other{{count} bookmarks}}",
+  "@inspectorComposerBookmarkCount": {
+    "description": "Composer menu line: three or more bookmarks, counted.",
+    "placeholders": {"count": {"type": "int", "example": "3"}}
+  },
+  "inspectorComposerBookmarksMove": "{names} {count, plural, =1{moves} other{move}} to the new working copy",
+  "@inspectorComposerBookmarksMove": {
+    "description": "Composer split button's menu: the quiet line under the row whose verb (jj split) moves the change's bookmarks to the rest. names is one name, two joined by and, or a count of bookmarks.",
+    "placeholders": {"names": {"type": "String", "example": "feature"}, "count": {"type": "int", "example": "1"}}
+  },
+  "inspectorComposerBookmarksStay": "{names} {count, plural, =1{stays} other{stay}} on this change, with the selected part",
+  "@inspectorComposerBookmarksStay": {
+    "description": "Composer split button's menu: the quiet line under the row whose verb leaves the change's bookmarks on the change, which keeps the selected part. names is one name, two joined by and, or a count of bookmarks.",
+    "placeholders": {"names": {"type": "String", "example": "feature"}, "count": {"type": "int", "example": "1"}}
+  },
   "inspectorSplitAllHint": "Every change is picked — Split needs something left behind. To describe this change, click its title.",
   "@inspectorSplitAllHint": {"description": "Composer on another change: the only text beside Cancel while every file is picked (no fields, no Split button)."},
   "inspectorComposerSummaryAt": "Summary of what you did",

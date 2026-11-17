@@ -204,6 +204,14 @@ class DemoProjectsEnvironment implements ProjectsEnvironment {
   @override
   Listenable get configWrites => _writes;
 
+  /// `jj config get`: the highest scope's value, else jj's built-in default for the keys the catalogue reads. A TOML
+  /// string's quotes stay (the demo values are simple).
+  @override
+  Future<String?> configGet(String name, {String? workspaceRoot}) async =>
+      (workspaceRoot == null ? null : config[ConfigScope.repo]?[name]) ??
+      config[ConfigScope.user]?[name] ??
+      const <String, String>{'split.legacy-bookmark-behavior': 'true'}[name];
+
   @override
   Future<List<ConfigEntry>> configList({required String name, String? workspaceRoot}) async => <ConfigEntry>[
     for (final ConfigScope scope in <ConfigScope>[ConfigScope.user, if (workspaceRoot != null) ConfigScope.repo])

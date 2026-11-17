@@ -1200,6 +1200,10 @@ abstract interface class GraphDetails {
 
   /// `jj config set --user diff.color-words.context [lines]` ([writeDiffContext]); the config write reloads the diff.
   Future<void> setDiffContext(int lines);
+
+  /// `jj config get split.legacy-bookmark-behavior` in the workspace (Story 10.48): whether `jj split` moves the
+  /// change's bookmarks to the rest (jj's default, true); null when the value is no boolean.
+  Future<bool?> splitLegacyBookmarks();
 }
 
 /// [GraphDetails] over an open [ProjectRepo]'s handle, the config through [_environment] for the workspace at [root].
@@ -1218,6 +1222,23 @@ class RepoGraphDetails implements GraphDetails {
 
   @override
   Future<void> setDiffContext(int lines) => writeDiffContext(_environment, lines);
+
+  @override
+  Future<bool?> splitLegacyBookmarks() async {
+    final String? value = await _environment.configGet(
+      'split.legacy-bookmark-behavior', // l10n-ignore: jj config key
+      workspaceRoot: root,
+    );
+    final bool? legacy = switch (value) {
+      'true' => true, // l10n-ignore: TOML boolean
+      'false' => false, // l10n-ignore: TOML boolean
+      _ => null,
+    };
+    if (legacy == null) {
+      _log.warning('split.legacy-bookmark-behavior is no boolean');
+    }
+    return legacy;
+  }
 
   @override
   Future<ShowEntry> show(String commitId) async => (await _repo.handle.show(revset: commitId)).single;

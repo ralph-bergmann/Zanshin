@@ -25,6 +25,7 @@ final controlsFolder = WidgetbookFolder(
     _family('Select', _selectMatrix, _selectInteractive),
     _family('Menu', _menuMatrix, _menuInteractive),
     _family('MenuButton', _menuButtonMatrix, _menuButtonInteractive),
+    _family('SplitButton', _splitButtonMatrix, _splitButtonInteractive),
     _family('Field list', _fieldListMatrix, _fieldListInteractive),
     _family('Tooltip', _tooltipMatrix, _tooltipInteractive),
     _family('Popover', _popoverMatrix, _popoverInteractive),
@@ -1150,6 +1151,97 @@ Widget _menuButtonInteractive(BuildContext context) {
       entries: _squashMenu,
       disabledReason: reason,
       identifier: 'menu-button',
+    ),
+  );
+}
+
+// ---- SplitButton ----
+
+/// The composer's alternatives (Story 10.48): Commit beside Split, each with where it leaves the bookmark.
+const _composerMenu = <ZsMenuEntry>[
+  ZsMenuItem(
+    label: 'Split',
+    cmd: 'jj split -r qkynoyuu',
+    note: 'feature moves to the new working copy',
+    noteIcon: ZI.bookmark,
+  ),
+  ZsMenuItem(
+    label: 'Commit',
+    cmd: 'jj commit',
+    note: 'feature stays on this change, with the selected part',
+    noteIcon: ZI.bookmark,
+  ),
+];
+
+Widget _splitButtonMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
+  for (final (String spec, ZsButtonVariant variant, String label, List<ZsMenuEntry> entries)
+      in const <(String, ZsButtonVariant, String, List<ZsMenuEntry>)>[
+        ('primary · label', ZsButtonVariant.primary, 'Split', _composerMenu),
+        ('secondary · label', ZsButtonVariant.quiet, 'Squash', _squashMenu),
+      ])
+    MatrixRow(
+      'SplitButton',
+      spec,
+      const <MatrixState>[..._interaction, MatrixState.disabled],
+      (cell) => ZsSplitButton(
+        label: label,
+        variant: variant,
+        entries: entries,
+        onPressed: () {},
+        disabledReason: cell.state == MatrixState.disabled ? 'Cannot squash merge commits' : null,
+        statesController: cell.states,
+      ),
+    ),
+  for (final (String spec, ZsButtonVariant variant, String label, List<ZsMenuEntry> entries)
+      in const <(String, ZsButtonVariant, String, List<ZsMenuEntry>)>[
+        ('primary · chevron', ZsButtonVariant.primary, 'Split', _composerMenu),
+        ('secondary · chevron', ZsButtonVariant.quiet, 'Squash', _squashMenu),
+      ])
+    MatrixRow(
+      'SplitButton',
+      spec,
+      const <MatrixState>[..._interaction, MatrixState.disabled],
+      (cell) => ZsSplitButton(
+        label: label,
+        variant: variant,
+        entries: entries,
+        onPressed: () {},
+        menuDisabledReason: cell.state == MatrixState.disabled ? 'Another action is running' : null,
+        menuStatesController: cell.states,
+      ),
+    ),
+  MatrixRow(
+    'SplitButton',
+    'secondary · 26',
+    const <MatrixState>[..._interaction, MatrixState.disabled],
+    (cell) => ZsSplitButton(
+      label: 'Squash',
+      size: ZsSplitButtonSize.sm,
+      entries: _squashMenu,
+      onPressed: () {},
+      disabledReason: cell.state == MatrixState.disabled ? 'Cannot squash merge commits' : null,
+      statesController: cell.states,
+    ),
+  ),
+]);
+
+Widget _splitButtonInteractive(BuildContext context) {
+  final String label = context.knobs.string(label: 'label', initialValue: 'Split');
+  final bool primary = context.knobs.boolean(label: 'primary', initialValue: true);
+  final bool small = context.knobs.boolean(label: 'size 26');
+  final String? reason = context.knobs.stringOrNull(label: 'label disabled reason');
+  final String? menuReason = context.knobs.stringOrNull(label: 'chevron disabled reason');
+  return _live(
+    ZsSplitButton(
+      label: label,
+      variant: primary ? ZsButtonVariant.primary : ZsButtonVariant.quiet,
+      size: small ? ZsSplitButtonSize.sm : ZsSplitButtonSize.md,
+      entries: primary ? _composerMenu : _squashMenu,
+      onPressed: () {},
+      disabledReason: reason,
+      menuDisabledReason: menuReason,
+      tooltip: reason ?? 'jj split -r qkynoyuu',
+      identifier: 'split-button',
     ),
   );
 }

@@ -1604,19 +1604,13 @@ abstract class AppLocalizations {
   /// **'Squash into parent'**
   String get inspectorSquash;
 
-  /// Inspector menu button that opens Squash into parent and Absorb into ancestors.
+  /// Inspector split button: its label squashes the change into its parent; its chevron opens Squash into parent and Absorb into ancestors.
   ///
   /// In en, this message translates to:
   /// **'Squash'**
   String get inspectorSquashMenu;
 
-  /// Tooltip of the inspector's Squash menu button.
-  ///
-  /// In en, this message translates to:
-  /// **'Squash or absorb into earlier changes'**
-  String get inspectorSquashMenuTooltip;
-
-  /// Inspector Squash menu row: jj absorb --from, each hunk moved into the earlier change that last changed its lines.
+  /// Inspector Squash split button's menu row: jj absorb --from, each hunk moved into the earlier change that last changed its lines.
   ///
   /// In en, this message translates to:
   /// **'Absorb into ancestors'**
@@ -1652,17 +1646,47 @@ abstract class AppLocalizations {
   /// **'Deselect all'**
   String get inspectorDeselectAll;
 
-  /// Composer on the working copy: runs jj commit with the checked files.
+  /// Composer on the working copy: runs jj commit with the checked files — the button while everything (or nothing) is picked, else the row under its chevron.
   ///
   /// In en, this message translates to:
   /// **'Commit'**
   String get inspectorCommit;
 
-  /// Composer on another change: runs jj split with the checked files.
+  /// Composer: runs jj split with the checked files — on another change always, on the working copy while only a part is picked.
   ///
   /// In en, this message translates to:
   /// **'Split'**
   String get inspectorSplit;
+
+  /// Composer result preview: tooltip of a bookmark chip on the part where the run leaves the bookmark.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} lands here'**
+  String inspectorComposerBookmarkHere(String name);
+
+  /// Composer menu line: two bookmark names joined.
+  ///
+  /// In en, this message translates to:
+  /// **'{first} and {second}'**
+  String inspectorComposerBookmarkPair(String first, String second);
+
+  /// Composer menu line: three or more bookmarks, counted.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{{count} bookmarks}}'**
+  String inspectorComposerBookmarkCount(int count);
+
+  /// Composer split button's menu: the quiet line under the row whose verb (jj split) moves the change's bookmarks to the rest. names is one name, two joined by and, or a count of bookmarks.
+  ///
+  /// In en, this message translates to:
+  /// **'{names} {count, plural, =1{moves} other{move}} to the new working copy'**
+  String inspectorComposerBookmarksMove(String names, int count);
+
+  /// Composer split button's menu: the quiet line under the row whose verb leaves the change's bookmarks on the change, which keeps the selected part. names is one name, two joined by and, or a count of bookmarks.
+  ///
+  /// In en, this message translates to:
+  /// **'{names} {count, plural, =1{stays} other{stay}} on this change, with the selected part'**
+  String inspectorComposerBookmarksStay(String names, int count);
 
   /// Composer on another change: the only text beside Cancel while every file is picked (no fields, no Split button).
   ///

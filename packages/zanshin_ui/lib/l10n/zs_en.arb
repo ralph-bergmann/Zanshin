@@ -47,5 +47,10 @@
   "@splitShare": {
     "description": "VoiceOver value of a split divider: the leading pane's share of the split, as a percentage.",
     "placeholders": {"share": {"type": "double", "format": "percentPattern", "example": "34%"}}
+  },
+  "splitButtonMore": "More {label} actions",
+  "@splitButtonMore": {
+    "description": "VoiceOver label and tooltip of a split button's chevron, which opens the alternatives to its label.",
+    "placeholders": {"label": {"type": "String", "example": "Split"}}
   }
 }

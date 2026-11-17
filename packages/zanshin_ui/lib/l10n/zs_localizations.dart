@@ -199,6 +199,12 @@ abstract class ZsLocalizations {
   /// In en, this message translates to:
   /// **'{share}'**
   String splitShare(double share);
+
+  /// VoiceOver label and tooltip of a split button's chevron, which opens the alternatives to its label.
+  ///
+  /// In en, this message translates to:
+  /// **'More {label} actions'**
+  String splitButtonMore(String label);
 }
 
 class _ZsLocalizationsDelegate extends LocalizationsDelegate<ZsLocalizations> {

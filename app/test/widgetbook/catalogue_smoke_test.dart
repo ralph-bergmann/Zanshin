@@ -270,7 +270,13 @@ void main() {
         matching: find.byWidgetPredicate((w) => w is ZsButton && w.identifier == identifier),
       );
       expect(within('inspector-edit'), findsOneWidget);
-      expect(within('inspector-squash-menu'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: inspector,
+          matching: find.byWidgetPredicate((w) => w is ZsSplitButton && w.identifier == 'inspector-squash-button'),
+        ),
+        findsOneWidget,
+      );
       expect(within('inspector-abandon'), findsOneWidget);
       expect(find.descendant(of: inspector, matching: find.byKey(const ValueKey<String>('inspector-meta'))), findsOne);
       expect(find.byWidgetPredicate((w) => w is ZsResizeEdge && w.identifier == 'inspector-edge'), findsOneWidget);

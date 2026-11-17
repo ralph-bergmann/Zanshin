@@ -1191,6 +1191,10 @@ class _DemoDetails implements GraphDetails {
     afterWrite?.call();
   }
 
+  /// jj's default: `jj split` moves the change's bookmarks to the rest.
+  @override
+  Future<bool?> splitLegacyBookmarks() async => true;
+
   /// Story 10.24: a modified file gets four hunks (in Rust under `fn main()`), the first three with word marks (Story
   /// 10.32), an added or removed one a single hunk of its lines, a `.png` is binary. The demo's lines change in more
   /// than whitespace, so a read at `-b` / `-w` (Story 10.33) answers the same lines.

@@ -54,6 +54,9 @@ const _keys = <String>[_at, _mutable, _merge, _left, _right, _root];
 /// fake details read the key behind the prefix.
 var _commit = 'c';
 
+/// The bookmarks on @ (Story 10.48); none unless a test sets them.
+var _atRefs = const <GraphRef>[];
+
 /// @ → m → the merge of p and q (both immutable) → the root, at operation [op].
 RecordedGraphLayout _layout(String op, {List<String>? changeIds}) {
   const int imm = RecordedGraphLayout.flagImmutable;
@@ -68,13 +71,13 @@ RecordedGraphLayout _layout(String op, {List<String>? changeIds}) {
     commitIds: <String>[for (final String key in _keys) '$_commit$key'],
     changeIds: changeIds,
     timestamps: <int?>[for (final _ in _keys) DateTime.utc(2026, 10, 30, 11).millisecondsSinceEpoch],
-    refs: const <List<GraphRef>>[
-      <GraphRef>[],
-      <GraphRef>[GraphRef('main'), GraphRef('dev', synced: false), GraphRef('main', remote: 'origin')],
-      <GraphRef>[],
-      <GraphRef>[],
-      <GraphRef>[],
-      <GraphRef>[],
+    refs: <List<GraphRef>>[
+      _atRefs,
+      const <GraphRef>[GraphRef('main'), GraphRef('dev', synced: false), GraphRef('main', remote: 'origin')],
+      const <GraphRef>[],
+      const <GraphRef>[],
+      const <GraphRef>[],
+      const <GraphRef>[],
     ],
     tags: const <List<GraphRef>>[
       <GraphRef>[],
@@ -258,6 +261,20 @@ class _Details implements GraphDetails {
 
   @override
   Future<DiffContext> diffContext() async => (lines: context, fromRepo: contextFromRepo);
+
+  /// What `splitLegacyBookmarks` answers; [refuseLegacy] refuses it. [legacyReads] counts the reads.
+  bool? legacy = true;
+  ZanshinFfiException? refuseLegacy;
+  var legacyReads = 0;
+
+  @override
+  Future<bool?> splitLegacyBookmarks() async {
+    legacyReads++;
+    if (refuseLegacy case final error?) {
+      throw error;
+    }
+    return legacy;
+  }
 
   @override
   Future<void> setDiffContext(int lines) async {
@@ -480,20 +497,27 @@ Finder _button(String identifier) =>
 String _tooltipOf(WidgetTester tester, String identifier) =>
     tester.widget<ZsTooltip>(find.ancestor(of: _button(identifier), matching: find.byType(ZsTooltip)).first).message;
 
-/// The Squash menu button (Story 10.36).
-Finder get _squashMenu =>
-    find.byWidgetPredicate((widget) => widget is ZsMenuButton && widget.identifier == 'inspector-squash-menu');
+/// A split button's part by its identifier: the label (`inspector-squash-button`) or the chevron (`…-more`).
+Finder _part(String identifier) =>
+    find.byWidgetPredicate((widget) => widget is ZsControlCore && widget.identifier == identifier);
 
-/// The Squash menu's row [identifier] (`inspector-squash`, `inspector-absorb`).
+/// The split button [identifier] (Story 10.48).
+Finder _split(String identifier) =>
+    find.byWidgetPredicate((widget) => widget is ZsSplitButton && widget.identifier == identifier);
+
+/// The Squash split button (Story 10.48; a menu button since 10.36).
+Finder get _squashMenu => _split('inspector-squash-button');
+
+/// The Squash split button's menu row [identifier] (`inspector-squash`, `inspector-absorb`).
 ZsMenuItem _squashRow(WidgetTester tester, String identifier) => tester
-    .widget<ZsMenuButton>(_squashMenu)
+    .widget<ZsSplitButton>(_squashMenu)
     .entries
     .whereType<ZsMenuItem>()
     .singleWhere((item) => item.identifier == identifier);
 
-/// Opens the Squash menu and chooses the row labelled [label]; its command runs after the row's blink.
+/// Opens the Squash split button's menu and chooses the row labelled [label]; its command runs after the row's blink.
 Future<void> _chooseFromSquashMenu(WidgetTester tester, String label) async {
-  await tester.tap(_button('inspector-squash-menu'));
+  await tester.tap(_part('inspector-squash-button-more'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 500));
   await tester.tap(find.text(label));
@@ -516,6 +540,7 @@ void main() {
   setUp(() async {
     ops = 0;
     _commit = 'c';
+    _atRefs = const <GraphRef>[];
     source = ScriptedGraphSource(respond: (_) => _layout('op${ops++}'));
     details = _Details();
     actions = _Actions(details);
@@ -833,7 +858,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 300));
       expect(copyBubble, findsOneWidget);
-      await mouse.moveTo(tester.getCenter(_button('inspector-squash-menu')));
+      await mouse.moveTo(tester.getCenter(_part('inspector-squash-button')));
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 300));
       expect(copyBubble, findsNothing);
@@ -841,13 +866,17 @@ void main() {
     });
   });
 
-  testWidgets('a mutable change: Edit, the Squash menu, Abandon; tooltips are the commands', (tester) async {
+  testWidgets('a mutable change: Edit, the Squash split button, Abandon; tooltips are the commands', (tester) async {
     await pump(tester);
     expect(_tooltipOf(tester, 'inspector-edit'), 'jj edit mmmmmmmm');
     expect(tester.widget<ZsButton>(_button('inspector-edit')).variant, ZsButtonVariant.primary);
     expect(tester.widget<ZsButton>(_button('inspector-edit')).icon, ZI.workingCopyAt);
-    expect(_tooltipOf(tester, 'inspector-squash-menu'), 'Squash or absorb into earlier changes');
-    expect(tester.widget<ZsButton>(_button('inspector-squash-menu')).onPressed, isNotNull);
+    final ZsSplitButton split = tester.widget<ZsSplitButton>(_squashMenu);
+    expect(
+      (split.variant, split.tooltip, split.cmd, split.disabledReason, split.menuDisabledReason),
+      (ZsButtonVariant.quiet, 'jj squash -r mmmmmmmm', null, null, null),
+    );
+    expect(split.onPressed, isNotNull);
     expect(find.descendant(of: _squashMenu, matching: find.text('Squash')), findsOneWidget);
     final ZsMenuItem squash = _squashRow(tester, 'inspector-squash');
     expect(
@@ -894,7 +923,64 @@ void main() {
     final ZsMenuItem squash = _squashRow(tester, 'inspector-squash');
     expect((squash.enabled, squash.tooltip), (false, 'Commit gggggggg is immutable'));
     expect(_squashRow(tester, 'inspector-absorb').enabled, isTrue, reason: 'each row has its own preview');
+    final ZsSplitButton split = tester.widget<ZsSplitButton>(_squashMenu);
+    expect(
+      (split.onPressed, split.disabledReason, split.tooltip, split.cmd, split.menuDisabledReason),
+      (null, 'Commit gggggggg is immutable', 'Commit gggggggg is immutable', 'jj squash -r mmmmmmmm', null),
+    );
     await unmount(tester);
+  });
+
+  group('the Squash split button (Story 10.48)', () {
+    testWidgets('a click on the label squashes into the parent; nothing opens', (tester) async {
+      await pump(tester);
+      await tester.tap(_part('inspector-squash-button'));
+      await tester.pump();
+      await tester.pump();
+      expect(details.plans, <String>[_mutable], reason: 'the squash form when both changes carry a description');
+      expect(actions.ran.single, isA<GraphSquash>().having((a) => a.revision, 'revision', _mutable));
+      expect(find.text('Absorb into ancestors'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets("on a merge the label is off with jj's refusal; the chevron opens and Absorb runs", (tester) async {
+      details.squash = const ActionOutcome(
+        status: ActionStatus.refused,
+        refusal: ActionRefusal('jj.invalid_input', 'Cannot squash merge commits without a specified destination'),
+        combinedDescriptionNeeded: false,
+        allowBackwardsNeeded: false,
+      );
+      await pump(tester);
+      await tester.tap(_part('inspector-squash-button'), warnIfMissed: false);
+      await tester.pump();
+      expect(actions.ran, isEmpty);
+      await _chooseFromSquashMenu(tester, 'Absorb into ancestors');
+      expect(actions.ran.single, isA<GraphAbsorb>().having((a) => a.id, 'id', _mutable));
+      await unmount(tester);
+    });
+
+    testWidgets('both rows off: the chevron is off too', (tester) async {
+      details
+        ..squash = const ActionOutcome(
+          status: ActionStatus.refused,
+          refusal: ActionRefusal('jj.invalid_input', 'Cannot squash merge commits without a specified destination'),
+          combinedDescriptionNeeded: false,
+          allowBackwardsNeeded: false,
+        )
+        ..absorb = const ActionOutcome(
+          status: ActionStatus.noOp,
+          refusal: null,
+          combinedDescriptionNeeded: false,
+          allowBackwardsNeeded: false,
+        );
+      await pump(tester);
+      expect(tester.widget<ZsSplitButton>(_squashMenu).menuDisabledReason, isNotNull);
+      await tester.tap(_part('inspector-squash-button-more'), warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Absorb into ancestors'), findsNothing);
+      await unmount(tester);
+    });
   });
 
   group('Absorb into ancestors (Story 10.36)', () {
@@ -936,11 +1022,11 @@ void main() {
       tester,
     ) async {
       await pump(tester);
-      await tester.tap(_button('inspector-squash-menu'));
+      await tester.tap(_part('inspector-squash-button-more'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       final Rect button = tester.getRect(_squashMenu);
-      // The exact placement (4 below the left edge) is ZsMenuButton's own test.
+      // The exact placement (4 below the left edge) is ZsSplitButton's own test.
       final Rect row = tester.getRect(find.text('Squash into parent'));
       expect(row.top, greaterThan(button.bottom));
       expect(row.left, greaterThan(button.left));
@@ -955,14 +1041,15 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('busy: the menu button is disabled with the reason', (tester) async {
+    testWidgets('busy: both parts of the Squash split button are disabled with the reason', (tester) async {
       await pump(tester);
       actions.hold = Completer<void>();
       unawaited(graph.run(const GraphEdit(_mutable)));
       await tester.pump();
-      final ZsButton menu = tester.widget<ZsButton>(_button('inspector-squash-menu'));
-      expect(menu.onPressed, isNull);
-      expect(menu.disabledReason, isNotNull);
+      final ZsSplitButton split = tester.widget<ZsSplitButton>(_squashMenu);
+      expect(split.onPressed, isNull);
+      expect(split.disabledReason, isNotNull);
+      expect(split.menuDisabledReason, split.disabledReason);
       actions.hold!.complete();
       await tester.pump();
       await tester.pump();
@@ -977,7 +1064,7 @@ void main() {
     expect(find.text('No changes yet — whatever you edit in your editor lands here.'), findsOneWidget);
     expect(find.descendant(of: _button('inspector-new'), matching: find.text('New change')), findsOneWidget);
     expect(_tooltipOf(tester, 'inspector-new'), 'jj new wwwwwwww');
-    expect(_button('inspector-squash-menu'), findsOneWidget);
+    expect(_squashMenu, findsOneWidget);
     expect(_button('inspector-abandon'), findsOneWidget);
     expect(_button('inspector-edit'), findsNothing);
     await tester.tap(_button('inspector-new'));
@@ -2266,7 +2353,7 @@ void main() {
     }
 
     Future<void> runIt(WidgetTester tester) async {
-      await tester.tap(_button('inspector-composer-run'));
+      await tester.tap(_part('inspector-composer-run'));
       await tester.pump();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -2349,21 +2436,254 @@ void main() {
       await unmount(tester);
     });
 
-    testWidgets('commit a subset: only the checked path, the command shows it', (tester) async {
-      await pump(tester, select: _at);
+    testWidgets(
+      'a subset on @ (Story 10.48): Split ▾ Commit; a click splits @ by its key, the command shows the path',
+      (
+        tester,
+      ) async {
+        await pump(tester, select: _at, width: 1000);
+        await tap(tester, box('b.txt'));
+        expect(checked(tester, 'b.txt'), isFalse);
+        expect(checked(tester, 'Select all'), isNull, reason: 'some files checked: mixed (Story 10.26)');
+        await type(tester, 'inspector-composer-summary', 'Fix');
+        expect(shown(tester), 'jj split -r wwwwwwww -m Fix root:a.txt');
+        expect((inspector.composerVerb, inspector.composerAlternative), (ComposerVerb.split, ComposerVerb.commit));
+        final ZsSplitButton run = tester.widget<ZsSplitButton>(_split('inspector-composer-run'));
+        expect((run.label, run.variant, run.tooltip), ('Split', ZsButtonVariant.primary, shown(tester)));
+        expect(
+          run.entries.whereType<ZsMenuItem>().map((row) => (row.label, row.cmd)),
+          <(String, String?)>[('Split', 'jj split -r wwwwwwww'), ('Commit', 'jj commit')],
+        );
+        expect(
+          tester.widget<ZsTextField>(_id('inspector-composer-summary')).placeholder,
+          'Summary of the selected changes',
+        );
+        expect(_button('inspector-composer-cancel'), findsNothing, reason: 'Cancel only on another change');
+        expect(
+          find.descendant(of: composer, matching: find.text('1 file')),
+          findsNWidgets(2),
+          reason: 'rest and selected',
+        );
+        await runIt(tester);
+        final split = actions.ran.single as GraphSplit;
+        expect(split.id, _at);
+        expect(split.paths, <String>['a.txt']);
+        expect(split.message, <String>['Fix']);
+        await unmount(tester);
+      },
+    );
+
+    testWidgets('a subset on @: Commit from the chevron commits the path; Tab reaches the label, then the chevron', (
+      tester,
+    ) async {
+      await pump(tester, select: _at, width: 1000);
       await tap(tester, box('b.txt'));
-      expect(checked(tester, 'b.txt'), isFalse);
-      expect(checked(tester, 'Select all'), isNull, reason: 'some files checked: mixed (Story 10.26)');
       await type(tester, 'inspector-composer-summary', 'Fix');
-      expect(shown(tester), 'jj commit -m Fix root:a.txt');
-      expect(
-        find.descendant(of: composer, matching: find.text('1 file')),
-        findsNWidgets(2),
-        reason: 'rest and selected',
-      );
-      await runIt(tester);
-      expect((actions.ran.single as GraphCommit).paths, <String>['a.txt']);
+      // The keyboard: Tab from Details reaches the label, then the chevron; Space opens the menu.
+      String? focusedPart() =>
+          FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<ZsControlCore>()?.identifier;
+      await tester.tap(field('inspector-composer-details'));
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(focusedPart(), 'inspector-composer-run');
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(focusedPart(), 'inspector-composer-run-more');
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(actions.ran, isEmpty, reason: 'the label was passed by');
+      expect(find.text('jj commit'), findsOneWidget, reason: 'the menu is open');
+      await tester.tap(find.text('Commit').last);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      final commit = actions.ran.single as GraphCommit;
+      expect(commit.paths, <String>['a.txt']);
+      expect(commit.command, 'jj commit -m Fix root:a.txt');
       await unmount(tester);
+    });
+
+    testWidgets('everything on @ is a plain Commit; another change with a part is a plain Split', (tester) async {
+      await pump(tester, select: _at);
+      expect(_split('inspector-composer-run'), findsNothing);
+      expect((inspector.composerVerb, inspector.composerAlternative), (ComposerVerb.commit, null));
+      expect(inspector.composerActionAs(ComposerVerb.split), isNull, reason: 'no alternative to run');
+      await unmount(tester);
+      await pump(tester, width: 1000);
+      await tap(tester, box('src/a.dart'));
+      expect(_split('inspector-composer-run'), findsNothing);
+      expect((inspector.composerVerb, inspector.composerAlternative), (ComposerVerb.split, null));
+      await unmount(tester);
+    });
+
+    group('where the bookmarks land (Story 10.48)', () {
+      Finder chip(String part, String name) => find.byKey(ValueKey<String>('inspector-composer-bookmark-$part-$name'));
+      List<String?> notes(WidgetTester tester) => <String?>[
+        for (final ZsMenuItem row
+            in tester.widget<ZsSplitButton>(_split('inspector-composer-run')).entries.whereType<ZsMenuItem>())
+          row.note,
+      ];
+
+      Future<void> openMenu(WidgetTester tester) async {
+        await tester.tap(_part('inspector-composer-run-more'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      testWidgets('legacy true: the chip on the new working copy, the two lines; highlighting Commit moves the chip, '
+          'the command and the placeholder until the highlight leaves', (tester) async {
+        _atRefs = const <GraphRef>[GraphRef('feature'), GraphRef('feature', remote: 'origin')];
+        await pump(tester, select: _at, width: 1000);
+        await tap(tester, box('b.txt'));
+        await type(tester, 'inspector-composer-summary', 'Fix');
+        expect(inspector.composerBookmarks, <String>['feature'], reason: 'local bookmarks only');
+        expect(chip('rest', 'feature'), findsOneWidget);
+        expect(chip('selected', 'feature'), findsNothing);
+        expect(
+          find.byWidgetPredicate((w) => w is ZsTooltip && w.message == 'feature lands here'),
+          findsOneWidget,
+        );
+        expect(notes(tester), <String>[
+          'feature moves to the new working copy',
+          'feature stays on this change, with the selected part',
+        ]);
+
+        await openMenu(tester);
+        final TestGesture mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        addTearDown(mouse.removePointer);
+        await mouse.addPointer(location: tester.getCenter(find.text('jj commit')));
+        await tester.pump();
+        expect(chip('selected', 'feature'), findsOneWidget);
+        expect(chip('rest', 'feature'), findsNothing);
+        expect(shown(tester), 'jj commit -m Fix root:a.txt');
+        expect(tester.widget<ZsTextField>(_id('inspector-composer-summary')).placeholder, 'Summary of what you did');
+        expect(
+          tester.widget<ZsSplitButton>(_split('inspector-composer-run')).tooltip,
+          'jj split -r wwwwwwww -m Fix root:a.txt',
+          reason: "the run tooltip names the label's verb",
+        );
+
+        await mouse.moveTo(Offset.zero);
+        await tester.pump();
+        expect(chip('rest', 'feature'), findsOneWidget);
+        expect(shown(tester), 'jj split -r wwwwwwww -m Fix root:a.txt');
+
+        // The keys move the same highlight; closing the menu returns the preview to the label's verb.
+        await tester.sendKeyEvent(LogicalKeyboardKey.end);
+        await tester.pump();
+        expect(shown(tester), 'jj commit -m Fix root:a.txt');
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(shown(tester), 'jj split -r wwwwwwww -m Fix root:a.txt');
+        expect(chip('rest', 'feature'), findsOneWidget);
+        await unmount(tester);
+      });
+
+      testWidgets('another change with a part, legacy true: a plain Split, the chips on the rest, no menu', (
+        tester,
+      ) async {
+        await pump(tester, width: 1000);
+        await tap(tester, box('src/a.dart'));
+        expect(_split('inspector-composer-run'), findsNothing);
+        expect(find.descendant(of: _button('inspector-composer-run'), matching: find.text('Split')), findsOneWidget);
+        expect(chip('rest', 'main'), findsOneWidget);
+        expect(chip('rest', 'dev'), findsOneWidget);
+        expect(chip('selected', 'main'), findsNothing);
+        await unmount(tester);
+      });
+
+      testWidgets('@ with everything picked: a plain Commit, the chip on the selected part', (tester) async {
+        _atRefs = const <GraphRef>[GraphRef('feature')];
+        await pump(tester, select: _at);
+        expect(_split('inspector-composer-run'), findsNothing);
+        expect(find.descendant(of: _button('inspector-composer-run'), matching: find.text('Commit')), findsOneWidget);
+        expect(chip('selected', 'feature'), findsOneWidget);
+        expect(chip('rest', 'feature'), findsNothing);
+        await unmount(tester);
+      });
+
+      testWidgets('legacy false: the chip on the selected part; the rows carry no lines', (tester) async {
+        _atRefs = const <GraphRef>[GraphRef('feature')];
+        details.legacy = false;
+        await pump(tester, select: _at);
+        await tap(tester, box('b.txt'));
+        expect(chip('selected', 'feature'), findsOneWidget);
+        expect(chip('rest', 'feature'), findsNothing);
+        expect(notes(tester), <String?>[null, null]);
+        await unmount(tester);
+      });
+
+      testWidgets('legacy unreadable: Split shows no chip and no lines; Commit still puts it on the selected part', (
+        tester,
+      ) async {
+        _atRefs = const <GraphRef>[GraphRef('feature')];
+        details.refuseLegacy = const ZanshinFfiException('jj.config_error', 'bad config');
+        await pump(tester, select: _at);
+        await tap(tester, box('b.txt'));
+        expect(chip('selected', 'feature'), findsNothing);
+        expect(chip('rest', 'feature'), findsNothing);
+        expect(notes(tester), <String?>[null, null]);
+        expect(inspector.bookmarksLandOn(ComposerVerb.commit), ComposerPart.selected);
+        await openMenu(tester);
+        await tester.sendKeyEvent(LogicalKeyboardKey.end);
+        await tester.pump();
+        expect(chip('selected', 'feature'), findsOneWidget);
+        await unmount(tester);
+      });
+
+      testWidgets('the setting is read at start and again after a config write', (tester) async {
+        _atRefs = const <GraphRef>[GraphRef('feature')];
+        await pump(tester, select: _at);
+        await tap(tester, box('b.txt'));
+        expect(chip('rest', 'feature'), findsOneWidget);
+        final int reads = details.legacyReads;
+        details.legacy = false;
+        inspector.configChanged();
+        await tester.pump();
+        await tester.pump();
+        expect(details.legacyReads, reads + 1);
+        expect(chip('selected', 'feature'), findsOneWidget);
+        await unmount(tester);
+      });
+
+      testWidgets('two names join with "and", three or more are counted', (tester) async {
+        _atRefs = const <GraphRef>[GraphRef('a'), GraphRef('b')];
+        await pump(tester, select: _at);
+        await tap(tester, box('b.txt'));
+        expect(notes(tester), <String>[
+          'a and b move to the new working copy',
+          'a and b stay on this change, with the selected part',
+        ]);
+        await unmount(tester);
+        _atRefs = const <GraphRef>[GraphRef('a'), GraphRef('b'), GraphRef('c')];
+        await pump(tester, select: _at);
+        await tap(tester, box('b.txt'));
+        expect(notes(tester), <String>[
+          '3 bookmarks move to the new working copy',
+          '3 bookmarks stay on this change, with the selected part',
+        ]);
+        await unmount(tester);
+      });
+
+      testWidgets('busy: both parts of the composer split button are disabled with the reason', (tester) async {
+        await pump(tester, select: _at);
+        await tap(tester, box('b.txt'));
+        actions.hold = Completer<void>();
+        unawaited(graph.run(const GraphEdit(_mutable)));
+        await tester.pump();
+        final ZsSplitButton run = tester.widget<ZsSplitButton>(_split('inspector-composer-run'));
+        expect(run.onPressed, isNull);
+        expect(run.disabledReason, isNotNull);
+        expect(run.menuDisabledReason, run.disabledReason);
+        actions.hold!.complete();
+        await tester.pump();
+        await tester.pump();
+        await unmount(tester);
+      });
     });
 
     testWidgets('nothing checked on @: the composer stays, Commit is disabled; select all checks every file', (
@@ -2390,9 +2710,9 @@ void main() {
       ];
       await pump(tester, select: _at);
       await tap(tester, box('b.txt'));
-      expect(shown(tester), 'jj commit -m \'\' \'root:"a[1].txt"\'');
+      expect(shown(tester), 'jj split -r wwwwwwww -m \'\' \'root:"a[1].txt"\'');
       await runIt(tester);
-      expect((actions.ran.single as GraphCommit).paths, <String>['a[1].txt']);
+      expect((actions.ran.single as GraphSplit).paths, <String>['a[1].txt']);
       await unmount(tester);
     });
 
@@ -2837,7 +3157,8 @@ void main() {
       final ZsColors colors = ZsColors.of(tester.element(composer));
       expect(edgeOf(tester, 1), isNull, reason: "an unpicked part's rows carry no edge");
       expect(edgeOf(tester, 0)!.left, BorderSide(color: colors.accentLine, width: 2));
-      expect(shown(tester), "jj commit -i -m ''");
+      // A part on @: the button splits, Commit is the chevron's alternative (Story 10.48).
+      expect(shown(tester), "jj split -r wwwwwwww -i -m ''");
       // Selected: every file has a pick (a.txt k1+k3: +1 −2, b.sh ±1, d.txt +2); Rest: a.txt's k2 (+2).
       expect(find.descendant(of: composer, matching: find.text('4 files')), findsOneWidget);
       expect(find.descendant(of: composer, matching: find.text('+4')), findsOneWidget);
@@ -2845,7 +3166,11 @@ void main() {
       expect(find.descendant(of: composer, matching: find.text('1 file')), findsOneWidget);
       expect(find.descendant(of: composer, matching: find.text('+2')), findsOneWidget);
 
-      final commit = inspector.composerAction! as GraphCommit;
+      expect(
+        (inspector.composerAction! as GraphSplit).hunks!.files.map((f) => f.path),
+        <String>['a.txt', 'b.sh', 'd.txt', 'new.txt', 'old.txt'],
+      );
+      final commit = inspector.composerActionAs(ComposerVerb.commit)! as GraphCommit;
       expect(commit.paths, isEmpty);
       expect(commit.hunks!.left, <String>['t$_at-'], reason: "the entry's parentTreeIds");
       expect(
@@ -2876,8 +3201,10 @@ void main() {
       await tap(tester, hunkBox(0));
       expect(state(tester, fileBox('b.sh')), isNull);
       expect(state(tester, checkbox('inspector-mode-check')), isTrue);
-      expect(filesOf((inspector.composerAction! as GraphCommit).hunks), contains('b.sh:mode+'));
-      final FileSelection bsh = (inspector.composerAction! as GraphCommit).hunks!.files.firstWhere(
+      final commit = inspector.composerActionAs(ComposerVerb.commit)! as GraphCommit;
+      expect(filesOf(commit.hunks), contains('b.sh:mode+'));
+      expect(filesOf((inspector.composerAction! as GraphSplit).hunks), contains('b.sh:mode+'));
+      final FileSelection bsh = commit.hunks!.files.firstWhere(
         (f) => f.path == 'b.sh',
       );
       expect((bsh.mode, bsh.whole), (true, false));
@@ -2999,10 +3326,11 @@ void main() {
       await pump(tester, select: _at);
       await settle(tester);
       await tap(tester, fileBox('d.txt'));
-      final commit = inspector.composerAction! as GraphCommit;
+      final commit = inspector.composerActionAs(ComposerVerb.commit)! as GraphCommit;
       expect(commit.hunks, isNull);
       expect(commit.paths, <String>['a.txt', 'b.sh', 'new.txt', 'old.txt']);
-      expect(shown(tester), "jj commit -m '' root:a.txt root:b.sh root:new.txt root:old.txt");
+      expect(commit.command, "jj commit -m '' root:a.txt root:b.sh root:new.txt root:old.txt");
+      expect(shown(tester), "jj split -r wwwwwwww -m '' root:a.txt root:b.sh root:new.txt root:old.txt");
       await unmount(tester);
     });
 

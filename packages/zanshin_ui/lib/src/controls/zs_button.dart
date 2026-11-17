@@ -11,6 +11,7 @@ import '../design/zs_motion.dart';
 import '../design/zs_type.dart';
 import '../icons/zanshin_icon.dart';
 import '../materials/zs_surface.dart';
+import '../zs_strings.dart';
 import 'zs_badge.dart';
 import 'zs_control.dart';
 import 'zs_control_core.dart';
@@ -22,6 +23,8 @@ import 'zs_tooltip.dart';
 
 // The menu button builds the button's own look through its private constructor.
 part 'zs_menu_button.dart';
+// The split button shares the button's look and painter.
+part 'zs_split_button.dart';
 
 /// A text button's look (DS components/actions/Button.d.ts; actions.css:4-32).
 enum ZsButtonVariant {

@@ -12,6 +12,7 @@ import 'package:zanshin_ui/src/design/zs_appearance.dart';
 import 'package:zanshin_ui/src/design/zs_colors.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
 import 'package:zanshin_ui/src/design/zs_type.dart';
+import 'package:zanshin_ui/src/icons/zanshin_icon.dart';
 import 'package:zanshin_ui/src/materials/zs_menu_material.dart';
 
 import '../helpers/controls.dart';
@@ -781,6 +782,68 @@ void main() {
     await tester.pump(_m.durExit);
     ZsTooltip.resetWarmWindow();
     handle.dispose();
+  });
+
+  testWidgets('a note is a second line under the label in --text-dim; highlighted it takes the row ink', (
+    tester,
+  ) async {
+    const note = 'feature moves to the new working copy';
+    await tester.pumpWidget(
+      _host(
+        button: button,
+        entries: const <ZsMenuEntry>[
+          ZsMenuItem(label: 'Split', cmd: 'jj split -r abc', note: note, noteIcon: ZI.bookmark),
+          ZsMenuItem(label: 'Commit', cmd: 'jj commit'),
+        ],
+      ),
+    );
+    await _openByKey(tester, button);
+    final Rect label = tester.getRect(find.text('Split'));
+    final Rect line = tester.getRect(find.text(note));
+    expect(line.top, greaterThan(label.bottom));
+    expect(line.left, greaterThan(label.left), reason: 'after its 10 px glyph');
+    expect(find.bySemanticsLabel('Split, $note, jj split -r abc'), findsOneWidget, reason: 'VoiceOver reads the note');
+    expect(tester.getSize(find.bySemanticsLabel(RegExp('^Split'))).height, greaterThan(28));
+    expect(tester.getSize(find.bySemanticsLabel(RegExp('^Commit'))).height, 28);
+    expect(tester.widget<Text>(find.text(note)).style?.color, ZsColors.night.textDim);
+    expect(tester.widget<Text>(find.text(note)).style?.fontSize, 11);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(tester.widget<Text>(find.text(note)).style?.color, ZsColors.night.accentInk);
+  });
+
+  testWidgets('onHighlight: true when the highlight enters a row by key or pointer, false when it leaves or the menu '
+      'closes', (tester) async {
+    final heard = <String>[];
+    ZsMenuItem row(String label) =>
+        ZsMenuItem(label: label, onHighlight: (on) => heard.add('$label ${on ? 'on' : 'off'}'));
+    await tester.pumpWidget(_host(button: button, entries: <ZsMenuEntry>[row('Split'), row('Commit')]));
+    await _openByKey(tester, button);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(heard, <String>['Split on', 'Split off', 'Commit on']);
+    heard.clear();
+
+    final TestGesture mouse = await hover(tester, find.text('Split'));
+    await tester.pump();
+    expect(heard, <String>['Commit off', 'Split on']);
+    heard.clear();
+    await mouse.moveTo(Offset.zero);
+    await tester.pump();
+    expect(heard, <String>['Split off']);
+    heard.clear();
+
+    await mouse.moveTo(tester.getCenter(find.text('Commit')));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(find.byType(ZsMenuPanel), findsNothing);
+    expect(heard, <String>['Commit on', 'Commit off']);
+    await mouse.removePointer();
   });
 }
 

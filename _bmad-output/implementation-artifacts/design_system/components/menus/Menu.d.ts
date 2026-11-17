@@ -21,8 +21,12 @@ export interface MenuItem {
   submenu?: Array<MenuItem | "sep">;
   /** a section heading (caps), not actionable */
   header?: string;
-  /** a note row, not actionable — why something is missing ("Immutable · below trunk() · main"); 11.5px --text-dim, wraps; `icon` sits in the leading column (e.g. <HatchSwatch/>). The keyboard skips it; the menu is described by it. */
+  /** without a `label`: a note row, not actionable — why something is missing ("Immutable · below trunk() · main"); 11.5px --text-dim, wraps; `icon` sits in the leading column (e.g. <HatchSwatch/>). The keyboard skips it; the menu is described by it. With a `label` (2026-11-17, Story 10.48): the row's quiet second line under its label — 11px --text-dim, wrapping, the row grows to fit (min 28); highlighted, it takes the row's ink ("feature moves to the new working copy"). */
   note?: React.ReactNode;
+  /** with a row's `note`: an Icon name before it, 10px --text-faint (`bookmark`) */
+  noteIcon?: string;
+  /** hears the shared highlight (pointer or keys) enter the row (true) and leave it (false), and false when the menu goes — a preview follows the highlighted alternative (the composer) */
+  onHighlight?: (on: boolean) => void;
   /** with disabled: the reason — shown by the row's wrapper, which still takes hover */
   title?: string;
 }

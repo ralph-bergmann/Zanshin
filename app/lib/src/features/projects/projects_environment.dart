@@ -27,6 +27,10 @@ abstract interface class ProjectsEnvironment {
   /// user-level ones without it. Throws [ZanshinFfiException] when the read fails.
   Future<JjIdentity> identity({String? workspaceRoot});
 
+  /// `jj config get NAME` (9.28) for the workspace at [workspaceRoot], or the user-level stack without it: the
+  /// effective value as text, jj's built-in defaults included. Throws [ZanshinFfiException] when the read fails.
+  Future<String?> configGet(String name, {String? workspaceRoot});
+
   /// `jj config list NAME --include-overridden` (9.28) for the workspace at [workspaceRoot], or without it the
   /// user-level stack: every layer's value of [name], lowest first. Throws [ZanshinFfiException] when the read fails.
   Future<List<ConfigEntry>> configList({required String name, String? workspaceRoot});
@@ -193,6 +197,10 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
     final ConfigGetResult email = await _worker.configGet('user.email', workspaceRoot: workspaceRoot);
     return JjIdentity(name: name.value, email: email.value);
   }
+
+  @override
+  Future<String?> configGet(String name, {String? workspaceRoot}) async =>
+      (await _worker.configGet(name, workspaceRoot: workspaceRoot)).value;
 
   final _configWrites = ConfigWrites();
 

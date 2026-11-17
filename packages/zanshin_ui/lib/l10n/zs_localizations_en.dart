@@ -78,4 +78,9 @@ class ZsLocalizationsEn extends ZsLocalizations {
 
     return '$shareString';
   }
+
+  @override
+  String splitButtonMore(String label) {
+    return 'More $label actions';
+  }
 }

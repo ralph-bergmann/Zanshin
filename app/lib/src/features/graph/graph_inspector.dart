@@ -38,6 +38,24 @@ final _log = Logger('zanshin.inspector');
 /// The describe form's two fields.
 typedef InspectorDraft = ({String summary, String details});
 
+/// What the composer runs (Story 10.48): `jj commit` or `jj split`.
+enum ComposerVerb {
+  /// `jj commit` (@ only).
+  commit,
+
+  /// `jj split -r`.
+  split,
+}
+
+/// A part of the composer's result preview.
+enum ComposerPart {
+  /// The rest: on @ the new working copy.
+  rest,
+
+  /// The selected part.
+  selected,
+}
+
 /// The inspector's model (Story 10.8): what [details] answers for the graph's selection, and the describe form's state.
 ///
 /// - **Fetch.** On every change of the selected key or the layout's operation it reads `show` (the commit id) and,
@@ -59,7 +77,10 @@ typedef InspectorDraft = ({String summary, String details});
 ///   ([contextLines]) through [details]. The summary and the Viewed fingerprints stay exact.
 /// - **Composer** (Story 10.25): the checked files of the selection — @ starts with all, another change with none,
 ///   reset on a selection change, kept to the still-listed paths on a reload — and a composer draft per change key;
-///   [runComposer] runs [composerAction] (`jj commit` / `jj split -r`). [squash] asks `squashPlan` first and opens the
+///   [runComposer] runs [composerAction] (`jj commit` / `jj split -r`); the verb follows the pick ([composerVerb], on @
+///   with [composerAlternative], Story 10.48), and the preview shows where the change's bookmarks land
+///   ([bookmarksLandOn], `split.legacy-bookmark-behavior` read at start and on [configChanged]). [squash] asks
+///   `squashPlan` first and opens the
 ///   squash form with the combined description when jj would open its editor.
 /// - **File list** (Story 10.39): flat or tree is `general.diffFileList` in [settings] ([fileList]); the tree's
 ///   collapsed folders live here for the session ([collapsed]); a folder picks and marks Viewed all of its files
@@ -88,6 +109,7 @@ class InspectorViewModel extends ChangeNotifier {
     viewed.addListener(_viewedChanged);
     _graphChanged();
     unawaited(_readContext());
+    unawaited(_readLegacyBookmarks());
   }
 
   /// The graph whose selection it shows; its runner runs the actions.
@@ -114,6 +136,8 @@ class InspectorViewModel extends ChangeNotifier {
   DiffWhitespaceSetting _whitespace;
   DiffContext _context = (lines: 3, fromRepo: false);
   var _contextSerial = 0;
+  bool? _legacyBookmarks;
+  var _legacySerial = 0;
   ({double narrow, double wide}) _shares;
 
   Map<String, FileDiff>? _summary;
@@ -241,6 +265,20 @@ class InspectorViewModel extends ChangeNotifier {
     }
     if (serial == _contextSerial && context != _context) {
       _context = context;
+      _notify();
+    }
+  }
+
+  Future<void> _readLegacyBookmarks() async {
+    final int serial = ++_legacySerial;
+    bool? legacy;
+    try {
+      legacy = await details.splitLegacyBookmarks();
+    } on ZanshinFfiException catch (error) {
+      _log.warning('reading split.legacy-bookmark-behavior refused: ${error.code}');
+    }
+    if (serial == _legacySerial && legacy != _legacyBookmarks) {
+      _legacyBookmarks = legacy;
       _notify();
     }
   }
@@ -451,10 +489,11 @@ class InspectorViewModel extends ChangeNotifier {
   }
 
   /// A jj config write may change `diff.color-words.*`: the focused diff loads again, the old one stays meanwhile, and
-  /// the context lines are read again.
+  /// the context lines and `split.legacy-bookmark-behavior` are read again.
   void configChanged() {
     _reloadFocus();
     unawaited(_readContext());
+    unawaited(_readLegacyBookmarks());
     _notify();
   }
 
@@ -850,18 +889,84 @@ class InspectorViewModel extends ChangeNotifier {
     return at.layout.workingCopyIndex == at.node ? _listed.isNotEmpty : pickedCount > 0;
   }
 
-  /// What the composer runs for the selection — `jj commit` on @ (no paths when every file is checked), else
-  /// `jj split -r` with the checked paths (a renamed file with its source); with a partial pick both take the hunk
-  /// selection instead (Story 10.26); null when it shows no composer or nothing is checked.
-  GraphAction? get composerAction => _composer(short: false);
+  bool get _atWorkingCopy {
+    final ({GraphLayout layout, int node})? at = _mutableNode;
+    return at != null && at.layout.workingCopyIndex == at.node;
+  }
 
-  /// [composerAction]'s command as the composer previews it — the change named by its short id, as the inspector's
+  /// The verb the composer's button names and runs on a click (Story 10.48): on @ a part (a partial pick, or some
+  /// files whole) is Split, everything whole — or nothing picked — Commit; another change is always Split; null when
+  /// it shows no composer.
+  ComposerVerb? get composerVerb {
+    if (!composing) {
+      return null;
+    }
+    if (!_atWorkingCopy) {
+      return ComposerVerb.split;
+    }
+    return pickedCount > 0 && !allPicked ? ComposerVerb.split : ComposerVerb.commit;
+  }
+
+  /// The alternative the button's chevron offers: Commit beside @'s Split; else null (a plain button).
+  ComposerVerb? get composerAlternative =>
+      composerVerb == ComposerVerb.split && _atWorkingCopy ? ComposerVerb.commit : null;
+
+  /// What the composer runs for the selection with [verb] (default [composerVerb]) — `jj commit` on @ (no paths when
+  /// every file is checked), `jj split -r` with the checked paths (a renamed file with its source); with a partial
+  /// pick both take the hunk selection instead (Story 10.26); null when it shows no composer, nothing is checked or
+  /// [verb] is neither [composerVerb] nor [composerAlternative].
+  GraphAction? composerActionAs([ComposerVerb? verb]) => _composer(verb, short: false);
+
+  /// [composerActionAs] for [composerVerb].
+  GraphAction? get composerAction => composerActionAs();
+
+  /// [composerActionAs]'s command as the composer previews it — the change named by its short id, as the inspector's
   /// other buttons show theirs; null without an action.
-  String? get composerCommand => _composer(short: true)?.command;
+  String? composerCommandAs([ComposerVerb? verb]) => _composer(verb, short: true)?.command;
 
-  /// [composerCommand] with each `-m` paragraph longer than [keep] characters cut to its first [keep] and "…": the
+  /// [composerCommandAs] for [composerVerb].
+  String? get composerCommand => composerCommandAs();
+
+  /// [composerCommandAs] with each `-m` paragraph longer than [keep] characters cut to its first [keep] and "…": the
   /// command line shortens the message, never the change id or the paths.
-  String? composerCommandCut(int keep) => _composer(short: true, keep: keep)?.command;
+  String? composerCommandCut(int keep, {ComposerVerb? verb}) => _composer(verb, short: true, keep: keep)?.command;
+
+  /// The selection's local bookmarks, by name in jj's order (Story 10.48): what the composer's preview places.
+  List<String> get composerBookmarks {
+    final ({GraphLayout layout, int node})? at = _mutableNode;
+    if (at == null) {
+      return const <String>[];
+    }
+    return <String>[
+      for (final GraphRef ref in at.layout.refsOf(at.node))
+        if (ref.remote == null) ref.name,
+    ];
+  }
+
+  /// Where [verb] leaves the selection's bookmarks: `jj commit` on the selected part (the change keeps them); `jj split`
+  /// on the rest while `split.legacy-bookmark-behavior` is true (jj's default), on the selected part while it is false;
+  /// null while that is unknown (unread, refused or no boolean).
+  ComposerPart? bookmarksLandOn(ComposerVerb verb) => switch (verb) {
+    ComposerVerb.commit => ComposerPart.selected,
+    ComposerVerb.split => switch (_legacyBookmarks) {
+      true => ComposerPart.rest,
+      false => ComposerPart.selected,
+      null => null,
+    },
+  };
+
+  /// Whether the button's verb and its alternative leave the bookmarks on different parts: the menu rows then say
+  /// where.
+  bool get composerBookmarksDiffer {
+    final ComposerVerb? verb = composerVerb;
+    final ComposerVerb? alternative = composerAlternative;
+    if (verb == null || alternative == null || composerBookmarks.isEmpty) {
+      return false;
+    }
+    final ComposerPart? here = bookmarksLandOn(verb);
+    final ComposerPart? there = bookmarksLandOn(alternative);
+    return here != null && there != null && here != there;
+  }
 
   /// Whether the split would take every file of a change other than @ and leave it empty: the composer shows only its
   /// hint and Cancel.
@@ -870,10 +975,14 @@ class InspectorViewModel extends ChangeNotifier {
     return at != null && at.layout.workingCopyIndex != at.node && allPicked;
   }
 
-  GraphAction? _composer({required bool short, int? keep}) {
+  GraphAction? _composer(ComposerVerb? asked, {required bool short, int? keep}) {
     final ({GraphLayout layout, int node})? at = _mutableNode;
     final String? key = _key;
+    final ComposerVerb? verb = asked ?? composerVerb;
     if (at == null || key == null || !composing || pickedCount == 0) {
+      return null;
+    }
+    if (verb == null || (verb != composerVerb && verb != composerAlternative)) {
       return null;
     }
     final paragraphs = <String>[
@@ -883,8 +992,8 @@ class InspectorViewModel extends ChangeNotifier {
         else
           paragraph,
     ];
-    final isAt = at.layout.workingCopyIndex == at.node;
-    final String id = isAt || !short ? key : graphShortId(at.layout, at.node);
+    final commit = verb == ComposerVerb.commit;
+    final String id = short ? graphShortId(at.layout, at.node) : key;
     final List<FileChange> files = _entry?.fileChanges ?? const <FileChange>[];
     // A rename picked whole selects its source's removal too (deferred I1): `jj commit root:new root:old`.
     String? source(FileChange file) => file.kind == FileChangeKind.renamed ? file.fromPath : null;
@@ -893,7 +1002,7 @@ class InspectorViewModel extends ChangeNotifier {
         for (final FileChange file in files)
           if (_picked.contains(file.path)) ...<String>[file.path, ?source(file)],
       ];
-      return isAt
+      return commit
           ? GraphCommit(key, message: paragraphs, paths: allPicked ? const <String>[] : paths)
           : GraphSplit(id, message: paragraphs, paths: paths);
     }
@@ -908,7 +1017,7 @@ class InspectorViewModel extends ChangeNotifier {
             _selection(file.path, pick),
       ],
     );
-    return isAt
+    return commit
         ? GraphCommit(key, message: paragraphs, hunks: hunks)
         : GraphSplit(id, message: paragraphs, hunks: hunks);
   }
@@ -922,11 +1031,11 @@ class InspectorViewModel extends ChangeNotifier {
     return pick.mode ? FileSelection.modeAndHunks(path, keys) : FileSelection.hunks(path, keys);
   }
 
-  /// Runs [composerAction] through the runner: done clears the key's drafts (the composer's and the title's — the
-  /// change was described) and checks; a refusal stays in
-  /// [composerError], the draft and checks with it. Nothing runs while [splitsEverything].
-  Future<GraphActionResult?> runComposer() async {
-    final GraphAction? action = composerAction;
+  /// Runs [composerActionAs] [verb] (default [composerVerb]) through the runner: done clears the key's drafts (the
+  /// composer's and the title's — the change was described) and checks; a refusal stays in [composerError], the draft
+  /// and checks with it. Nothing runs while [splitsEverything].
+  Future<GraphActionResult?> runComposer([ComposerVerb? verb]) async {
+    final GraphAction? action = composerActionAs(verb);
     final String? key = _key;
     if (action == null || key == null || splitsEverything) {
       return null;
@@ -2504,6 +2613,8 @@ class _Actions extends StatelessWidget {
 
     final ActionOutcome? squash = model.actions?.squashIntoParent;
     final ActionRefusal? refusal = squash?.status == ActionStatus.refused ? squash?.refusal : null;
+    final String? squashDisabled = refusal == null ? null : refusal.context ?? refusal.code;
+    final String squashCommand = GraphSquash(revision: short).command;
     final ActionOutcome? absorb = model.actions?.absorb;
     final String? absorbDisabled = switch (absorb) {
       ActionOutcome(status: ActionStatus.refused, :final ActionRefusal? refusal) => refusal?.context ?? refusal?.code,
@@ -2551,29 +2662,34 @@ class _Actions extends StatelessWidget {
                 icon: ZI.workingCopyAt,
                 identifier: 'inspector-edit',
               ),
-            ZsTooltip(
-              message: blocked ?? strings.inspectorSquashMenuTooltip,
-              child: ZsMenuButton(
-                label: strings.inspectorSquashMenu,
-                disabledReason: blocked,
-                identifier: 'inspector-squash-menu',
-                entries: <ZsMenuEntry>[
-                  row(
-                    strings.inspectorSquash,
-                    GraphSquash(revision: short).command,
-                    identifier: 'inspector-squash',
-                    disabled: refusal == null ? null : refusal.context ?? refusal.code,
-                    run: () => unawaited(model.squash(key)),
-                  ),
-                  row(
-                    strings.inspectorAbsorb,
-                    GraphAbsorb(short).command,
-                    identifier: 'inspector-absorb',
-                    disabled: absorbDisabled,
-                    run: () => unawaited(graph.run(GraphAbsorb(key))),
-                  ),
-                ],
-              ),
+            // Story 10.48: the label squashes into the parent (the squash form first when both changes carry a
+            // description); the chevron offers both verbs.
+            ZsSplitButton(
+              label: strings.inspectorSquashMenu,
+              onPressed: can && squashDisabled == null ? () => unawaited(model.squash(key)) : null,
+              disabledReason: blocked ?? squashDisabled,
+              tooltip: blocked ?? squashDisabled ?? squashCommand,
+              cmd: (blocked ?? squashDisabled) == null ? null : squashCommand,
+              menuDisabledReason:
+                  blocked ??
+                  (squashDisabled != null && absorbDisabled != null ? '$squashDisabled\n$absorbDisabled' : null),
+              identifier: 'inspector-squash-button',
+              entries: <ZsMenuEntry>[
+                row(
+                  strings.inspectorSquash,
+                  squashCommand,
+                  identifier: 'inspector-squash',
+                  disabled: squashDisabled,
+                  run: () => unawaited(model.squash(key)),
+                ),
+                row(
+                  strings.inspectorAbsorb,
+                  GraphAbsorb(short).command,
+                  identifier: 'inspector-absorb',
+                  disabled: absorbDisabled,
+                  run: () => unawaited(graph.run(GraphAbsorb(key))),
+                ),
+              ],
             ),
           ];
     return Container(
@@ -3723,8 +3839,10 @@ class _SheenPainter extends CustomPainter {
 /// The composer (Story 10.25; DS inspector.jsx:40-79, kit.css:129-144): the island's bottom section, padding 14 16,
 /// gap 10, a top `--fl-border` over `--fl-sheen`. Summary and Details (md; ↩ in Summary or ⌘↩ run), the result preview
 /// (the rest — on @ the new working copy — above the selected part), the command [InspectorViewModel.composerAction]
-/// runs (cut inside its message when it does not fit), Cancel (split only) and the gold Commit / Split. When Split
-/// would take everything only its hint and Cancel show (Story 10.40), the draft kept; a refusal shows in the warn colour.
+/// runs (cut inside its message when it does not fit), Cancel (split only) and the gold Commit / Split — on @ with a
+/// part picked the split button Split ▾ Commit (Story 10.48), whose highlighted menu row the command, the placeholder
+/// and the bookmark chips follow. When Split would take everything only its hint and Cancel show (Story 10.40), the
+/// draft kept; a refusal shows in the warn colour.
 class _Composer extends StatefulWidget {
   const _Composer({required this.model, required this.data, required this.shortId, required this.blocked});
 
@@ -3743,6 +3861,16 @@ class _ComposerState extends State<_Composer> {
   late final InspectorDraft _initial = widget.model.composerFields;
   late final _summary = ZsTextEditingController(text: _initial.summary);
   late final _details = ZsTextEditingController(text: _initial.details);
+
+  /// The verb of the split button's highlighted menu row (Story 10.48), which the preview follows meanwhile.
+  ComposerVerb? _highlighted;
+
+  /// The verb the preview shows: the highlighted row's while it is one of the composer's verbs, else the button's.
+  ComposerVerb? get _shown {
+    final ComposerVerb? verb = widget.model.composerVerb;
+    final ComposerVerb? row = _highlighted;
+    return row != null && (row == verb || row == widget.model.composerAlternative) ? row : verb;
+  }
 
   @override
   void dispose() {
@@ -3790,25 +3918,26 @@ class _ComposerState extends State<_Composer> {
       model.composerFields,
     ).fold(0, (most, paragraph) => math.max(most, paragraph.characters.length));
     // The largest k below the longest paragraph whose cut fits; k = 0 when none does.
+    final ComposerVerb? verb = _shown;
     var low = 0;
     int high = longest - 1;
     while (low < high) {
       final int mid = (low + high + 1) ~/ 2;
-      if (fits(model.composerCommandCut(mid) ?? '')) {
+      if (fits(model.composerCommandCut(mid, verb: verb) ?? '')) {
         low = mid;
       } else {
         high = mid - 1;
       }
     }
-    return model.composerCommandCut(low) ?? full;
+    return model.composerCommandCut(low, verb: verb) ?? full;
   }
 
-  void _run() {
+  void _run([ComposerVerb? verb]) {
     if (!_ready) {
       return;
     }
     unawaited(
-      widget.model.runComposer().then((result) {
+      widget.model.runComposer(verb).then((result) {
         if (result is GraphActionDone && mounted) {
           _summary.clear();
           _details.clear();
@@ -3827,8 +3956,15 @@ class _ComposerState extends State<_Composer> {
     final List<String> selected = paths.where(model.hasPick).toList();
     final List<String> rest = paths.where((p) => !model.isPicked(p)).toList();
     final String summary = _summary.text.split('\n').first;
-    // Nothing checked: no command (a bare `jj commit` would take everything).
-    final String command = model.composerCommand ?? '';
+    final ComposerVerb? verb = model.composerVerb;
+    final ComposerVerb? alternative = model.composerAlternative;
+    final ComposerVerb? shown = _shown;
+    // Nothing checked: no command (a bare `jj commit` would take everything). The line follows a highlighted menu row;
+    // the button's tooltip keeps naming its own verb.
+    final String command = model.composerCommandAs(shown) ?? '';
+    final String labelCommand = model.composerCommand ?? '';
+    final List<String> bookmarks = model.composerBookmarks;
+    final ComposerPart? landing = shown == null ? null : model.bookmarksLandOn(shown);
     final String? blocked = widget.blocked;
     final ZanshinFfiException? error = model.composerError;
     final TextStyle node = ZsType.secondary.copyWith(fontSize: 12, color: colors.textDim);
@@ -3903,6 +4039,50 @@ class _ComposerState extends State<_Composer> {
       overflow: TextOverflow.ellipsis,
       style: note.copyWith(color: color, height: 1),
     );
+    // The change's local bookmarks on the part the shown verb leaves them on (Inspector Extras Study `.xs-bm`): an
+    // `--accent` bookmark glyph and the name in mono 11 on an `--fl-on` pill 18 high. Chips that do not fit are cut at
+    // the row's free space.
+    List<Widget> chips(ComposerPart part) => landing != part || bookmarks.isEmpty
+        ? const <Widget>[]
+        : <Widget>[
+            Flexible(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const NeverScrollableScrollPhysics(),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 4,
+                  children: <Widget>[
+                    for (final String name in bookmarks)
+                      ZsTooltip(
+                        message: strings.inspectorComposerBookmarkHere(name),
+                        child: Container(
+                          key: ValueKey<String>('inspector-composer-bookmark-${part.name}-$name'),
+                          height: 18,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          decoration: BoxDecoration(
+                            color: colors.flOn,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            spacing: 4,
+                            children: <Widget>[
+                              ZanshinIcon(ZI.bookmark, size: ZsIconSize.xs, color: colors.accent),
+                              Text(
+                                name,
+                                softWrap: false,
+                                style: ZsType.id.copyWith(fontSize: ZsType.fsSm, color: colors.text, height: 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ];
     final String subject = InspectorViewModel.draftFrom(model.description ?? '').summary;
     final Widget result = Stack(
       key: const ValueKey<String>('inspector-composer-result'),
@@ -3914,18 +4094,23 @@ class _ComposerState extends State<_Composer> {
             children: <Widget>[
               row(
                 dot: dot(chosen: false),
-                label: isAt
-                    ? <Widget>[
-                        ZanshinIcon(ZI.workingCopyAt, size: ZsIconSize.sm, color: colors.co),
-                        Text(strings.inspectorComposerNewWorkingCopy, style: labelStyle),
-                      ]
-                    : <Widget>[Text(strings.inspectorComposerRest, style: labelStyle)],
+                label: <Widget>[
+                  if (isAt) ...<Widget>[
+                    ZanshinIcon(ZI.workingCopyAt, size: ZsIconSize.sm, color: colors.co),
+                    Text(strings.inspectorComposerNewWorkingCopy, style: labelStyle),
+                  ] else
+                    Text(strings.inspectorComposerRest, style: labelStyle),
+                  ...chips(ComposerPart.rest),
+                ],
                 meta: rest.isEmpty ? Text(strings.inspectorComposerEmpty, style: node) : count(rest, chosen: false),
                 note: noteText(isAt ? strings.inspectorComposerStays : strings.inspectorComposerKeeps(subject)),
               ),
               row(
                 dot: dot(chosen: true),
-                label: <Widget>[Text(strings.inspectorComposerSelected, style: labelStyle)],
+                label: <Widget>[
+                  Text(strings.inspectorComposerSelected, style: labelStyle),
+                  ...chips(ComposerPart.selected),
+                ],
                 meta: selected.isEmpty
                     ? Text(strings.inspectorComposerNothingYet, style: node)
                     : count(selected, chosen: true),
@@ -3948,19 +4133,64 @@ class _ComposerState extends State<_Composer> {
     );
 
     final bool ready = _ready;
-    final String run = isAt ? strings.inspectorCommit : strings.inspectorSplit;
+    String name(ComposerVerb? verb) => verb == ComposerVerb.split ? strings.inspectorSplit : strings.inspectorCommit;
+    final String run = name(verb);
     final cancel = ZsButton(
       label: strings.inspectorCancel,
       onPressed: model.clearPicks,
       identifier: 'inspector-composer-cancel',
     );
-    final runButton = ZsButton(
-      label: run,
-      variant: ZsButtonVariant.primary,
-      onPressed: ready ? _run : null,
-      disabledReason: blocked,
-      identifier: 'inspector-composer-run',
+    // Where a verb leaves the bookmarks, said under its menu row while the two verbs differ (Story 10.48).
+    String? landsNote(ComposerVerb verb) {
+      if (!model.composerBookmarksDiffer) {
+        return null;
+      }
+      final int count = bookmarks.length;
+      final String names = switch (count) {
+        1 => bookmarks.single,
+        2 => strings.inspectorComposerBookmarkPair(bookmarks.first, bookmarks.last),
+        _ => strings.inspectorComposerBookmarkCount(count),
+      };
+      return model.bookmarksLandOn(verb) == ComposerPart.rest
+          ? strings.inspectorComposerBookmarksMove(names, count)
+          : strings.inspectorComposerBookmarksStay(names, count);
+    }
+
+    ZsMenuItem verbRow(ComposerVerb verb) => ZsMenuItem(
+      label: name(verb),
+      cmd: verb == ComposerVerb.split
+          ? GraphSplit(widget.shortId, message: const <String>[]).command
+          : GraphCommit(widget.data.key, message: const <String>[]).command,
+      note: landsNote(verb),
+      noteIcon: ZI.bookmark,
+      enabled: ready,
+      identifier: 'inspector-composer-${verb.name}',
+      onHighlight: (on) {
+        if (mounted) {
+          setState(() => _highlighted = on ? verb : (_highlighted == verb ? null : _highlighted));
+        }
+      },
+      onSelected: () => _run(verb),
     );
+    final Widget runButton = alternative != null && verb != null
+        ? ZsSplitButton(
+            label: run,
+            variant: ZsButtonVariant.primary,
+            onPressed: ready ? _run : null,
+            disabledReason: blocked,
+            tooltip: blocked ?? (labelCommand.isEmpty ? null : labelCommand),
+            cmd: blocked == null || labelCommand.isEmpty ? null : labelCommand,
+            menuDisabledReason: blocked,
+            identifier: 'inspector-composer-run',
+            entries: <ZsMenuEntry>[verbRow(verb), verbRow(alternative)],
+          )
+        : ZsButton(
+            label: run,
+            variant: ZsButtonVariant.primary,
+            onPressed: ready ? _run : null,
+            disabledReason: blocked,
+            identifier: 'inspector-composer-run',
+          );
     final TextStyle commandStyle = DefaultTextStyle.of(
       context,
     ).style.merge(ZsType.command.copyWith(fontSize: ZsType.fsSm, color: colors.textFaint));
@@ -4008,7 +4238,9 @@ class _ComposerState extends State<_Composer> {
                       ZsTextField(
                         controller: _summary,
                         size: ZsTextFieldSize.md,
-                        placeholder: isAt ? strings.inspectorComposerSummaryAt : strings.inspectorComposerSummarySplit,
+                        placeholder: shown == ComposerVerb.commit
+                            ? strings.inspectorComposerSummaryAt
+                            : strings.inspectorComposerSummarySplit,
                         label: strings.inspectorSummary,
                         identifier: 'inspector-composer-summary',
                         onChanged: _changed,
@@ -4041,10 +4273,10 @@ class _ComposerState extends State<_Composer> {
                         ),
                       ),
                       if (!isAt) cancel,
-                      if (blocked ?? (command.isEmpty ? null : command) case final String tip)
+                      if (runButton is ZsButton && (blocked ?? (labelCommand.isEmpty ? null : labelCommand)) != null)
                         ZsTooltip(
-                          message: tip,
-                          cmd: blocked == null || command.isEmpty ? null : command,
+                          message: blocked ?? labelCommand,
+                          cmd: blocked == null || labelCommand.isEmpty ? null : labelCommand,
                           child: runButton,
                         )
                       else

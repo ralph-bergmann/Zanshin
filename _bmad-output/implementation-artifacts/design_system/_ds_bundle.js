@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7a0975b1eb2b","components/brand/Icon.jsx":"95d6aaea20e5","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"12489ebc99a0","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"12da377a4a0d","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"bb068d275c9d","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"bb339a76dc0f","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"f16d9cae208f","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"fb499a7b9213","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"55ca603970b0","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"b0f8ce2a5efa","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"11339f2040b9","ui_kits/desktop/chrome.jsx":"d89725a9bce4","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"71ca2d19ff34","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"933f6f50485f","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"MenuButton","sourcePath":"components/actions/MenuButton.jsx"},{"name":"SplitButton","sourcePath":"components/actions/SplitButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"HatchSwatch","sourcePath":"components/graph/HatchSwatch.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"ConfigFilePage","sourcePath":"components/settings/ConfigFilePage.jsx"},{"name":"ImmutablePage","sourcePath":"components/settings/ImmutablePage.jsx"},{"name":"RemotesGroup","sourcePath":"components/settings/RemotesGroup.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsPage","sourcePath":"components/settings/SettingsPage.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"SplitDivider","sourcePath":"components/surfaces/SplitDivider.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/actions/MenuButton.jsx":"7a0975b1eb2b","components/actions/SplitButton.jsx":"b8de3bc9c390","components/brand/Icon.jsx":"95d6aaea20e5","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"12489ebc99a0","components/content/DiffView.jsx":"45122550dc95","components/content/FileRow.jsx":"12da377a4a0d","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"bb068d275c9d","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"bb339a76dc0f","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"f16d9cae208f","components/graph/ChangeId.jsx":"b668dea44d20","components/graph/DayAxis.jsx":"464ae2348daf","components/graph/Flag.jsx":"7a627bc1f14f","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/HatchSwatch.jsx":"79819150bcfb","components/graph/StackCard.jsx":"18ad1e39b65d","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"80ebe0f7ca84","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"dfba799bcb67","components/overlays/PeekCard.jsx":"f4dc0d152500","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"f98ce541cc93","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"55ca603970b0","components/settings/ConfigFilePage.jsx":"23f6212e9c92","components/settings/ImmutablePage.jsx":"ce85bc119a6e","components/settings/RemotesGroup.jsx":"7e96aab875a2","components/settings/SettingsGroup.jsx":"4a81dbde9cb4","components/settings/SettingsPage.jsx":"85a8b934a2d2","components/settings/SettingsRow.jsx":"f810357715e0","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"71f7a413b76c","components/surfaces/SplitDivider.jsx":"82c4e002a248","components/window/TrafficLights.jsx":"b0f8ce2a5efa","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"11339f2040b9","ui_kits/desktop/chrome.jsx":"d89725a9bce4","ui_kits/desktop/data.js":"fe7f8a739340","ui_kits/desktop/dialogs.jsx":"578d3874421b","ui_kits/desktop/graph.jsx":"71ca2d19ff34","ui_kits/desktop/immutable.js":"f82a4857361d","ui_kits/desktop/inspector.jsx":"d8c1cbf262a1","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsDiffText","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -3003,7 +3003,9 @@ const zsMs = (name, fallback) => {
     return fallback;
   }
 };
-const zsActionable = it => it && it !== "sep" && !it.header && !it.note && !it.disabled;
+// a note row has a note and no label; a row with both shows the note as its second line (2026-11-17, Story 10.48)
+const zsNoteRow = it => it && it.note != null && it.label == null;
+const zsActionable = it => it && it !== "sep" && !it.header && !zsNoteRow(it) && !it.disabled;
 const zsText = it => (it.text != null ? it.text : typeof it.label === "string" ? it.label : "").toLowerCase();
 // is p inside the triangle a → b → c (the pointer's last spot and the submenu's near corners)?
 const zsInTri = (p, a, b, c) => {
@@ -3015,8 +3017,11 @@ const zsInTri = (p, a, b, c) => {
 };
 
 // Menu — every command menu: actions on a change (head names it, rows show the jj command), the text context menu, pull-downs,
-// the project menu, the Select list. items: [{ id, label, text, icon, cmd, shortcut, danger, disabled, checked, radio, submenu, title }]
-// · "sep" · { header }. `text` is what typeahead matches when the label is a node (mono <code>, a project row).
+// the project menu, the Select list. items: [{ id, label, text, icon, cmd, shortcut, danger, disabled, checked, radio, submenu, title,
+// note, noteIcon, onHighlight }] · "sep" · { header } · { note, icon } (a note row). `text` is what typeahead matches when the label is a
+// node (mono <code>, a project row). A row's `note` is a quiet second line under its label (11px --text-dim, `noteIcon` 10px
+// --text-faint; the highlighted row's ink) and the row grows to fit (min 28). `onHighlight(on)` hears the shared highlight enter and
+// leave the row, and false when the menu goes (the composer's preview follows the highlighted alternative, Story 10.48).
 // One highlight shared by mouse and keyboard (solid accent + ink; danger rows a red tint). Keyboard: ↑/↓ move (wrap), Home/End,
 // typing jumps (letters within --dur-typeahead extend the match), Return/Space activate, → opens a submenu, ← closes it, Esc closes.
 // Activation blinks the row (off --dur-blink · on --dur-blink), then onSelect; the parent closes the menu with its exit (closing).
@@ -3043,8 +3048,14 @@ function Menu({
   const ref = React.useRef(null);
   const uid = React.useId();
   // note rows (why something is missing) aren't commands: the keyboard skips them, the menu points at them for VoiceOver
-  const notes = items.map((it, i) => it && it.note ? uid + "-n" + i : null).filter(Boolean).join(" ");
+  const notes = items.map((it, i) => zsNoteRow(it) ? uid + "-n" + i : null).filter(Boolean).join(" ");
   const [hi, setHi] = React.useState(highlight == null ? -1 : highlight);
+  React.useEffect(() => {
+    const it = items[hi];
+    if (!it || !it.onHighlight) return undefined;
+    it.onHighlight(true);
+    return () => it.onHighlight(false);
+  }, [hi]);
   const [kbd, setKbd] = React.useState(false);
   const [blinkAt, setBlinkAt] = React.useState(-1);
   const [sub, setSub] = React.useState(-1);
@@ -3206,7 +3217,7 @@ function Menu({
       className: "zs-menu-h",
       role: "presentation"
     }, it.header);
-    if (it.note) return /*#__PURE__*/React.createElement("div", {
+    if (zsNoteRow(it)) return /*#__PURE__*/React.createElement("div", {
       key: "n" + i,
       id: uid + "-n" + i,
       className: "zs-menu-note"
@@ -3215,7 +3226,7 @@ function Menu({
       size: "sm"
     }) : it.icon || /*#__PURE__*/React.createElement("span", null), /*#__PURE__*/React.createElement("span", null, it.note));
     const check = it.checked !== undefined;
-    const cls = ["zs-menu-item", it.danger && "is-danger", i === hi && "is-hi", i === blinkAt && "is-blink"].filter(Boolean).join(" ");
+    const cls = ["zs-menu-item", it.danger && "is-danger", i === hi && "is-hi", i === blinkAt && "is-blink", it.note != null && "has-note"].filter(Boolean).join(" ");
     return /*#__PURE__*/React.createElement("div", {
       key: it.id || i,
       className: "zs-menu-row",
@@ -3255,7 +3266,12 @@ function Menu({
       className: "zs-menu-chev",
       name: "chevron-right",
       size: "sm"
-    }))), it.submenu && sub === i && /*#__PURE__*/React.createElement(ZsSubmenu, {
+    })), it.note != null && /*#__PURE__*/React.createElement("span", {
+      className: "zs-menu-line"
+    }, it.noteIcon && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: it.noteIcon,
+      size: "xs"
+    }), /*#__PURE__*/React.createElement("span", null, it.note))), it.submenu && sub === i && /*#__PURE__*/React.createElement(ZsSubmenu, {
       subRef: subEl,
       items: it.submenu,
       kbd: kbd,
@@ -3728,6 +3744,103 @@ function MenuButton({
 }
 Object.assign(__ds_scope, { MenuButton });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/actions/MenuButton.jsx", error: String((e && e.message) || e) }); }
+
+// components/actions/SplitButton.jsx
+try { (() => {
+// SplitButton (2026-11-17, Story 10.48) — one shape, two parts: the label runs its command; the divided chevron opens the alternatives.
+// Buttons that look the same work the same: a split button runs its label, a MenuButton only opens a menu.
+// The shape carries the variant's rest fill and ring (default or primary); each part is its own button (own Tab stop, hover, pressed,
+// focus ring inside, disabled) painting its half's step. Click, Space or ↩ on the chevron open the Menu 4px below the button's left
+// edge; Esc, a pick or an outside click close it and focus returns to the chevron. `onHighlight` on a row (Menu) lets the caller's
+// preview follow the highlighted alternative (the composer's command line and bookmark chips).
+function SplitButton({
+  label,
+  items = [],
+  onRun,
+  onSelect,
+  variant = "default",
+  size = "md",
+  disabled = false,
+  title,
+  menuDisabled = false,
+  menuTitle,
+  menuMaxWidth = 360,
+  mainClassName = "",
+  chevClassName = "",
+  className = "",
+  style
+}) {
+  const wrap = React.useRef(null);
+  const chev = React.useRef(null);
+  const [open, setOpen] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
+  const close = (refocus = true) => {
+    setClosing(true);
+    setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+    }, 120);
+    if (refocus && chev.current) chev.current.focus();
+  };
+  React.useEffect(() => {
+    if (!open) return;
+    const down = e => {
+      if (wrap.current && !wrap.current.contains(e.target)) close(false);
+    };
+    document.addEventListener("mousedown", down);
+    return () => document.removeEventListener("mousedown", down);
+  }, [open]);
+  const more = "More " + label + " actions";
+  return /*#__PURE__*/React.createElement("span", {
+    ref: wrap,
+    style: style,
+    className: ["zs-splitbtn", variant === "primary" && "zs-splitbtn--primary", size === "sm" && "zs-splitbtn--sm", className].filter(Boolean).join(" ")
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-splitbtn-slot",
+    title: disabled ? title : undefined
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: ["zs-splitbtn-part zs-splitbtn-main", mainClassName].filter(Boolean).join(" "),
+    disabled: disabled,
+    title: disabled ? undefined : title,
+    onClick: onRun
+  }, label)), /*#__PURE__*/React.createElement("span", {
+    className: "zs-splitbtn-div",
+    "aria-hidden": "true"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-splitbtn-slot",
+    title: menuDisabled ? menuTitle : undefined
+  }, /*#__PURE__*/React.createElement("button", {
+    ref: chev,
+    type: "button",
+    className: ["zs-splitbtn-part zs-splitbtn-chev", chevClassName].filter(Boolean).join(" "),
+    disabled: menuDisabled,
+    title: menuDisabled ? undefined : more,
+    "aria-label": more,
+    "aria-haspopup": "menu",
+    "aria-expanded": open,
+    onClick: () => open ? close() : setOpen(true)
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "chevron-down",
+    size: "sm"
+  }))), open && /*#__PURE__*/React.createElement("div", {
+    className: "zs-splitbtn-pop"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Menu, {
+    items: items,
+    autoFocus: true,
+    closing: closing,
+    style: {
+      maxWidth: menuMaxWidth
+    },
+    onClose: () => close(true),
+    onSelect: (id, item) => {
+      close(true);
+      onSelect && onSelect(id, item);
+    }
+  })));
+}
+Object.assign(__ds_scope, { SplitButton });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/actions/SplitButton.jsx", error: String((e && e.message) || e) }); }
 
 // components/menus/ProjectMenu.jsx
 try { (() => {
@@ -11918,6 +12031,7 @@ try { (() => {
     IconButton,
     Button,
     MenuButton,
+    SplitButton,
     Menu,
     Flag,
     AtBadge,
@@ -12474,16 +12588,22 @@ try { (() => {
       }),
       onClick: onEdit,
       title: "Move the working copy here \u2014 jj edit"
-    }, "Edit"), /*#__PURE__*/React.createElement(MenuButton, {
+    }, "Edit"),
+    /*#__PURE__*/
+    // Story 10.48: a split button — the label squashes into the parent, the chevron offers both verbs.
+    React.createElement(SplitButton, {
       key: "sq",
-      title: "Squash or absorb into earlier changes",
+      label: "Squash",
+      onRun: onSquash,
+      disabled: !canSquash,
+      title: canSquash ? "jj squash -r " + c.id.slice(0, 8) : "Cannot squash merge commits without a specified destination",
       onSelect: id => id === "squash" && onSquash(),
       items: [{
         id: "squash",
         label: "Squash into parent",
         cmd: "jj squash -r " + c.id.slice(0, 8),
         disabled: !canSquash,
-        title: canSquash ? "jj squash -r " + c.id.slice(0, 8) : "The parent can’t be rewritten"
+        title: canSquash ? "jj squash -r " + c.id.slice(0, 8) : "Cannot squash merge commits without a specified destination"
       },
       // The kit keeps no line history, so nothing is ever absorbable here.
       {
@@ -12493,7 +12613,7 @@ try { (() => {
         disabled: true,
         title: "Nothing to absorb: no hunk belongs to an earlier change."
       }]
-    }, "Squash"), /*#__PURE__*/React.createElement(Button, {
+    }), /*#__PURE__*/React.createElement(Button, {
       key: "ab",
       variant: "danger",
       className: "zk-push",
@@ -14172,6 +14292,8 @@ __ds_ns.Button = __ds_scope.Button;
 __ds_ns.IconButton = __ds_scope.IconButton;
 
 __ds_ns.MenuButton = __ds_scope.MenuButton;
+
+__ds_ns.SplitButton = __ds_scope.SplitButton;
 
 __ds_ns.Icon = __ds_scope.Icon;
 
