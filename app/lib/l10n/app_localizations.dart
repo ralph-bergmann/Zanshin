@@ -4400,11 +4400,17 @@ abstract class AppLocalizations {
   /// **'{family} · built in'**
   String settingsCodeFontBuiltIn(String family);
 
-  /// Story 10.50: Code font choice: the saved font is not on this Mac, so the code draws in fallback (the built-in font). The setting stays.
+  /// Code font choice: the saved font is not on this Mac. Kept short: the choice field is narrow; the row's hint says what draws instead.
   ///
   /// In en, this message translates to:
-  /// **'{family} (not installed) — using {fallback}'**
-  String settingsCodeFontMissing(String family, String fallback);
+  /// **'{family} · not installed'**
+  String settingsCodeFontMissing(String family);
+
+  /// The Code font row's hint while the saved font is not on this Mac: the code draws in fallback (the built-in font). The setting stays.
+  ///
+  /// In en, this message translates to:
+  /// **'{family} is not installed. The code uses {fallback}.'**
+  String settingsCodeFontMissingHint(String family, String fallback);
 
   /// Story 10.50: Settings › General › Diffs row and VoiceOver name of its choice: the size of the code in points.
   ///

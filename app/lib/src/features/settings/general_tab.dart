@@ -301,8 +301,9 @@ class SettingsGeneralTab extends StatelessWidget {
     }.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return SettingsRow(
       label: s.settingsCodeFont,
-      hint: s.settingsCodeFontHint,
-      // A long family name or the missing note ellipsizes in the trigger; the list shows it whole.
+      // The choice field is too narrow for the explanation, so the hint carries it.
+      hint: missing && saved != null ? s.settingsCodeFontMissingHint(saved, builtIn) : s.settingsCodeFontHint,
+      // A long family name ellipsizes in the trigger; the list shows it whole.
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 240),
         child: ZsSelect<String?>(
@@ -313,7 +314,7 @@ class SettingsGeneralTab extends StatelessWidget {
             for (final String family in families)
               ZsSelectOption<String?>(
                 value: family,
-                label: missing && family == saved ? s.settingsCodeFontMissing(family, builtIn) : family,
+                label: missing && family == saved ? s.settingsCodeFontMissing(family) : family,
               ),
           ],
           value: saved,

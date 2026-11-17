@@ -2947,8 +2947,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String settingsCodeFontMissing(String family, String fallback) {
-    return '$family (not installed) — using $fallback';
+  String settingsCodeFontMissing(String family) {
+    return '$family · not installed';
+  }
+
+  @override
+  String settingsCodeFontMissingHint(String family, String fallback) {
+    return '$family is not installed. The code uses $fallback.';
   }
 
   @override

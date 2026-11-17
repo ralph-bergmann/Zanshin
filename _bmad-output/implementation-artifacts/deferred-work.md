@@ -3268,7 +3268,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in the follow-up review of Story 10.50 (bmad-build-auto, 2026-11-17)
 
-- **Code comments, docstrings and ARB descriptions name the story ("Story 10.50"), which the global writing rule forbids, while about 130 files in `app/lib` already do the same.** Low.
+- ~~**Code comments, docstrings and ARB descriptions name the story ("Story 10.50"), which the global writing rule forbids, while about 130 files in `app/lib` already do the same.**~~ — DECIDED 2026-11-17 (Ralph, console session): the rule stays and applies to new and changed lines only; old comments stay until touched, no sweep. The ids that Stories 10.48–10.50 added are taken out in the console session after the loop. Low.
   - New doc comments in `app/lib/src/features/window/code_font.dart:10`, `zanshin_application.dart`, `settings_view_model.dart`, `general_settings.dart` and 8 descriptions in `app/lib/l10n/app_en.arb` (copied into `app_localizations.dart`).
   - **Follow-up:** Ralph decides for the whole project: keep the convention, or drop story ids from comments and ARB descriptions in one sweep (and say so in project-context.md).
 

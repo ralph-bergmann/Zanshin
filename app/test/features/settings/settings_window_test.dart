@@ -332,7 +332,9 @@ void main() {
         await rig.pump(project: false);
         await tester.runAsync(() => rig.store.update((s) => s.copyWith.general(codeFont: 'Gone Mono')));
         await rig.settle();
-        expect(find.text('Gone Mono (not installed) — using JetBrains Mono'), findsOneWidget);
+        expect(find.text('Gone Mono · not installed'), findsOneWidget);
+        expect(find.text('Gone Mono is not installed. The code uses JetBrains Mono.'), findsOneWidget);
+        expect(find.text('The monospaced fonts on this Mac.'), findsNothing);
         expect(rig.store.value.general.codeFont, 'Gone Mono');
       });
 
@@ -383,7 +385,7 @@ void main() {
 
         families.complete(const ['Menlo']);
         await rig.settle();
-        expect(find.text('Gone Mono (not installed) — using JetBrains Mono'), findsOneWidget);
+        expect(find.text('Gone Mono · not installed'), findsOneWidget);
       });
 
       testWidgets('a hand-edited size off the list shows, added in order', (tester) async {

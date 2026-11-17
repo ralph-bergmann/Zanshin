@@ -2035,9 +2035,14 @@
     "description": "Story 10.50: Code font choice: the font that ships with the app (family is its name, JetBrains Mono).",
     "placeholders": {"family": {"type": "String"}}
   },
-  "settingsCodeFontMissing": "{family} (not installed) — using {fallback}",
+  "settingsCodeFontMissing": "{family} · not installed",
   "@settingsCodeFontMissing": {
-    "description": "Story 10.50: Code font choice: the saved font is not on this Mac, so the code draws in fallback (the built-in font). The setting stays.",
+    "description": "Code font choice: the saved font is not on this Mac. Kept short: the choice field is narrow; the row's hint says what draws instead.",
+    "placeholders": {"family": {"type": "String"}}
+  },
+  "settingsCodeFontMissingHint": "{family} is not installed. The code uses {fallback}.",
+  "@settingsCodeFontMissingHint": {
+    "description": "The Code font row's hint while the saved font is not on this Mac: the code draws in fallback (the built-in font). The setting stays.",
     "placeholders": {"family": {"type": "String"}, "fallback": {"type": "String"}}
   },
   "settingsCodeSize": "Code size",
