@@ -3253,7 +3253,7 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 ## Surfaced in the console session's design round "Inspector Extras Study" (2026-11-17)
 
-- **Files whose changes do not interest the user (generated code: `*.g.dart`, `*.freezed.dart`, generated localizations) crowd the inspector's file list; there is no way to hide them.** Medium (noise in every review). → Story 10.49.
+- ~~**Files whose changes do not interest the user (generated code: `*.g.dart`, `*.freezed.dart`, generated localizations) crowd the inspector's file list; there is no way to hide them.**~~ — RESOLVED 2026-11-17 (spec-10-49-file-masks, commit 1febd66d): app-wide file masks with ticks, a funnel popover and a hint row in the inspector and the operation view; hidden files keep their picks. Medium (noise in every review). → Story 10.49.
   - Ralph asked for IntelliJ-style file masks: a list with checkboxes, new entries by text field + ↩, a hint "N files hidden".
   - **Follow-up:** Story 10.49 (DESIGNED, `design/Inspector Extras Study.html` §4, approved 2026-11-17): app-wide masks, hidden files stay part of the change, a hint row with their pick state, Show and Masks….
 - **The code in the diffs is too small even with the app zoom, and its font cannot be chosen.** Medium (readability). → Story 10.50.
