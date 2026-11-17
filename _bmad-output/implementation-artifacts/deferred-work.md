@@ -3259,3 +3259,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - **The code in the diffs is too small even with the app zoom, and its font cannot be chosen.** Medium (readability). → Story 10.50.
   - `ZsType.code` is fixed at 11 px JetBrains Mono (`packages/zanshin_ui/lib/src/design/zs_type.dart:256`). Flutter on macOS uses installed fonts by name but cannot list them and falls back silently on a missing one.
   - **Follow-up:** Story 10.50 (DESIGNED, same study §5): Settings › Diffs "Code font" (list from a runner channel `zanshin/fonts`) and "Code size" in points; a missing font falls back to JetBrains Mono and says so.
+
+## Surfaced in Story 10.50 (bmad-build-auto, 2026-11-17)
+
+- **The config file editor now draws in the code style (11 pt × 1.65 by default, Settings › Code size) while the design system still gives it 12/19.5.** Low.
+  - `app/lib/src/features/settings/config_file_page.dart` `_editor` takes `CodeStyleScope` (epic Story 10.50 item 5); DS `settings.css:104` still reads `--fs-md`/19.5px, so the next DS sync sees a mismatch.
+  - **Follow-up:** a DESIGN-SYSTEM-SYNC entry through the `design-artifacts` skill in a console session: the config editor follows Settings › Code size.

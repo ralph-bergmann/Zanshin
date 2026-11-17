@@ -99,7 +99,8 @@ Build Zanshin's main view: the commit graph that owns the project window, with e
 
 ## Cross-Story Dependencies
 
-- Done: every story through 10.49 except 10.27 (backlog) and 10.18 (declined). Open: 10.27, 10.50.
+- Done: every story through 10.50 except 10.27 (backlog) and 10.18 (declined). Open: 10.27.
+- 10.50 (done): `general.codeFont` / `general.codeSize`; `InstalledCodeFonts` (runner channel `zanshin/fonts`), `codeTextStyle` and `CodeStyleScope` in `app/lib/src/features/window/code_font.dart`; code blocks read `CodeStyleScope.of(context)`, never `ZsType.code`.
 - 10.49 (done): masks live in `general.fileMasks` (`FileMask {mask, active}`), matched by `FileMaskMatcher` in `app/lib/src/features/graph/file_masks.dart` (also the popover, funnel and hint row); the inspector and operation view models expose `shownFiles` / `maskedPaths` / `showMasked`. DS sync #32 (glyphs `filter`, `eye-off`; FileRow `masked`).
 - 10.48 reworks the composer (10.25, 10.26, 10.35) and the Squash button (10.36): the verb follows the pick (`@` + a part = Split ▾ Commit; `@` + everything = plain Commit; another change + a part = plain Split), and `ZsMenuItem` gains a quiet second line. It adds the DS `SplitButton` (DS sync entry; the publish waits for a console session).
 - 10.49 builds on 10.39's file rows and 10.42's calm rules, and also reaches the operation view (`operation_changes.dart`, hint row without checkbox). 10.50 builds on 10.43 and 11.20's zoom; the runner channel sits beside `zanshin/window_frames` and needs an XCTest.
