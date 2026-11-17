@@ -3244,3 +3244,9 @@ Ralph and Claude went through the inspector point by point; each point was check
 - ~~**A sync toast's hint tooltip shows a multi-line jj text (a `Caused by:` caret diagram) in the proportional font, so the `^---` caret does not sit under the column it points at.**~~ — RESOLVED 2026-11-16 (console session, Ralph: "Ja, Mono"; DS sync #30): Tooltip `mono` in the DS and `ZsTooltip.mono` / `ZsToast.tooltipMono`; the fetch-, push- and track-failed toasts use it; checked with Computer Use (the caret sits on its column). Low.
   - `app/lib/src/features/sync/sync_model.dart:228,356` pass the joined text as `tooltip`; the graph's toast already sets `ZsType.id` (mono) for a multi-line text (`graph_toasts.dart:228`). Seen with Computer Use on a `remotes.origin.fetch-bookmarks = "glob:("` fetch refusal.
   - **Follow-up:** Ralph decides whether toast tooltips with multi-line jj text use the mono id style (a small UI story), or stay as they are.
+
+## Surfaced in the console session on the composer's Commit / Split button (2026-11-17)
+
+- **The composer's button reads "Commit" on `@` and "Split" elsewhere, so a part picked on `@` looks like it cannot be split; the Squash button only opens a menu, which nothing shows.** Medium (confusing UI). → Story 10.48.
+  - `graph_inspector.dart` `_composer` ~:872-914 and the label ~:3951; the Squash menu ~:2554-2576. Ralph read the button, not the text around it; he had never clicked Squash.
+  - **Follow-up:** Story 10.48 (DECIDED, Ralph): split buttons for the composer (Split ▾ Commit) and Squash (Squash ▾ Absorb), the verb follows the pick, the preview and menu rows show where a bookmark lands (`split.legacy-bookmark-behavior`, jj-vcs/jj#3419).

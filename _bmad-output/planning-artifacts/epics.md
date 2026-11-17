@@ -13224,6 +13224,63 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 ---
 
+### Story 10.48: Split buttons — the composer offers Split ▾ Commit, Squash runs on a click, the preview shows where a bookmark lands [UI]
+*(Added 2026-11-17, Ralph — console session. Ralph read "Commit" on `@` and "Split" elsewhere and asked why only Commit works when he picked part of the files. He had never clicked the Squash button and did not know it only opens a menu.)*
+
+**Motivation.**
+- The composer names its verb after the change it shows: `jj commit` on `@`, `jj split -r` elsewhere (`graph_inspector.dart` `_composer` ~:872-914, label ~:3951). People read the button first and the text around it never. With part of the files picked, they expect Split.
+- jj's FAQ calls `jj split -i` and `jj commit -i` "practically identical". `jj commit` has no `-r` and does not move bookmarks forward (`cli/src/commands/commit.rs` @ v0.47.0). `jj split` moves the change's local bookmarks to the rest while `split.legacy-bookmark-behavior` is true — the default (`cli/src/config/misc.toml:67-68`, `split.rs:503`). Which part should keep a bookmark is open upstream (jj-vcs/jj#3419, since 2024). Other jj GUIs (JayJay, jjui) offer only Split.
+- The Squash button (10.36) looks like a button but only opens a menu.
+
+**Rule.** Buttons that look the same must work the same:
+- a **split button** (label and chevron, divided) runs its label on a click; the chevron opens the alternatives;
+- a **menu button** (one part with a chevron) only opens a menu. Its only user afterwards is the icon-only diff options (`inspector_diff.dart:1275`).
+
+The label always names the command that runs. The app never shows "Split" while it runs `jj commit`.
+
+**Scope.**
+1. **DS: a new `SplitButton`** (components/actions) through the `design-artifacts` skill: `ZsButton`'s variants and sizes; a main part and a chevron part, divided; each part has its own focus stop, hover, pressed and disabled state; the chevron opens a `ZsMenuAnchor` like `ZsMenuButton`. VoiceOver: the main part is a button with its label, the chevron a button "More <label> actions". The readme states the rule above. DESIGN-SYSTEM-SYNC entry; the publish waits for a console session. In `zanshin_ui`: `ZsSplitButton`.
+2. **Composer** (`graph_inspector.dart`): the verb follows the pick, not the change.
+
+   | Change | Picked | Button |
+   |---|---|---|
+   | `@` | a part | **Split** ▾ Commit — `jj split -r <id> …` / `jj commit …` |
+   | `@` | everything | **Commit**, plain — `jj commit -m …` (describe + new) |
+   | other | a part | **Split**, plain — `jj split -r <id> …` |
+   | other | everything | no button, the hint from 10.35 |
+   | any | nothing | disabled, as today |
+
+   - Both arms, paths (10.25) and hunks (10.26).
+   - The command line and the summary placeholder (~:4011) follow the verb a click runs.
+   - The menu lists both rows, Split first, each with its command, like the Squash rows today.
+3. **Where the bookmarks land**, when the change has local bookmarks:
+   - The composer's preview ("New working copy … / Selected …", ~:3910-3935) shows their chips on the part where the click's verb puts them. `jj split` with `split.legacy-bookmark-behavior = true`: the rest (on `@`, the new working copy). With `false`: the selected part. `jj commit`: the selected part.
+   - In the Split ▾ Commit menu, each row says in a quiet line where the bookmarks go, e.g. "main moves to the new working copy" / "main stays on this change" — only when the two rows differ. NEEDS DESIGN: `ZsMenuItem` has no second line today.
+   - The value comes from `configGet('split.legacy-bookmark-behavior')` (the effective config, the built-in default included); the app must not assume it.
+4. **Squash** (`graph_inspector.dart` ~:2554-2576) becomes a split button: the main part runs "Squash into parent" (with its squash form), the chevron opens the menu with both rows as today. A refused squash disables only the main part, whose tooltip says why; the chevron stays usable while Absorb can run.
+
+**Non-goals.**
+- Remembering the last choice; `jj split --parallel`.
+- Changing jj's bookmark behavior or the user's config.
+- Other menu buttons; `ZsMenuButton` stays.
+
+**Design status.** DECIDED (Ralph, 2026-11-17): a split button for the composer and for Squash; Split is the default whenever there is something to split; the user sees whether a bookmark moves. Proposed (Claude, same session): the chips in the preview and the quiet line in the menu rows.
+
+**Depends on.** 10.25, 10.26, 10.35, 10.36 (all done).
+
+**Witnesses.**
+- `@` with two of five files picked: the button reads Split; a click runs `jj split -r <id> -m … root:a root:b`, and `@` ends on the rest.
+- The same pick, Commit from the menu: runs `jj commit -m … root:a root:b`.
+- `@` with everything picked: a plain Commit, no chevron. Another change with a part picked: a plain Split.
+- A bookmark `feature` on `@`, a part picked: the preview shows `feature` at the new working copy; the rows say "feature moves to the new working copy" / "feature stays on this change"; after either click the bookmark is where the app said. With `split.legacy-bookmark-behavior = false`: the preview shows it on the selected part, and the rows have no line.
+- Squash: a click on the main part squashes (the form when both descriptions are set); on a merge the main part is disabled with jj's reason while the chevron still offers Absorb.
+- Keyboard: Tab reaches both parts; Space or ↩ on the chevron opens the menu.
+- Marionette, by the console session: against the new DS card in Paper and Night.
+
+**Related:** 10.25, 10.26, 10.35, 10.36; jj-vcs/jj#3419.
+
+---
+
 ## Epic 11: Floating app shell (Flutter UI)
 
 > **Granularity:** backlog-level, like Epics 9 and 10. Full acceptance criteria are written per story (via `bmad-create-story`) when it is scheduled.
