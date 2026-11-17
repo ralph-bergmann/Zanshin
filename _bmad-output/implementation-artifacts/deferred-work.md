@@ -3249,4 +3249,13 @@ Ralph and Claude went through the inspector point by point; each point was check
 
 - **The composer's button reads "Commit" on `@` and "Split" elsewhere, so a part picked on `@` looks like it cannot be split; the Squash button only opens a menu, which nothing shows.** Medium (confusing UI). → Story 10.48.
   - `graph_inspector.dart` `_composer` ~:872-914 and the label ~:3951; the Squash menu ~:2554-2576. Ralph read the button, not the text around it; he had never clicked Squash.
-  - **Follow-up:** Story 10.48 (DECIDED, Ralph): split buttons for the composer (Split ▾ Commit) and Squash (Squash ▾ Absorb), the verb follows the pick, the preview and menu rows show where a bookmark lands (`split.legacy-bookmark-behavior`, jj-vcs/jj#3419).
+  - **Follow-up:** Story 10.48 (DECIDED, Ralph): split buttons for the composer (Split ▾ Commit) and Squash (Squash ▾ Absorb), the verb follows the pick, the preview and menu rows show where a bookmark lands (`split.legacy-bookmark-behavior`, jj-vcs/jj#3419). Designed in `design/Inspector Extras Study.html` §1–3, approved 2026-11-17.
+
+## Surfaced in the console session's design round "Inspector Extras Study" (2026-11-17)
+
+- **Files whose changes do not interest the user (generated code: `*.g.dart`, `*.freezed.dart`, generated localizations) crowd the inspector's file list; there is no way to hide them.** Medium (noise in every review). → Story 10.49.
+  - Ralph asked for IntelliJ-style file masks: a list with checkboxes, new entries by text field + ↩, a hint "N files hidden".
+  - **Follow-up:** Story 10.49 (DESIGNED, `design/Inspector Extras Study.html` §4, approved 2026-11-17): app-wide masks, hidden files stay part of the change, a hint row with their pick state, Show and Masks….
+- **The code in the diffs is too small even with the app zoom, and its font cannot be chosen.** Medium (readability). → Story 10.50.
+  - `ZsType.code` is fixed at 11 px JetBrains Mono (`packages/zanshin_ui/lib/src/design/zs_type.dart:256`). Flutter on macOS uses installed fonts by name but cannot list them and falls back silently on a missing one.
+  - **Follow-up:** Story 10.50 (DESIGNED, same study §5): Settings › Diffs "Code font" (list from a runner channel `zanshin/fonts`) and "Code size" in points; a missing font falls back to JetBrains Mono and says so.

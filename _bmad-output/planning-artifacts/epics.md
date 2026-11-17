@@ -13255,7 +13255,8 @@ The label always names the command that runs. The app never shows "Split" while 
    - The menu lists both rows, Split first, each with its command, like the Squash rows today.
 3. **Where the bookmarks land**, when the change has local bookmarks:
    - The composer's preview ("New working copy … / Selected …", ~:3910-3935) shows their chips on the part where the click's verb puts them. `jj split` with `split.legacy-bookmark-behavior = true`: the rest (on `@`, the new working copy). With `false`: the selected part. `jj commit`: the selected part.
-   - In the Split ▾ Commit menu, each row says in a quiet line where the bookmarks go, e.g. "main moves to the new working copy" / "main stays on this change" — only when the two rows differ. NEEDS DESIGN: `ZsMenuItem` has no second line today.
+   - In the Split ▾ Commit menu, each row says in a quiet line where the bookmarks go — "feature moves to the new working copy" / "feature stays on this change, with the selected part" — only when the two rows differ. `ZsMenuItem` gains that second line (11 px, `--text-dim`, a small bookmark glyph; on hover it takes the row's ink), as in the design round.
+   - Hovering a menu row moves the preview's chips, the command line and the summary placeholder to that row's verb; leaving the menu returns them to the label's verb.
    - The value comes from `configGet('split.legacy-bookmark-behavior')` (the effective config, the built-in default included); the app must not assume it.
 4. **Squash** (`graph_inspector.dart` ~:2554-2576) becomes a split button: the main part runs "Squash into parent" (with its squash form), the chevron opens the menu with both rows as today. A refused squash disables only the main part, whose tooltip says why; the chevron stays usable while Absorb can run.
 
@@ -13264,7 +13265,9 @@ The label always names the command that runs. The app never shows "Split" while 
 - Changing jj's bookmark behavior or the user's config.
 - Other menu buttons; `ZsMenuButton` stays.
 
-**Design status.** DECIDED (Ralph, 2026-11-17): a split button for the composer and for Squash; Split is the default whenever there is something to split; the user sees whether a bookmark moves. Proposed (Claude, same session): the chips in the preview and the quiet line in the menu rows.
+**Design status.** DECIDED (Ralph, 2026-11-17): a split button for the composer and for Squash; Split is the default whenever there is something to split; the user sees whether a bookmark moves.
+
+**Design round: done.** `design/Inspector Extras Study.html` (`extras-study.jsx/.css`), approved by Ralph on 2026-11-17 ("so sieht es gut aus"). Sections 1–3 belong to this story: the split button's states (rest, hover and focus per part, pressed, label disabled, sizes 30 and 26; primary in the gold of the one primary action, a 1 px divider inset 7 px), the composer with the bookmark chips and the quiet menu lines, Squash in the action row (on a merge only the label is off; its tooltip is jj's refusal). Sections 4 and 5 belong to 10.49 and 10.50.
 
 **Depends on.** 10.25, 10.26, 10.35, 10.36 (all done).
 
@@ -13278,6 +13281,76 @@ The label always names the command that runs. The app never shows "Split" while 
 - Marionette, by the console session: against the new DS card in Paper and Night.
 
 **Related:** 10.25, 10.26, 10.35, 10.36; jj-vcs/jj#3419.
+
+---
+
+### Story 10.49: File masks — hide files you do not care about from the inspector's file list [UI]
+*(Added 2026-11-17, Ralph — console session. Ralph wants to stop seeing files whose changes do not interest him, above all generated code (`*.g.dart`, `*.freezed.dart`, generated localizations), like IntelliJ's file masks.)*
+
+**Design round: done.** `design/Inspector Extras Study.html` section 4 (`extras-study.jsx/.css`), approved by Ralph on 2026-11-17 together with the study's proposals.
+
+**Scope.**
+1. **A list of masks with checkboxes.** A funnel button in the files pane's header (between the file count and the tree / flat switch) opens a popover "Hide files matching":
+   - a mono text field on top ("Add a mask, e.g. *.g.dart ↵"); ↩ adds the entry at the top of the list, ticked; an entry already in the list moves to the top instead of being doubled;
+   - one row per entry: checkbox, the entry in mono, how many files of the shown change it matches, and a × to remove it (on hover or focus);
+   - a click on the row or its box ticks or unticks it; Esc or a click outside closes the popover;
+   - the footer explains the syntax in one line.
+   - While at least one entry is ticked, the funnel is in `--accent` and shows the number of ticked entries.
+2. **The mask syntax** (IntelliJ's): `*` and `?` match inside a name, `**` across folders. A mask without `/` matches the file name; a mask with `/` matches the path from the repository root. An entry may hold several masks separated by commas (`*.g.dart, *.freezed.dart`). Matching is case-sensitive, like jj's `glob:`. Dart only, no FFI; use `package:glob` if it is already a dependency, else a small matcher.
+3. **Hidden files leave the list, not the change.**
+   - Tree and flat views skip them; a folder that holds only hidden files disappears. ↑ / ↓ skip them too. When the focused file becomes hidden, the focus moves to the next shown file.
+   - Picking is unchanged: a hidden file keeps its pick, and the header's "pick all" box covers hidden files too. A commit or split still takes a picked hidden file.
+4. **The hint row** at the bottom of the files pane, only while files are hidden: its own checkbox (the hidden files' pick state, all / some / none; a click picks or unpicks all of them), "N files hidden · all picked" (or "some picked" / "none picked"), then **Show** and **Masks…**.
+   - Show brings the hidden files back for this change, dimmed (.55) with an eye-off glyph after the name; the row then reads "N files match your masks" and offers Hide.
+   - Masks… opens the popover.
+5. **The operation view** (`features/undo_timeline/operation_changes.dart`) uses the same file rows: it hides by the same masks and shows the hint row without its checkbox.
+6. **Storage.** One list for the whole app, in the Zanshin settings (`packages/zanshin_settings`), with each entry's tick. A fresh install seeds two unticked entries, `*.g.dart, *.freezed.dart` and `*.lock`, so nothing is hidden until the user ticks one.
+
+**Non-goals.** Hiding files in the graph (a card's file count stays the truth); masks per project; negated masks; jj's fileset language.
+
+**Depends on.** 10.39, 10.42 (done).
+
+**Witnesses.**
+- Ralph's WMMA-591 change (36 files): ticking `*.g.dart, *.freezed.dart` hides `app_routes.g.dart`, `automation.freezed.dart` and `automations_provider.g.dart`; the hint row reads "3 files hidden · all picked"; the funnel shows 1.
+- `docs/*.png` hides `docs/packages.png` but not a `.png` elsewhere; `core_localizations*.dart` hides the three localization files.
+- Typing `*.arb` + ↩ adds a ticked entry at the top, with its match count; × removes it.
+- On `@` with a hidden file picked, Commit runs with that file; unpicking via the hint row's box leaves it out (the command line shows the paths).
+- Show dims the hidden files back in; Hide removes them again. A folder of only hidden files is gone while they are hidden.
+- The masks survive a restart and are the same in every project window.
+- Marionette, by the console session: the files pane and the popover against the study in Paper and Night.
+
+**Related:** 10.39, 10.42, 10.50.
+
+---
+
+### Story 10.50: Code font and size — a font and a point size for code, apart from the zoom [UI/native]
+*(Added 2026-11-17, Ralph — console session. The app zoom works well for the UI, but the code in the diffs is still too small for Ralph; he wants a font size for code only — sizes, not a second zoom — and to pick the font.)*
+
+**Design round: done.** `design/Inspector Extras Study.html` section 5, approved by Ralph on 2026-11-17 together with the study's proposals.
+
+**Scope.**
+1. **The installed monospaced fonts come from the runner.** Flutter on macOS uses any installed family by name (CoreText), but it cannot list them, and a family it cannot find falls back silently — the app would not notice. A method channel `zanshin/fonts` (beside `zanshin/window_frames`) answers `monospacedFamilies`: the families of `NSFontManager.shared.availableFontFamilies` whose regular face is fixed pitch, sorted. XCTest for the filter.
+2. **Two settings** in `packages/zanshin_settings`: the code font family (absent = the built-in JetBrains Mono) and the code size in points (default 11, the DS `--type-code` size).
+3. **Settings › General › Diffs** gains two rows after Layout:
+   - **Code font**, hint "The monospaced fonts on this Mac.": a select with "JetBrains Mono · built in" first, then the runner's list.
+   - **Code size**, hint "Diffs and the config file. Zoom scales it like everything else.": a select 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24 pt; 11 reads "11 pt · default".
+4. **A font that is gone.** When the saved family is not in the runner's list, the app draws JetBrains Mono, and the select shows "<name> (not installed) — using JetBrains Mono". The setting stays, so the font comes back once it is installed again. The list is read when the Settings window opens and when the app starts.
+5. **Where it applies:** code blocks only — the inspector's diff (unified and side by side, the line numbers and their column width, the "no newline" marker) and the operation view's diff and the config file page's editor. One place derives the code style from the settings; those views take it instead of `ZsType.code`. The line height stays 1.65 × the size. The app zoom multiplies the size (11 pt at 125 % = 13.75 px). The family keeps JetBrains Mono, then Inter as fallbacks for missing glyphs.
+6. **Not affected:** change ids, bookmark and tag chips, the composer's command line, gap and fold rows, toasts and every other mono text of the UI.
+
+**Non-goals.** A keyboard shortcut for the code size (⌘+ / ⌘− stay the app zoom); font weight, ligatures or line-height settings; a code size for ids and chips.
+
+**Depends on.** 10.43, 11.20 (done).
+
+**Witnesses.**
+- Code size 14: the inspector diff draws 14 px code at 100 % and 17.5 px at 125 %; the line-number column widens to fit; the UI text around it is unchanged.
+- Code font Menlo: the diff, the operation view's diff and the config file page draw Menlo; change ids and bookmark chips stay JetBrains Mono.
+- The select lists only fixed-pitch families (Menlo, SF Mono, Monaco, … and Ralph's Monaspace Argon); proportional families such as Helvetica are not in it.
+- A saved family that is not installed (set in `settings.json` by hand): the diff draws JetBrains Mono, the row shows "(not installed) — using JetBrains Mono"; installing it brings it back after the next start.
+- XCTest: the filter keeps Menlo and drops Helvetica.
+- Marionette, by the console session: Settings › General › Diffs and the inspector diff at 11 and 16 pt against the study.
+
+**Related:** 10.43, 10.49, 11.20.
 
 ---
 
