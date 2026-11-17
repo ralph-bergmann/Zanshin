@@ -5,7 +5,7 @@ created: '2026-11-17'
 status: 'done'
 baseline_revision: '2c699a2af2be9a033bcb58c551abc3224d7332de'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/.claude/skills/design-artifacts/SKILL.md'
@@ -136,6 +136,39 @@ deferred: []
   - `[false]` `[reject]` (intent) the operation view has no funnel — the epic's item 5 gives the operation view only the hint row.
   - `[low]` `[reject]` (intent) the Auto Run Result, verification outcomes and deferred mirroring are not yet in the spec — written at finalization, as the workflow orders.
 
+### 2026-11-17 — Review pass (follow-up)
+- verdicts: 29 findings — high 0, medium 0, low 26, false 3, maybe-false 0
+- findings:
+  - `[low]` `[reject]` (blind) the Viewed counter counts hidden files, so viewing every shown file never reads "All viewed" — the intent keeps Viewed counts and `markAll` on every file; changing that edits the intent; Show or Mark all viewed reaches it.
+  - `[low]` `[reject]` (blind) a mask ending in `/` passes `usable` but never matches — carried: the code still reads as the first pass's edge row (no folder masks in the syntax; the popover shows no count; `build/**` works).
+  - `[low]` `[reject]` (blind) the hint text and the masked row's label join translated pieces — the app ships one locale (`app_en.arb` only); a translator's word order is not met today.
+  - `[low]` `[reject]` (blind) the hint box's label stays "Pick the N hidden files" while all are picked — the intent fixes that label; changing it edits the intent.
+  - `[false]` `[reject]` (blind) the operation view has no funnel, so a first mask cannot be added there — carried: the intent gives the operation view only the hint row.
+  - `[low]` `[reject]` (blind) ↩ with unusable text (`,`, `/`) clears the field silently — only text of separators alone; nobody types that as a mask, and keeping it needs a new branch in `_add`.
+  - `[low]` `[reject]` (blind) masks are evaluated per build, and the operation view's `indexOf` per row is O(n²) — carried: the regexes compile once per settings value; a pass over a commit's paths per build is microseconds at real file counts.
+  - `[low]` `[reject]` (blind) toggle and remove use the list index, not the entry — carried: the popover rebuilds on every store change.
+  - `[low]` `[reject]` (blind) `?` and `*` work on UTF-16 code units — a `?` mask over an emoji file name is not met in practice; the fix needs a rune-based pattern builder, not just `unicode: true`.
+  - `[low]` `[patch]` (blind) promised behaviours without tests (root-only `/pubspec.lock`, `**` inside a name, trailing `/`, header pick-all, folder box, Viewed, click outside) — matcher tests added for `/pubspec.lock` (root only) and `a**b` / `src/a**b` (`file_masks_test.dart`); trailing `/`, header pick-all and click outside carried as rejected; Viewed per the Viewed row above; the folder box is covered by the tree test's `InspectorFolderRow` assertion.
+  - `[false]` `[reject]` (blind) the story is done before the running-app check, and deferred-work keeps no open entry for it — the intent's Never list leaves the Marionette check and the DS publish to the console session; the spec's residual risks name both.
+  - `[low]` `[reject]` (blind) a failed mask write is swallowed with no log — the intent says "a failed write is swallowed like `setFileList`", which logs nothing either.
+  - `[low]` `[patch]` (blind) `GeneralSettings.fileMasks` is documented as "the inspector's" though the operation view reads it too — doc comment now names both views; `general_settings.freezed.dart` regenerated with `build_runner`.
+  - `[low]` `[patch]` (edge) inspector: after every file was hidden, Show or an unticked mask lists the rows again with no focus and no diff — `_focusShown` now focuses the first shown file when the focus is empty (`graph_inspector.dart`); the "else none" test goes on with Show → `a.g.dart` focused and its diff shown, Hide → none.
+  - `[low]` `[patch]` (edge) the same in the operation view — same root cause and fix (`operation_changes.dart`); the "newly masked focused file" test ends with Show → `a.txt`'s diff.
+  - `[low]` `[reject]` (edge) a mask ending in `/` matches nothing — carried (see the blind row).
+  - `[low]` `[reject]` (edge) a hand-edited untrimmed entry is doubled by a re-add — the app writes trimmed text; only a hand edit with stray spaces meets it, and the result is a visible, harmless duplicate.
+  - `[low]` `[reject]` (edge) a jj config write while the operation view's popover is open unmounts it (`_read` sets `_files = null`) — the popover consumes outside taps, so this window cannot write config while it is open; a write from another window mid-edit is rare, and the fix (keep the old diff during a re-read) changes the pre-existing re-read flow.
+  - `[low]` `[patch]` (verification-gap) Show and the focus on a shown hidden file are not pinned across a re-read of the same selection — tests added: a jj config write in the operation view (`operation_changes_test.dart`) and a reload of the same change in the inspector (`graph_inspector_test.dart`) keep Show on and the focus on the hidden file.
+  - `[low]` `[reject]` (intent) the funnel glyph is 14, the spec says 13 — `ZanshinIcon` takes the DS icon-size tokens (10/12/14/16…); 13 has none, `md` is the nearest; a new token is more than a direct correction for 1 px.
+  - `[low]` `[reject]` (intent) the popover's × is 12, the spec says 11 — same reason, `sm` is the nearest token.
+  - `[low]` `[reject]` (intent) the operation view's popover anchors on the whole hint row, not on Masks… — the first pass chose it so the popover survives unticking the last hiding mask (Masks… leaves with the hint row); aligning under the button needs a second rect channel; the placement is left to the console session's check (residual risk).
+  - `[false]` `[reject]` (intent) the invisible × stays clickable and in the semantics tree — a mouse click needs the pointer over the row, which shows the ×; keyboard focus shows it too; keeping it in semantics is what VoiceOver needs.
+  - `[low]` `[reject]` (intent) DESIGN-SYSTEM-SYNC #32 calls the hint box "the only way to pick a hidden file" though pick-all picks them too — the design notes forbid editing sync entries (`design/CLAUDE.md`); the code and the hint row are right, the slip is prose only.
+  - `[low]` `[reject]` (intent) the tests check the composer's paths, not a real jj run, and no test checks glyph sizes, popover placement, row geometry or the × on hover — carried: the first pass rejected placement, colours and the running-app witnesses (console session); the backend verbs are unchanged.
+  - `[low]` `[reject]` (intent) the corrupt-file recovery is not tested for `fileMasks` — the store's recovery is generic and unchanged; `settings_store_test.dart` covers a malformed `fileMasks` value.
+  - `[low]` `[reject]` (intent) the DS `FileRow` / CSS / bundle changes are checked only by the glyph parity test — the DS is an illustration; `node --check` passed; the visual check is the console session's.
+  - `[low]` `[reject]` (intent) the DS `FileRow` shows the plain path in a masked rename's tooltip, the app `old → new` — DS illustration only; the app row is the one users meet (10.36/10.48 triage rule).
+  - `[low]` `[reject]` (intent) `**/` has no folder boundary, so `foo**/bar` also matches `foobar` — nobody writes `foo**/bar`; a boundary check adds a branch to the pattern builder.
+
 ## Design Notes
 
 The study's `**` rule (`**/?` → `(?:.*/)?`) makes `docs/**` match nothing below `docs/`; the spec keeps `**/` as "zero or more folders" and lets a lone `**` cross folders, which is IntelliJ's meaning. Hidden files leave only the rows: picks and the composer read every file, so ticking a mask can never drop a file from a commit unnoticed — the hint row shows their pick state and owns their checkbox. The Show flag is per change because the study calls it "for this change"; it is session state, never stored. Folder boxes cover only their shown files (the study builds the tree from the shown files); the hint row's box is the way to pick hidden ones.
@@ -157,6 +190,13 @@ The study's `**` rule (`**/?` → `(?:.*/)?`) makes `docs/**` match nothing belo
 - `dart analyze` in `app`, `packages/zanshin_ui`, `packages/zanshin_settings` — no issues; `dart format --set-exit-if-changed` (`app`: lib test widgetbook integration_test; packages: lib test) — 0 changed.
 - `node --check _ds_bundle.js` — passes.
 - Not run: Rust checks (no Rust, FFI or schema change), `cargo make test` / `test-full` / `coverage` (this run's gate rule), Marionette (console session).
+
+**Checks run in the follow-up review (targeted; same gate rule):**
+- `dart run build_runner build` in `packages/zanshin_settings` — the doc comment reached `general_settings.freezed.dart`.
+- `flutter test` in `packages/zanshin_settings` — 63 passed.
+- `cargo make test-app test/features/graph test/features/undo_timeline test/features/settings test/widgetbook test/l10n` (repo root) — 1879 passed (1877 + 2 new tests).
+- `dart analyze` in `app` and `packages/zanshin_settings` — no issues; `dart format --set-exit-if-changed` (`app`: lib test widgetbook integration_test; `zanshin_settings`: lib test) — 0 changed.
+- Not run: Rust checks (no Rust change), the full gate (this run's gate rule), Marionette (console session).
 
 ## Auto Run Result
 
@@ -195,3 +235,26 @@ Status: done
 - A mask ending in `/` (`build/`) matches nothing (the popover shows no count); `build/**` is the working form.
 - The operation view offers the popover only while a ticked mask hides a file of the shown commit (no funnel there, as the epic scopes it).
 - No test for the masked-rename tooltip.
+
+### Follow-up review (2026-11-17)
+
+**Summary.** A fresh review of the whole change (four layers, 29 findings). One behaviour fix: when every file of a change or commit was hidden and Show or an unticked mask lists files again, the first shown file now takes the focus and its diff shows (both views' `_focusShown`). The rest is tests and a doc comment.
+
+**Files changed.**
+- `app/lib/src/features/graph/graph_inspector.dart` — `_focusShown` focuses the first shown file when the focus is empty.
+- `app/lib/src/features/undo_timeline/operation_changes.dart` — the same in `OperationChangesModel._focusShown`.
+- `packages/zanshin_settings/lib/src/model/general_settings.dart` (+ `general_settings.freezed.dart`) — the `fileMasks` doc names both views.
+- `app/test/features/graph/graph_inspector_test.dart` — Show after all hidden focuses the first file; a reload of the same change keeps Show and the focus on a hidden file.
+- `app/test/features/undo_timeline/operation_changes_test.dart` — Show after all hidden shows the first file's diff; a jj config write keeps Show and the focus.
+- `app/test/features/graph/file_masks_test.dart` — root-only `/pubspec.lock`; `**` inside a name.
+
+**Review.** 29 findings (high 0, medium 0, low 26, false 3):
+- **Patched: 5 rows in 4 entries, all low** — the empty focus after all files were hidden (both views), the re-read tests for Show and focus, the matcher tests, the `fileMasks` doc comment.
+- **Deferred: 0.**
+- **Rejected: 24** (21 low, 3 false) — each reason in the follow-up triage entry; 6 of them carried from the first pass.
+- **Follow-up review:** not recommended — this follow-up pass patched no high finding; the work has converged.
+
+**Residual risks.**
+- Still not checked in the running app or against the study and the DS card (console session); the DS is not published.
+- The operation view's popover opens under the hint row's left edge, not under Masks…; the funnel and × glyphs use the nearest DS icon tokens (14 and 12, not 13 and 11).
+- DESIGN-SYSTEM-SYNC #32 says the hint box is "the only way to pick a hidden file"; pick-all picks them too. Sync entries are never edited, so the DS side should read the code, not that phrase.
