@@ -7,6 +7,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/graph/file_masks.dart';
+import 'package:zanshin/src/features/graph/graph_inspector.dart' show InspectorFileRow;
 import 'package:zanshin/src/features/graph/inspector_diff.dart';
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
@@ -20,6 +22,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/fake_undo_timeline.dart';
 import '../../helpers/icon_registry.dart';
+import '../../helpers/settle_settings.dart';
 import '../../helpers/shell_host.dart';
 
 final _now = DateTime(2026, 11, 1, 12);
@@ -226,6 +229,141 @@ void main() {
       expect(copied, <String>['/r/repo/gone.txt']);
       expect(find.byKey(const ValueKey<String>('inspector-diff-path-copied')), findsOneWidget);
       await tester.pump(const Duration(seconds: 2));
+    });
+  });
+
+  testWidgets('Story 10.49: a masked file is not listed; the hint has no box; Show lists it dimmed; Masks… opens the '
+      'popover', (tester) async {
+    addTearDown(() => settleSettingsWrites(tester, settings));
+    settings.addFileMask('*.g.dart');
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten()]),
+      diff: (call) => testDiff(call.paths.isEmpty ? const <String>['a.g.dart', 'b.txt'] : call.paths),
+    );
+    await withView(tester, changes, () async {
+      expect(find.textContaining('a.g.dart', findRichText: true), findsNothing);
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).path, 'b.txt', reason: 'first shown');
+      expect(_id('inspector-masked-hint'), findsOneWidget);
+      expect(_id('inspector-masked-check'), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-masked-text'))).data,
+        '1 file hidden',
+        reason: 'no pick part',
+      );
+      await tester.tap(_id('inspector-masked-show'));
+      await tester.pump();
+      final InspectorFileRow row = tester.widget<InspectorFileRow>(
+        find.descendant(of: _id('operation-changes-file-0'), matching: find.byType(InspectorFileRow)),
+      );
+      expect((row.file.path, row.masked), ('a.g.dart', true));
+      await tester.tap(_id('inspector-masked-masks'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_id('file-masks-popover'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_id('file-masks-popover'), findsNothing);
+    });
+  });
+
+  testWidgets('Story 10.49: unticking the last hiding mask in the popover keeps it open; the hint goes', (
+    tester,
+  ) async {
+    addTearDown(() => settleSettingsWrites(tester, settings));
+    settings.addFileMask('*.g.dart');
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten()]),
+      diff: (call) => testDiff(call.paths.isEmpty ? const <String>['a.g.dart', 'b.txt'] : call.paths),
+    );
+    await withView(tester, changes, () async {
+      await tester.tap(_id('inspector-masked-masks'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(_id('file-masks-popover'), findsOneWidget);
+      await tester.tap(_id('file-mask-0'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(settings.value.general.fileMasks.first.active, isFalse);
+      expect(_id('inspector-masked-hint'), findsNothing);
+      expect(_id('file-masks-popover'), findsOneWidget, reason: 'the popover survives');
+      expect(find.text('a.g.dart'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    });
+  });
+
+  testWidgets('Story 10.49: Hide moves the focus off the shown hidden file to the next shown one', (tester) async {
+    addTearDown(() => settleSettingsWrites(tester, settings));
+    settings.addFileMask('*.g.dart');
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten()]),
+      diff: (call) => testDiff(call.paths.isEmpty ? const <String>['a.txt', 'b.g.dart', 'c.txt'] : call.paths),
+    );
+    await withView(tester, changes, () async {
+      await tester.tap(_id('inspector-masked-show'));
+      await tester.pump();
+      await tester.tap(_id('operation-changes-file-1'), warnIfMissed: false);
+      await tester.pump();
+      await tester.pump();
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).path, 'b.g.dart');
+      await tester.tap(_id('inspector-masked-show'));
+      await tester.pump();
+      await tester.pump();
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).path, 'c.txt');
+      expect(find.textContaining('b.g.dart', findRichText: true), findsNothing);
+    });
+  });
+
+  testWidgets('Story 10.49: Show is per commit: another commit starts with its masked file hidden', (tester) async {
+    addTearDown(() => settleSettingsWrites(tester, settings));
+    settings.addFileMask('*.g.dart');
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten(), _abandonedChange()]),
+      diff: (call) => testDiff(
+        call.paths.isNotEmpty
+            ? call.paths
+            : call.revision == null
+            ? const <String>['a.g.dart', 'b.txt']
+            : const <String>['c.g.dart', 'd.txt'],
+      ),
+    );
+    await withView(tester, changes, () async {
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-masked-text'))).data,
+        '1 file hidden',
+      );
+      await tester.tap(_id('inspector-masked-show'));
+      await tester.pump();
+      // The shown hidden row carries the eye-off glyph inside its text.
+      expect(find.textContaining('a.g.dart', findRichText: true), findsOneWidget);
+      await tester.tap(_id('operation-changes-commit-1'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('c.g.dart', findRichText: true), findsNothing);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-masked-text'))).data,
+        '1 file hidden',
+      );
+    });
+  });
+
+  testWidgets('Story 10.49: a newly masked focused file gives the focus to the next shown one', (tester) async {
+    addTearDown(() => settleSettingsWrites(tester, settings));
+    final changes = FakeOperationChangesSource(
+      testOpShow(testOperation(1, now: _now), <OpChangedCommit>[_rewritten()]),
+      diff: (call) => testDiff(call.paths.isEmpty ? const <String>['a.txt', 'b.txt'] : call.paths),
+    );
+    await withView(tester, changes, () async {
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).path, 'a.txt');
+      settings.addFileMask('a.txt');
+      await tester.pump();
+      await tester.pump();
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).path, 'b.txt');
+      settings.addFileMask('b.txt');
+      await tester.pump();
+      expect(find.byType(InspectorDiffView), findsNothing, reason: 'every file hidden: no diff');
     });
   });
 

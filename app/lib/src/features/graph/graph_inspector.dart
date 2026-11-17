@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:io' show FileSystemException;
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/rendering.dart' show SemanticsProperties;
 import 'package:flutter/semantics.dart' show SemanticsService;
 import 'package:flutter/services.dart';
@@ -13,12 +13,13 @@ import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart'
-    show DiffFileListSetting, DiffLayoutSetting, DiffWhitespaceSetting, LayoutSettings, SettingsStore;
+    show DiffFileListSetting, DiffLayoutSetting, DiffWhitespaceSetting, FileMask, LayoutSettings, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import '../projects/projects_environment.dart' show DiffContext;
 import '../window/app_window_actions.dart';
+import 'file_masks.dart';
 import 'graph_card.dart';
 import 'graph_drag.dart';
 import 'graph_layout.dart';
@@ -85,6 +86,9 @@ enum ComposerPart {
 /// - **File list** (Story 10.39): flat or tree is `general.diffFileList` in [settings] ([fileList]); the tree's
 ///   collapsed folders live here for the session ([collapsed]); a folder picks and marks Viewed all of its files
 ///   ([togglePicks], [setViewedAll]). [files] does what touches the disk.
+/// - **File masks** (Story 10.49): `general.fileMasks` in [settings] ([fileMasks]) hides the rows of the files a ticked
+///   mask matches ([maskedPaths]; [shownFiles] is what the list shows) unless [showMasked] — per change, off again on
+///   a selection change. The focus moves off a file that gets hidden. Picks, Viewed and the composer keep every file.
 class InspectorViewModel extends ChangeNotifier {
   /// The inspector of [graph]'s selection, reading through [details]; Viewed marks in [viewed], the diff layout in
   /// [settings].
@@ -100,6 +104,7 @@ class InspectorViewModel extends ChangeNotifier {
        _fileList = settings.value.general.diffFileList,
        _wordMarks = settings.value.general.diffWordMarks,
        _whitespace = settings.value.general.diffWhitespace,
+       _masks = FileMaskMatcher(settings.value.general.fileMasks),
        _shares = (
          narrow: settings.value.layout.inspectorFilesNarrow,
          wide: settings.value.layout.inspectorFilesWide,
@@ -139,6 +144,8 @@ class InspectorViewModel extends ChangeNotifier {
   bool? _legacyBookmarks;
   var _legacySerial = 0;
   ({double narrow, double wide}) _shares;
+  FileMaskMatcher _masks;
+  var _showMasked = false;
 
   Map<String, FileDiff>? _summary;
   String? _changeId;
@@ -329,6 +336,67 @@ class InspectorViewModel extends ChangeNotifier {
 
   List<String> get _listed => <String>[for (final FileChange file in _entry?.fileChanges ?? const []) file.path];
 
+  /// The compiled `general.fileMasks` (Story 10.49).
+  FileMaskMatcher get fileMasks => _masks;
+
+  /// Whether a ticked mask hides [path].
+  bool isMasked(String path) => _masks.hides(path);
+
+  /// The selection's files a ticked mask hides, in jj's order.
+  List<String> get maskedPaths => _listed.where(_masks.hides).toList();
+
+  /// The files the list shows: every file while [showMasked], else the unmasked ones; jj's order.
+  List<FileChange> get shownFiles {
+    final List<FileChange> files = _entry?.fileChanges ?? const <FileChange>[];
+    return _showMasked ? files : files.where((file) => !_masks.hides(file.path)).toList();
+  }
+
+  /// Whether the hidden files are listed anyway (dimmed) for the selected change.
+  bool get showMasked => _showMasked;
+
+  /// The hint row's Show / Hide; hiding them again moves the focus off a hidden file.
+  void toggleShowMasked() {
+    _showMasked = !_showMasked;
+    _focusShown();
+    _notify();
+  }
+
+  bool _shown(String path) => _showMasked || !_masks.hides(path);
+
+  /// The shown file nearest [path] in jj's order: the next one, else the previous one; the first one for a path the
+  /// selection does not list; null when none shows.
+  String? _shownNear(String? path) {
+    final List<String> paths = _listed;
+    final int at = path == null ? -1 : paths.indexOf(path);
+    for (int i = at + 1; i < paths.length; i++) {
+      if (_shown(paths[i])) {
+        return paths[i];
+      }
+    }
+    for (int i = at - 1; i >= 0; i--) {
+      if (_shown(paths[i])) {
+        return paths[i];
+      }
+    }
+    return null;
+  }
+
+  /// Moves the focus off a file that got hidden.
+  void _focusShown() {
+    final String? focused = _focused;
+    if (focused == null || _shown(focused)) {
+      return;
+    }
+    if (_shownNear(focused) case final String next) {
+      focus(next);
+      return;
+    }
+    _focused = null;
+    _previousDiff = null;
+    _previousIgnoring = null;
+    _loadFocus();
+  }
+
   void _setViewed(List<String> paths, bool viewed) {
     var changed = false;
     for (final path in paths) {
@@ -448,6 +516,12 @@ class InspectorViewModel extends ChangeNotifier {
     final DiffFileListSetting fileList = settings.value.general.diffFileList;
     if (fileList != _fileList) {
       _fileList = fileList;
+      changed = true;
+    }
+    final List<FileMask> masks = settings.value.general.fileMasks;
+    if (!listEquals(masks, _masks.masks)) {
+      _masks = FileMaskMatcher(masks);
+      _focusShown();
       changed = true;
     }
     // Another window (or a reset) moved a split.
@@ -1129,6 +1203,7 @@ class InspectorViewModel extends ChangeNotifier {
       _partial.clear();
       _pickedFor = null;
       _composerError = null;
+      _showMasked = false;
     }
     // A new operation may have rewritten the change or its parent: the combined description is gone with it.
     if (key != _key || op != _op || stale) {
@@ -1198,7 +1273,11 @@ class InspectorViewModel extends ChangeNotifier {
           _picked.retainAll(paths);
           _remapPartials();
         }
-        final String? focused = paths.contains(_focused) ? _focused : paths.firstOrNull;
+        // The focus stays on a still-shown file; a hidden one gives way to its nearest shown neighbour.
+        final String? current = _focused;
+        final String? focused = current != null && paths.contains(current) && _shown(current)
+            ? current
+            : _shownNear(current);
         if (focused != _focused) {
           _focusedDiff = null;
           _previousDiff = null;
@@ -2758,7 +2837,8 @@ class InspectorSplit {
 /// without further repeats; Space toggles the current file's pick on a mutable change; V toggles its Viewed mark; ↩
 /// shows its diff. The current row is the focused file's (`--fl-on`), with a 1.5 px `--accent` ring while the list has
 /// focus, and is scrolled into view. Or the text that takes the split's place: the stale state, a refusal, an empty
-/// change.
+/// change. Story 10.49: the rows are the model's shown files; the funnel before the flat / tree switch opens the file
+/// masks popover, and while ticked masks hide files a [FileMasksHint] sits below the list.
 class _Changes extends StatefulWidget {
   const _Changes({required this.model, required this.data, required this.wide});
 
@@ -2773,6 +2853,9 @@ class _Changes extends StatefulWidget {
 class _ChangesState extends State<_Changes> {
   final _focus = FocusNode(debugLabel: 'inspector files');
   final _files = ScrollController();
+
+  /// The file masks popover's: the funnel and the hint row's Masks… open it under the funnel.
+  final _masks = MenuController();
 
   /// One key per row (`f:` a file's path, `d:` a folder's): a key that moved with the current row would carry its
   /// row's state to another row.
@@ -2898,7 +2981,7 @@ class _ChangesState extends State<_Changes> {
 
   void _settle() {
     final String? pending = _pending;
-    final List<FileChange> files = widget.model.entry?.fileChanges ?? const <FileChange>[];
+    final List<FileChange> files = widget.model.shownFiles;
     if (pending != null && files.any((file) => file.path == pending)) {
       setState(() => _show(pending));
     } else if (pending != null) {
@@ -2921,7 +3004,7 @@ class _ChangesState extends State<_Changes> {
   });
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event, List<InspectorListRow> rows) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+    if ((event is! KeyDownEvent && event is! KeyRepeatEvent) || rows.isEmpty) {
       return KeyEventResult.ignored;
     }
     final InspectorViewModel model = widget.model;
@@ -3053,6 +3136,7 @@ class _ChangesState extends State<_Changes> {
           highlighted: false,
           ring: _focus.hasFocus && current,
           viewed: model.isViewed(file.path),
+          masked: model.isMasked(file.path),
           pickable: model.selectable,
           picked: model.fileState(file.path),
           onPick: () => model.togglePick(file.path),
@@ -3107,8 +3191,9 @@ class _ChangesState extends State<_Changes> {
     } else {
       final List<FileChange> files = entry.fileChanges;
       final tree = model.fileList == DiffFileListSetting.tree;
-      final List<InspectorListRow> rows = _rowsOf(files);
-      final int current = _currentOf(rows).clamp(0, rows.length - 1);
+      final List<InspectorListRow> rows = _rowsOf(model.shownFiles);
+      final int current = rows.isEmpty ? -1 : _currentOf(rows).clamp(0, rows.length - 1);
+      final List<String> masked = model.maskedPaths;
       final int viewed = model.viewedCount;
       final String? focused = model.focusedPath;
       final bool pickHunks = focused != null && model.previousDiff == null && model.hunkable(focused);
@@ -3195,6 +3280,16 @@ class _ChangesState extends State<_Changes> {
                         onPressed: model.markAll,
                       ),
                   ],
+                  FileMasksAnchor(
+                    settings: model.settings,
+                    paths: <String>[for (final FileChange file in files) file.path],
+                    controller: _masks,
+                    builder: (context, open) => FileMasksButton(
+                      active: model.fileMasks.activeCount,
+                      open: open,
+                      onPressed: () => _masks.isOpen ? _masks.close() : _masks.open(),
+                    ),
+                  ),
                   ZsSegmented<DiffFileListSetting>(
                     size: ZsSegmentedSize.sm,
                     label: strings.inspectorFileList,
@@ -3264,6 +3359,16 @@ class _ChangesState extends State<_Changes> {
                 ),
               ),
             ),
+            if (masked.isNotEmpty)
+              FileMasksHint(
+                count: masked.length,
+                showing: model.showMasked,
+                onShow: model.toggleShowMasked,
+                onMasks: _masks.open,
+                pickable: model.selectable,
+                picked: model.picksState(masked),
+                onPick: () => model.togglePicks(masked),
+              ),
           ],
         ),
       );
@@ -3405,6 +3510,7 @@ class InspectorFileRow extends StatelessWidget {
     required this.highlighted,
     this.ring = false,
     this.viewed = false,
+    this.masked = false,
     this.pickable = false,
     this.picked = false,
     this.onPick,
@@ -3412,6 +3518,10 @@ class InspectorFileRow extends StatelessWidget {
     this.depth = 0,
     super.key,
   });
+
+  /// Whether a ticked file mask hides it and it shows anyway (Story 10.49): the row at .55 with the `eye-off` glyph
+  /// after the name.
+  final bool masked;
 
   /// Whether the row sits in the tree: the name only, indented by [depth].
   final bool tree;
@@ -3465,12 +3575,24 @@ class InspectorFileRow extends StatelessWidget {
       ),
       _ => null,
     };
-    final TextSpan? note = word == null
+    final TextSpan? note = word == null && !masked
         ? null
         : TextSpan(
             children: <InlineSpan>[
-              const WidgetSpan(child: SizedBox(width: _rowGap)),
-              word,
+              if (word != null) ...<InlineSpan>[const WidgetSpan(child: SizedBox(width: _rowGap)), word],
+              if (masked)
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: _rowGap),
+                    child: ZanshinIcon(
+                      ZI.eyeOff,
+                      size: ZsIconSize.sm,
+                      color: colors.textFaint,
+                      key: const ValueKey<String>('inspector-file-masked'),
+                    ),
+                  ),
+                ),
             ],
           );
     final ({String name, String head, String tail}) parts = inspectorPathParts(file.path);
@@ -3537,9 +3659,14 @@ class InspectorFileRow extends StatelessWidget {
         ],
       ),
     );
+    final String tip = from == null ? file.path : '$from → ${file.path}'; // l10n-ignore: paths and an arrow
     return ZsTooltip(
-      message: from == null ? file.path : '$from → ${file.path}', // l10n-ignore: paths and an arrow
-      child: Semantics(selected: focused, label: file.path, child: row),
+      message: masked ? strings.fileMasksMaskedTooltip(tip) : tip,
+      child: Semantics(
+        selected: focused,
+        label: masked ? '${file.path}, ${strings.fileMasksMaskedLabel}' : file.path, // l10n-ignore: joins a path
+        child: masked ? Opacity(opacity: .55, child: row) : row,
+      ),
     );
   }
 }

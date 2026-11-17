@@ -5,7 +5,38 @@ import 'package:freezed_annotation/freezed_annotation.dart' show CheckedFromJson
 import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 
+const _seedsJson = <Map<String, Object?>>[
+  {'mask': '*.g.dart, *.freezed.dart', 'active': false},
+  {'mask': '*.lock', 'active': false},
+];
+
 void main() {
+  test('the file masks default to the two unticked seeds, also for a file without the key', () {
+    const seeds = [FileMask(mask: '*.g.dart, *.freezed.dart'), FileMask(mask: '*.lock')];
+    expect(const GeneralSettings().fileMasks, seeds);
+    expect(GeneralSettings.fromJson({'hideControls': false}).fileMasks, seeds);
+    expect(seeds.every((m) => !m.active), isTrue);
+  });
+
+  test('edited file masks survive a JSON round trip and an empty saved list stays empty', () {
+    const settings = AppSettings(
+      general: GeneralSettings(
+        fileMasks: [
+          FileMask(mask: '*.arb', active: true),
+          FileMask(mask: '*.lock'),
+        ],
+      ),
+    );
+    final Map<String, Object?> json = settings.toJson();
+    expect((json['general']! as Map<String, Object?>)['fileMasks'], [
+      {'mask': '*.arb', 'active': true},
+      {'mask': '*.lock', 'active': false},
+    ]);
+    expect(AppSettings.fromJson(json), settings);
+    expect(GeneralSettings.fromJson({'fileMasks': <Object?>[]}).fileMasks, isEmpty);
+    expect(() => GeneralSettings.fromJson({'fileMasks': 'x'}), throwsA(isA<CheckedFromJsonException>()));
+  });
+
   test('defaults follow the system theme', () {
     expect(const AppSettings().appearance.themeMode, ThemeMode.system);
   });
@@ -32,6 +63,7 @@ void main() {
         'diffWhitespace': 'showAll',
         'diffFileList': 'flat',
         'editor': null,
+        'fileMasks': _seedsJson,
       },
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
@@ -87,6 +119,7 @@ void main() {
         'diffWhitespace': 'showAll',
         'diffFileList': 'flat',
         'editor': null,
+        'fileMasks': _seedsJson,
       },
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
@@ -138,6 +171,7 @@ void main() {
       'diffWhitespace': 'showAll',
       'diffFileList': 'flat',
       'editor': null,
+      'fileMasks': _seedsJson,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
@@ -162,6 +196,7 @@ void main() {
       'diffWhitespace': 'showAll',
       'diffFileList': 'flat',
       'editor': null,
+      'fileMasks': _seedsJson,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
@@ -177,6 +212,7 @@ void main() {
       'diffWhitespace': 'showAll',
       'diffFileList': 'flat',
       'editor': null,
+      'fileMasks': _seedsJson,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
     for (final style in ['words', 'jj']) {
@@ -201,6 +237,7 @@ void main() {
         'diffWhitespace': 'ignoreAll',
         'diffFileList': 'flat',
         'editor': null,
+        'fileMasks': _seedsJson,
       });
       expect(AppSettings.fromJson(settings.toJson()), settings);
       const amount = GeneralSettings(diffWhitespace: DiffWhitespaceSetting.ignoreChangesInAmount);

@@ -768,6 +768,74 @@
   "@inspectorFileListFlat": {"description": "Story 10.39: tooltip of the file list switch's flat segment."},
   "inspectorFileListTree": "Tree",
   "@inspectorFileListTree": {"description": "Story 10.39: tooltip of the file list switch's tree segment."},
+  "fileMasksButtonTooltip": "Hide files by name",
+  "@fileMasksButtonTooltip": {"description": "Story 10.49: tooltip of the file list's funnel button while no file mask is ticked."},
+  "fileMasksButtonActiveTooltip": "{count, plural, =1{Hiding files matching 1 mask} other{Hiding files matching {count} masks}}",
+  "@fileMasksButtonActiveTooltip": {
+    "description": "Story 10.49: tooltip of the file list's funnel button while file masks are ticked.",
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "fileMasksPopoverLabel": "Hide files",
+  "@fileMasksPopoverLabel": {"description": "Story 10.49: accessible name of the file masks popover."},
+  "fileMasksTitle": "Hide files matching",
+  "@fileMasksTitle": {"description": "Story 10.49: the file masks popover's heading."},
+  "fileMasksPlaceholder": "Add a mask, e.g. *.g.dart  ↵",
+  "@fileMasksPlaceholder": {"description": "Story 10.49: placeholder of the file masks popover's field; ↵ adds the mask."},
+  "fileMasksFieldLabel": "New file mask",
+  "@fileMasksFieldLabel": {"description": "Story 10.49: accessible name of the file masks popover's field."},
+  "fileMasksStopHiding": "Stop hiding {mask}",
+  "@fileMasksStopHiding": {
+    "description": "Story 10.49: accessible name of a ticked file mask's checkbox.",
+    "placeholders": {"mask": {"type": "String", "example": "*.g.dart, *.freezed.dart"}}
+  },
+  "fileMasksHideMask": "Hide {mask}",
+  "@fileMasksHideMask": {
+    "description": "Story 10.49: accessible name of an unticked file mask's checkbox.",
+    "placeholders": {"mask": {"type": "String", "example": "*.lock"}}
+  },
+  "fileMasksRemove": "Remove {mask}",
+  "@fileMasksRemove": {
+    "description": "Story 10.49: accessible name of a file mask's remove button.",
+    "placeholders": {"mask": {"type": "String", "example": "*.lock"}}
+  },
+  "fileMasksRemoveTooltip": "Remove from the list",
+  "@fileMasksRemoveTooltip": {"description": "Story 10.49: tooltip of a file mask's remove button."},
+  "fileMasksFooter": "* and ? match inside a name, ** across folders. A mask with “/” matches the path. Separate several with commas.",
+  "@fileMasksFooter": {"description": "Story 10.49: the file masks popover's footer: the mask syntax."},
+  "fileMasksHidden": "{count, plural, =1{1 file hidden} other{{count} files hidden}}",
+  "@fileMasksHidden": {
+    "description": "Story 10.49: the hint row below the file list while ticked masks hide files.",
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "fileMasksMatching": "{count, plural, =1{1 file matches your masks} other{{count} files match your masks}}",
+  "@fileMasksMatching": {
+    "description": "Story 10.49: the hint row while the hidden files are shown.",
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "fileMasksAllPicked": " · all picked",
+  "@fileMasksAllPicked": {"description": "Story 10.49: appended to the hint row when every hidden file is picked."},
+  "fileMasksSomePicked": " · some picked",
+  "@fileMasksSomePicked": {"description": "Story 10.49: appended to the hint row when some hidden files are picked."},
+  "fileMasksNonePicked": " · none picked",
+  "@fileMasksNonePicked": {"description": "Story 10.49: appended to the hint row when no hidden file is picked."},
+  "fileMasksPickHidden": "{count, plural, =1{Pick the hidden file} other{Pick the {count} hidden files}}",
+  "@fileMasksPickHidden": {
+    "description": "Story 10.49: accessible name of the hint row's checkbox; it picks or unpicks every hidden file.",
+    "placeholders": {"count": {"type": "int"}}
+  },
+  "fileMasksShow": "Show",
+  "@fileMasksShow": {"description": "Story 10.49: hint row button: list the hidden files again, dimmed, for this change."},
+  "fileMasksHideShown": "Hide",
+  "@fileMasksHideShown": {"description": "Story 10.49: hint row button while the hidden files are shown: hide them again."},
+  "fileMasksMasks": "Masks…",
+  "@fileMasksMasks": {"description": "Story 10.49: hint row button: opens the file masks popover."},
+  "fileMasksMaskedTooltip": "{path} · hidden by a file mask",
+  "@fileMasksMaskedTooltip": {
+    "description": "Story 10.49: tooltip of a file row a ticked mask hides, while the hidden files are shown. The path is the row's usual tooltip: its path, or `old → new` for a rename or copy.",
+    "placeholders": {"path": {"type": "String", "example": "lib/app.g.dart"}}
+  },
+  "fileMasksMaskedLabel": "hidden by a file mask",
+  "@fileMasksMaskedLabel": {"description": "Story 10.49: added to the accessible name of a file row a ticked mask hides."},
   "inspectorCopyPath": "Click to copy {path}",
   "@inspectorCopyPath": {
     "description": "Story 10.39: tooltip of the diff header's path; a click copies the absolute path.",

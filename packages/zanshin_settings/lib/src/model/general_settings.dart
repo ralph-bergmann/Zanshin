@@ -68,8 +68,31 @@ abstract class GeneralSettings with _$GeneralSettings {
     /// Settings › General › Editor (Story 10.39): what Open in Editor starts — null for none, `idea`, `code` or
     /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
     String? editor,
+
+    /// The inspector's file masks (Story 10.49), newest first; one list for the app. A file without the key gets
+    /// [defaultFileMasks]; an empty saved list stays empty.
+    @Default(defaultFileMasks) List<FileMask> fileMasks,
   }) = _GeneralSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.
   factory GeneralSettings.fromJson(Map<String, Object?> json) => _$GeneralSettingsFromJson(json);
+}
+
+/// The masks a fresh install starts with (Story 10.49): both unticked, so nothing is hidden until a tick.
+const defaultFileMasks = <FileMask>[FileMask(mask: '*.g.dart, *.freezed.dart'), FileMask(mask: '*.lock')];
+
+/// One entry of the file-mask list (Story 10.49): IntelliJ-style masks, comma-separated, and whether it hides files.
+@freezed
+abstract class FileMask with _$FileMask {
+  /// Creates entry [mask]; inactive unless [active].
+  const factory FileMask({
+    /// The masks as typed, e.g. `*.g.dart, *.freezed.dart`.
+    required String mask,
+
+    /// Whether the entry hides the files it matches; off by default.
+    @Default(false) bool active,
+  }) = _FileMask;
+
+  /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.
+  factory FileMask.fromJson(Map<String, Object?> json) => _$FileMaskFromJson(json);
 }

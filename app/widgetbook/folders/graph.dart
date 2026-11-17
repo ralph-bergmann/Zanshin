@@ -80,7 +80,7 @@ import 'package:zanshin_core/zanshin_core.dart'
         SquashPlan,
         ZanshinWarning;
 import 'package:zanshin_settings/zanshin_settings.dart'
-    show DiffFileListSetting, DiffLayoutSetting, DiffWhitespaceSetting, SettingsStore;
+    show DiffFileListSetting, DiffLayoutSetting, DiffWhitespaceSetting, FileMask, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../graph/fake_content.dart';
@@ -370,6 +370,9 @@ final graphFolder = WidgetbookFolder(
           ),
         ),
         WidgetbookUseCase(name: 'Long path', builder: (context) => const _InspectorAt(width: 460, longPaths: true)),
+        // Story 10.49: the study's 24 files with the generated ones hidden; the hint row's Show and the funnel's
+        // popover are a click away.
+        WidgetbookUseCase(name: 'File masks', builder: (context) => const _InspectorAt(width: 460, masks: true)),
         WidgetbookUseCase(name: 'File menu', builder: (context) => const _FileMenu()),
         WidgetbookUseCase(name: 'Line menu', builder: (context) => const _FileMenu(line: 12)),
       ],
@@ -1082,11 +1085,48 @@ HunkLine _colorWords(String spec) {
 /// body on every third change, the layout's direct parents, and up to four files whose kinds cycle (a rename among
 /// them); a merge and the root change no files. Every verb preview is available.
 class _DemoDetails implements GraphDetails {
-  _DemoDetails(this._model, this._descriptions, {bool longPaths = false}) : _paths = longPaths ? _long : _short;
+  _DemoDetails(this._model, this._descriptions, {bool longPaths = false, bool maskStudy = false})
+    : _paths = maskStudy
+          ? _maskStudy
+          : longPaths
+          ? _long
+          : _short,
+      _everyFile = maskStudy;
 
   final GraphViewModel _model;
   final Map<String, String> _descriptions;
   final List<String> _paths;
+
+  /// Whether a change with files lists every one of [_paths], all modified (Story 10.49's study).
+  final bool _everyFile;
+
+  // Story 10.49: the file masks study's 24 files (design extras-study.jsx `MASK_FILES`).
+  static const _maskStudy = <String>[
+    '.claude/skills/create-package/SKILL.md',
+    'app/lib/dependency_registration.dart',
+    'app/lib/routing/app_router.dart',
+    'app/lib/routing/app_routes.dart',
+    'app/lib/routing/app_routes.g.dart',
+    'app/lib/screens/buildings/automation_overview_screen.dart',
+    'app/pubspec.lock',
+    'app/pubspec.yaml',
+    'docs/packages.dot',
+    'docs/packages.png',
+    'packages/design/lib/src/widgets/text_field.dart',
+    'packages/localization/l10n/app_de.arb',
+    'packages/localization/l10n/app_en.arb',
+    'packages/localization/lib/src/l10n/core_localizations.dart',
+    'packages/localization/lib/src/l10n/core_localizations_de.dart',
+    'packages/localization/lib/src/l10n/core_localizations_en.dart',
+    'packages/logic_designer/lib/src/domain/models/automation.dart',
+    'packages/logic_designer/lib/src/domain/models/automation.freezed.dart',
+    'packages/logic_designer/lib/src/domain/models/automation.g.dart',
+    'packages/logic_designer/lib/src/presentation/providers/automations_provider.dart',
+    'packages/logic_designer/lib/src/presentation/providers/automations_provider.g.dart',
+    'packages/logic_designer/lib/src/presentation/widgets/automation_card.dart',
+    'packages/logic_designer/pubspec.yaml',
+    'pubspec.lock',
+  ];
 
   static const _short = <String>['lib/auth/session.dart', 'lib/ui/onboarding.dart', 'assets/logo.png', 'src/main.rs'];
 
@@ -1113,7 +1153,11 @@ class _DemoDetails implements GraphDetails {
     final GraphCommitContent content = fakeContent(commitId.hashCode, commitId);
     final ({int start, int end}) edges = layout.parentEdges(node);
     final bool merge = layout.parentCountOf(node) >= 2;
-    final int files = merge || node == layout.rootIndex ? 0 : commitId.hashCode % 5;
+    final int files = merge || node == layout.rootIndex
+        ? 0
+        : _everyFile
+        ? _paths.length
+        : commitId.hashCode % 5;
     final author = Signature(
       name: content.authorName,
       email: content.authorEmail,
@@ -1144,8 +1188,8 @@ class _DemoDetails implements GraphDetails {
         for (var i = 0; i < files; i++)
           FileChange(
             path: _paths[i],
-            kind: _kinds[i],
-            fromPath: _kinds[i] == FileChangeKind.renamed ? 'assets/icon.png' : null,
+            kind: _everyFile ? FileChangeKind.modified : _kinds[i],
+            fromPath: !_everyFile && _kinds[i] == FileChangeKind.renamed ? 'assets/icon.png' : null,
           ),
       ],
     );
@@ -2396,14 +2440,22 @@ class _PinnedNumbersState extends State<_PinnedNumbers> {
 }
 
 /// Story 10.38: the inspector at a fixed [width] on the demo's first mutable change — 900 puts the files beside the
-/// diff, 460 above it. Story 10.39: [tree] lists the files as a tree, [longPaths] gives them deep paths.
+/// diff, 460 above it. Story 10.39: [tree] lists the files as a tree, [longPaths] gives them deep paths. Story 10.49:
+/// [masks] lists the file masks study's 24 files with `*.g.dart, *.freezed.dart` ticked.
 class _InspectorAt extends StatefulWidget {
-  const _InspectorAt({required this.width, this.tree = false, this.longPaths = false, this.checksShown = false});
+  const _InspectorAt({
+    required this.width,
+    this.tree = false,
+    this.longPaths = false,
+    this.checksShown = false,
+    this.masks = false,
+  });
 
   final double width;
   final bool tree;
   final bool longPaths;
   final bool checksShown;
+  final bool masks;
 
   @override
   State<_InspectorAt> createState() => _InspectorAtState();
@@ -2427,6 +2479,18 @@ class _InspectorAtState extends State<_InspectorAt> {
     if (widget.tree) {
       await store.update((s) => s.copyWith.general(diffFileList: DiffFileListSetting.tree));
     }
+    if (widget.masks) {
+      await store.update(
+        (s) => s.copyWith.general(
+          fileMasks: const <FileMask>[
+            FileMask(mask: '*.g.dart, *.freezed.dart', active: true),
+            FileMask(mask: 'core_localizations*.dart'),
+            FileMask(mask: '*.lock'),
+            FileMask(mask: 'docs/*.png'),
+          ],
+        ),
+      );
+    }
     if (!mounted) {
       return;
     }
@@ -2434,7 +2498,7 @@ class _InspectorAtState extends State<_InspectorAt> {
     _model
       ..addListener(_selectFirst)
       ..init(_source, actions: _DemoActions(_descriptions), clock: () => DateTime.fromMillisecondsSinceEpoch(now));
-    final details = _DemoDetails(_model, _descriptions, longPaths: widget.longPaths);
+    final details = _DemoDetails(_model, _descriptions, longPaths: widget.longPaths, maskStudy: widget.masks);
     final inspector = InspectorViewModel(
       graph: _model,
       details: details,

@@ -25,6 +25,8 @@
 .zs-file-note.is-del{color:var(--rem);opacity:.85}
 .zs-file-note.is-from{color:var(--text-faint)}
 .zs-file.is-viewed .zs-file-name,.zs-file.is-viewed .zs-file-dir{opacity:.55}
+.zs-file.is-masked{opacity:.55}
+.zs-file-mask{display:inline-grid;vertical-align:middle;margin-left:6px;color:var(--text-faint)}
 .zs-file-vw{display:grid;color:var(--add);flex-shrink:0;margin-left:8px}
 /* the tree's folder row: the folder glyph — open or closed, no chevron, no count (Story 10.42) — then the name */
 .zs-file-fold{display:grid;flex-shrink:0;color:var(--text-faint)}

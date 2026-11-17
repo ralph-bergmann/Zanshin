@@ -1273,6 +1273,113 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inspectorFileListTree => 'Tree';
 
   @override
+  String get fileMasksButtonTooltip => 'Hide files by name';
+
+  @override
+  String fileMasksButtonActiveTooltip(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Hiding files matching $count masks',
+      one: 'Hiding files matching 1 mask',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get fileMasksPopoverLabel => 'Hide files';
+
+  @override
+  String get fileMasksTitle => 'Hide files matching';
+
+  @override
+  String get fileMasksPlaceholder => 'Add a mask, e.g. *.g.dart  ↵';
+
+  @override
+  String get fileMasksFieldLabel => 'New file mask';
+
+  @override
+  String fileMasksStopHiding(String mask) {
+    return 'Stop hiding $mask';
+  }
+
+  @override
+  String fileMasksHideMask(String mask) {
+    return 'Hide $mask';
+  }
+
+  @override
+  String fileMasksRemove(String mask) {
+    return 'Remove $mask';
+  }
+
+  @override
+  String get fileMasksRemoveTooltip => 'Remove from the list';
+
+  @override
+  String get fileMasksFooter =>
+      '* and ? match inside a name, ** across folders. A mask with “/” matches the path. Separate several with commas.';
+
+  @override
+  String fileMasksHidden(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files hidden',
+      one: '1 file hidden',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String fileMasksMatching(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files match your masks',
+      one: '1 file matches your masks',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get fileMasksAllPicked => ' · all picked';
+
+  @override
+  String get fileMasksSomePicked => ' · some picked';
+
+  @override
+  String get fileMasksNonePicked => ' · none picked';
+
+  @override
+  String fileMasksPickHidden(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Pick the $count hidden files',
+      one: 'Pick the hidden file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get fileMasksShow => 'Show';
+
+  @override
+  String get fileMasksHideShown => 'Hide';
+
+  @override
+  String get fileMasksMasks => 'Masks…';
+
+  @override
+  String fileMasksMaskedTooltip(String path) {
+    return '$path · hidden by a file mask';
+  }
+
+  @override
+  String get fileMasksMaskedLabel => 'hidden by a file mask';
+
+  @override
   String inspectorCopyPath(String path) {
     return 'Click to copy $path';
   }

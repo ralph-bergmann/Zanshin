@@ -44,6 +44,14 @@ _GeneralSettings _$GeneralSettingsFromJson(
           DiffFileListSetting.flat,
     ),
     editor: $checkedConvert('editor', (v) => v as String?),
+    fileMasks: $checkedConvert(
+      'fileMasks',
+      (v) =>
+          (v as List<dynamic>?)
+              ?.map((e) => FileMask.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          defaultFileMasks,
+    ),
   );
   return val;
 });
@@ -57,6 +65,7 @@ Map<String, dynamic> _$GeneralSettingsToJson(
   'diffWhitespace': _$DiffWhitespaceSettingEnumMap[instance.diffWhitespace]!,
   'diffFileList': _$DiffFileListSettingEnumMap[instance.diffFileList]!,
   'editor': instance.editor,
+  'fileMasks': instance.fileMasks.map((e) => e.toJson()).toList(),
 };
 
 const _$DiffLayoutSettingEnumMap = {
@@ -73,4 +82,18 @@ const _$DiffWhitespaceSettingEnumMap = {
 const _$DiffFileListSettingEnumMap = {
   DiffFileListSetting.flat: 'flat',
   DiffFileListSetting.tree: 'tree',
+};
+
+_FileMask _$FileMaskFromJson(Map<String, dynamic> json) =>
+    $checkedCreate('_FileMask', json, ($checkedConvert) {
+      final val = _FileMask(
+        mask: $checkedConvert('mask', (v) => v as String),
+        active: $checkedConvert('active', (v) => v as bool? ?? false),
+      );
+      return val;
+    });
+
+Map<String, dynamic> _$FileMaskToJson(_FileMask instance) => <String, dynamic>{
+  'mask': instance.mask,
+  'active': instance.active,
 };

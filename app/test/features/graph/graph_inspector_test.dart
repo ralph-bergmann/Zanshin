@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show SelectionArea;
+import 'package:zanshin/src/features/graph/file_masks.dart';
 import 'package:zanshin/src/features/graph/graph_drag.dart';
 import 'package:zanshin/src/features/graph/graph_inspector.dart';
 import 'package:zanshin/src/features/graph/graph_layout.dart';
@@ -5236,6 +5237,315 @@ void main() {
       await rightClick(tester, tag);
       await choose(tester, 'Copy name');
       expect(copied, <String>['v1.0@origin']);
+      await unmount(tester);
+    });
+  });
+
+  group('Story 10.49: file masks', () {
+    // The study's 24 files (design extras-study.jsx `MASK_FILES`).
+    const study = <String>[
+      '.claude/skills/create-package/SKILL.md',
+      'app/lib/dependency_registration.dart',
+      'app/lib/routing/app_router.dart',
+      'app/lib/routing/app_routes.dart',
+      'app/lib/routing/app_routes.g.dart',
+      'app/lib/screens/buildings/automation_overview_screen.dart',
+      'app/pubspec.lock',
+      'app/pubspec.yaml',
+      'docs/packages.dot',
+      'docs/packages.png',
+      'packages/design/lib/src/widgets/text_field.dart',
+      'packages/localization/l10n/app_de.arb',
+      'packages/localization/l10n/app_en.arb',
+      'packages/localization/lib/src/l10n/core_localizations.dart',
+      'packages/localization/lib/src/l10n/core_localizations_de.dart',
+      'packages/localization/lib/src/l10n/core_localizations_en.dart',
+      'packages/logic_designer/lib/src/domain/models/automation.dart',
+      'packages/logic_designer/lib/src/domain/models/automation.freezed.dart',
+      'packages/logic_designer/lib/src/domain/models/automation.g.dart',
+      'packages/logic_designer/lib/src/presentation/providers/automations_provider.dart',
+      'packages/logic_designer/lib/src/presentation/providers/automations_provider.g.dart',
+      'packages/logic_designer/lib/src/presentation/widgets/automation_card.dart',
+      'packages/logic_designer/pubspec.yaml',
+      'pubspec.lock',
+    ];
+    const generated = <String>[
+      'app/lib/routing/app_routes.g.dart',
+      'packages/logic_designer/lib/src/domain/models/automation.freezed.dart',
+      'packages/logic_designer/lib/src/domain/models/automation.g.dart',
+      'packages/logic_designer/lib/src/presentation/providers/automations_provider.g.dart',
+    ];
+    final rest = <String>[
+      for (final String path in study)
+        if (!generated.contains(path)) path,
+    ];
+
+    void filesOf(String key, List<String> paths) => details.files[key] = <FileChange>[
+      for (final String path in paths) FileChange(path: path, kind: FileChangeKind.modified),
+    ];
+
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    String hint(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-masked-text'))).data!;
+
+    testWidgets(
+      'the generated files of @ are not listed; the hint reads all picked, the funnel 1; Commit takes no paths',
+      (tester) async {
+        filesOf(_at, study);
+        await pump(tester, select: _at);
+        await settle(tester);
+        expect(_id('inspector-masked-hint'), findsNothing, reason: 'the seeds start unticked');
+        expect(find.descendant(of: _id('inspector-file-masks'), matching: find.byType(Text)), findsNothing);
+        settings.addFileMask('*.g.dart, *.freezed.dart');
+        await settle(tester);
+        expect(settings.value.general.fileMasks.first, const FileMask(mask: '*.g.dart, *.freezed.dart', active: true));
+        expect(settings.value.general.fileMasks, hasLength(2), reason: 'the seed moved to the top, no double');
+        for (final path in generated) {
+          expect(_fileRow(path), findsNothing, reason: path);
+        }
+        for (final path in rest) {
+          expect(_fileRow(path), findsOneWidget, reason: path);
+        }
+        expect(
+          tester.widget<Text>(find.byKey(const ValueKey<String>('inspector-files-meta'))).data,
+          '24 files',
+          reason: 'the count stays the total',
+        );
+        expect(hint(tester), '4 files hidden · all picked');
+        expect(find.descendant(of: _id('inspector-file-masks'), matching: find.text('1')), findsOneWidget);
+        expect(inspector.maskedPaths, generated);
+        final commit = inspector.composerAction! as GraphCommit;
+        expect(commit.paths, isEmpty, reason: 'every file picked, the hidden ones too');
+        await unmount(tester);
+      },
+    );
+
+    testWidgets('the hint box unpicks only the hidden files: Split with the 20 shown paths, none picked', (
+      tester,
+    ) async {
+      filesOf(_at, study);
+      settings.addFileMask('*.g.dart, *.freezed.dart');
+      await pump(tester, select: _at);
+      await settle(tester);
+      await tester.tap(_id('inspector-masked-check').first);
+      await settle(tester);
+      for (final path in generated) {
+        expect(inspector.isPicked(path), isFalse, reason: path);
+      }
+      for (final path in rest) {
+        expect(inspector.isPicked(path), isTrue, reason: path);
+      }
+      expect(inspector.composerVerb, ComposerVerb.split);
+      expect((inspector.composerAction! as GraphSplit).paths, rest);
+      for (final path in generated) {
+        expect(inspector.composerCommand, isNot(contains(path)));
+      }
+      expect(hint(tester), '4 files hidden · none picked');
+      await tester.tap(_id('inspector-masked-check').first);
+      await settle(tester);
+      expect(hint(tester), '4 files hidden · all picked', reason: 'a second click picks them again');
+      await unmount(tester);
+    });
+
+    testWidgets('a picked hidden file reaches jj commit; some picked reads in the hint', (tester) async {
+      filesOf(_at, <String>['a.dart', 'b.g.dart', 'c.g.dart']);
+      settings.addFileMask('*.g.dart');
+      await pump(tester, select: _at);
+      await settle(tester);
+      inspector
+        ..togglePick('a.dart')
+        ..togglePick('c.g.dart');
+      await settle(tester);
+      expect(hint(tester), '2 files hidden · some picked');
+      expect((inspector.composerActionAs(ComposerVerb.commit)! as GraphCommit).paths, <String>['b.g.dart']);
+      await unmount(tester);
+    });
+
+    testWidgets('Show lists the hidden rows dimmed with the eye-off glyph; Hide hides them again', (tester) async {
+      filesOf(_mutable, <String>['a.dart', 'b.g.dart']);
+      settings.addFileMask('*.g.dart');
+      await pump(tester);
+      await settle(tester);
+      expect(_fileRow('b.g.dart'), findsNothing);
+      expect(hint(tester), '1 file hidden · none picked');
+      await tester.tap(_id('inspector-masked-show'));
+      await settle(tester);
+      expect(inspector.showMasked, isTrue);
+      final InspectorFileRow row = tester.widget<InspectorFileRow>(_fileRow('b.g.dart'));
+      expect(row.masked, isTrue);
+      expect(tester.widget<InspectorFileRow>(_fileRow('a.dart')).masked, isFalse);
+      expect(
+        find.descendant(
+          of: _fileRow('b.g.dart'),
+          matching: find.byKey(const ValueKey<String>('inspector-file-masked')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<Opacity>(find.descendant(of: _fileRow('b.g.dart'), matching: find.byType(Opacity)).first).opacity,
+        .55,
+      );
+      expect(
+        tester
+            .widget<ZsTooltip>(find.descendant(of: _fileRow('b.g.dart'), matching: find.byType(ZsTooltip)).first)
+            .message,
+        'b.g.dart · hidden by a file mask',
+      );
+      expect(hint(tester), '1 file matches your masks · none picked');
+      expect(find.text('Hide'), findsOneWidget);
+      await tester.tap(_id('inspector-masked-show'));
+      await settle(tester);
+      expect(_fileRow('b.g.dart'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('Show is per change: another change starts with it off', (tester) async {
+      filesOf(_mutable, <String>['a.dart', 'b.g.dart']);
+      filesOf(_at, <String>['c.g.dart', 'd.dart']);
+      settings.addFileMask('*.g.dart');
+      await pump(tester);
+      await settle(tester);
+      inspector.toggleShowMasked();
+      await settle(tester);
+      expect(inspector.showMasked, isTrue);
+      graph.select(_at);
+      await settle(tester);
+      expect(inspector.showMasked, isFalse);
+      expect(_fileRow('c.g.dart'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('the first shown file starts focused; a masked focus moves next, else back, else none (no diff)', (
+      tester,
+    ) async {
+      filesOf(_mutable, <String>['a.g.dart', 'b.dart', 'c.lock', 'd.dart']);
+      settings.addFileMask('*.g.dart');
+      await pump(tester);
+      await settle(tester);
+      expect(inspector.focusedPath, 'b.dart', reason: 'the first shown file');
+      settings.addFileMask('b.dart');
+      await settle(tester);
+      expect(inspector.focusedPath, 'c.lock', reason: 'the next shown file');
+      inspector.focus('d.dart');
+      await settle(tester);
+      settings.addFileMask('d.dart');
+      await settle(tester);
+      expect(inspector.focusedPath, 'c.lock', reason: 'no next one: the previous');
+      settings.addFileMask('*.lock');
+      await settle(tester);
+      expect(inspector.focusedPath, isNull, reason: 'every file hidden');
+      expect(find.byType(InspectorDiffView), findsNothing);
+      expect(find.byType(InspectorFileRow), findsNothing);
+      expect(hint(tester), '4 files hidden · none picked');
+      // The empty list still takes keys without failing.
+      tester
+          .widget<Focus>(find.byWidgetPredicate((w) => w is Focus && w.focusNode?.debugLabel == 'inspector files'))
+          .focusNode!
+          .requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+      await unmount(tester);
+    });
+
+    testWidgets('Hide moves the focus off the shown hidden file to the next shown one', (tester) async {
+      filesOf(_mutable, <String>['a.dart', 'b.g.dart', 'c.dart']);
+      settings.addFileMask('*.g.dart');
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(_id('inspector-masked-show'));
+      await settle(tester);
+      await tester.tap(_fileRow('b.g.dart'));
+      await settle(tester);
+      expect(inspector.focusedPath, 'b.g.dart');
+      await tester.tap(_id('inspector-masked-show'));
+      await settle(tester);
+      expect(inspector.focusedPath, 'c.dart');
+      expect(tester.widget<InspectorDiffView>(find.byType(InspectorDiffView)).path, 'c.dart');
+      await unmount(tester);
+    });
+
+    testWidgets('↓ skips the hidden rows; the tree drops a folder of only hidden files', (tester) async {
+      filesOf(_mutable, <String>['gen/x.g.dart', 'gen/y.g.dart', 'src/a.dart', 'src/b.g.dart', 'src/c.dart']);
+      settings.addFileMask('*.g.dart');
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(_fileRow('src/a.dart'));
+      await settle(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await settle(tester);
+      expect(inspector.focusedPath, 'src/c.dart');
+      inspector.setFileList(DiffFileListSetting.tree);
+      await settle(tester);
+      expect(find.byKey(const ValueKey<String>('inspector-folder gen')), findsNothing);
+      final InspectorFolderRow folder = tester.widget<InspectorFolderRow>(
+        find.byKey(const ValueKey<String>('inspector-folder src')),
+      );
+      expect(
+        <String>[for (final FileChange file in folder.folder.files) file.path],
+        <String>['src/a.dart', 'src/c.dart'],
+      );
+      await unmount(tester);
+    });
+
+    testWidgets('an immutable change: the hint has no box and no pick part', (tester) async {
+      filesOf(_left, <String>['a.dart', 'b.g.dart']);
+      settings.addFileMask('*.g.dart');
+      await pump(tester, select: _left);
+      await settle(tester);
+      expect(hint(tester), '1 file hidden');
+      expect(_id('inspector-masked-check'), findsNothing);
+      await unmount(tester);
+    });
+
+    testWidgets('the funnel and Masks… open one popover; a second inspector on the same store hides the same files', (
+      tester,
+    ) async {
+      filesOf(_mutable, <String>['a.dart', 'b.g.dart']);
+      await pump(tester);
+      await settle(tester);
+      await tester.tap(_id('inspector-file-masks'));
+      await settle(tester);
+      expect(_id('file-masks-popover'), findsOneWidget);
+      await tester.enterText(
+        find.descendant(of: _id('file-masks-field'), matching: find.byType(EditableText)),
+        '*.g.dart',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await settle(tester);
+      expect(_fileRow('b.g.dart'), findsNothing);
+      expect(find.descendant(of: _id('inspector-file-masks'), matching: find.text('1')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byWidgetPredicate((w) => w is Semantics && w.properties.identifier == 'file-mask-0'),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+        reason: '*.g.dart matches one of the change\'s files',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await settle(tester);
+      expect(_id('file-masks-popover'), findsNothing);
+      await tester.tap(_id('inspector-masked-masks'));
+      await settle(tester);
+      expect(_id('file-masks-popover'), findsOneWidget, reason: 'Masks… opens the same popover');
+      final second = InspectorViewModel(
+        graph: graph,
+        details: details,
+        viewed: ProjectViewedStore(settings, '/r/a'),
+        settings: settings,
+      );
+      await settle(tester);
+      expect(second.maskedPaths, <String>['b.g.dart']);
+      second.dispose();
       await unmount(tester);
     });
   });

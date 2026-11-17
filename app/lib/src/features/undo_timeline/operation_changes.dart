@@ -3,16 +3,19 @@
 import 'dart:async';
 import 'dart:io' show FileSystemException;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/rendering.dart' show SemanticsProperties;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting, SettingsStore;
+import 'package:zanshin_settings/zanshin_settings.dart'
+    show DiffLayoutSetting, DiffWhitespaceSetting, FileMask, SettingsStore;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../graph/file_masks.dart';
 import '../graph/graph_inspector.dart' show InspectorFileRow;
 import '../graph/graph_ports.dart' show jjOpShowCommand;
 import '../graph/inspector_check_reveal.dart';
@@ -154,14 +157,17 @@ typedef OperationChangeLine = ({bool added, String text});
 /// [settings], written and followed; `general.diffWordMarks` ([wordMarks], Story 5.14) is followed and only changes
 /// how the loaded diffs are drawn. Story 10.33: `general.diffWhitespace` ([whitespace]) is written and followed — while
 /// it ignores whitespace the focused file is also read at `-b` / `-w` ([focusedIgnoring]); the summary stays exact — and
-/// the diff options menu writes `diff.color-words.context` ([contextLines]) through the source.
+/// the diff options menu writes `diff.color-words.context` ([contextLines]) through the source. Story 10.49:
+/// `general.fileMasks` ([fileMasks]) is followed — the list shows [shownFiles] (every file while [showMasked], per
+/// selected commit), the first shown file starts focused, and the focus moves off a file that gets hidden.
 class OperationChangesModel extends ChangeNotifier {
   /// The view of [operation] (an id), reading through [_source].
   @assistedInject
   OperationChangesModel(this._source, {@assisted required this.operation, required this.settings})
     : _layout = settings.value.general.diffLayout,
       _wordMarks = settings.value.general.diffWordMarks,
-      _whitespace = settings.value.general.diffWhitespace {
+      _whitespace = settings.value.general.diffWhitespace,
+      _masks = FileMaskMatcher(settings.value.general.fileMasks) {
     settings.addListener(_settingsChanged);
     _source.configWrites.addListener(_configChanged);
     unawaited(_load());
@@ -185,6 +191,8 @@ class OperationChangesModel extends ChangeNotifier {
   DiffLayoutSetting _layout;
   bool _wordMarks;
   DiffWhitespaceSetting _whitespace;
+  FileMaskMatcher _masks;
+  var _showMasked = false;
   DiffContext _context = (lines: 3, fromRepo: false);
   var _contextSerial = 0;
   FileDiff? _focusedIgnoring;
@@ -218,6 +226,71 @@ class OperationChangesModel extends ChangeNotifier {
 
   /// The summary diff's refusal.
   ZanshinFfiException? get filesError => _filesError;
+
+  /// The compiled `general.fileMasks` (Story 10.49).
+  FileMaskMatcher get fileMasks => _masks;
+
+  /// Whether a ticked mask hides [path].
+  bool isMasked(String path) => _masks.hides(path);
+
+  /// The selection's files a ticked mask hides, in jj's order.
+  List<String> get maskedPaths => <String>[
+    for (final FileDiff file in _files?.files ?? const <FileDiff>[])
+      if (_masks.hides(file.path)) file.path,
+  ];
+
+  /// The files the list shows: every file while [showMasked], else the unmasked ones; jj's order.
+  List<FileDiff> get shownFiles => <FileDiff>[
+    for (final FileDiff file in _files?.files ?? const <FileDiff>[])
+      if (_shown(file.path)) file,
+  ];
+
+  /// Whether the hidden files are listed anyway (dimmed) for the selected commit.
+  bool get showMasked => _showMasked;
+
+  /// The hint row's Show / Hide; hiding them again moves the focus off a hidden file.
+  void toggleShowMasked() {
+    _showMasked = !_showMasked;
+    _focusShown();
+    _notify();
+  }
+
+  bool _shown(String path) => _showMasked || !_masks.hides(path);
+
+  /// The shown file nearest [path] in jj's order: the next one, else the previous one; the first one for a path the
+  /// selection does not list; null when none shows.
+  String? _shownNear(String? path) {
+    final paths = <String>[for (final FileDiff file in _files?.files ?? const <FileDiff>[]) file.path];
+    final int at = path == null ? -1 : paths.indexOf(path);
+    for (int i = at + 1; i < paths.length; i++) {
+      if (_shown(paths[i])) {
+        return paths[i];
+      }
+    }
+    for (int i = at - 1; i >= 0; i--) {
+      if (_shown(paths[i])) {
+        return paths[i];
+      }
+    }
+    return null;
+  }
+
+  /// Moves the focus off a file that got hidden.
+  void _focusShown() {
+    final String? focused = _focused;
+    if (focused == null || _shown(focused)) {
+      return;
+    }
+    if (_shownNear(focused) case final String next) {
+      focus(next);
+      return;
+    }
+    _focused = null;
+    _focusedDiff = null;
+    _focusedIgnoring = null;
+    _focusError = null;
+    _focusSerial++;
+  }
 
   /// The path whose diff shows.
   String? get focusedPath => _focused;
@@ -311,6 +384,12 @@ class OperationChangesModel extends ChangeNotifier {
     if (whitespace != _whitespace) {
       _whitespace = whitespace;
       _refocus();
+    }
+    final List<FileMask> masks = settings.value.general.fileMasks;
+    if (!listEquals(masks, _masks.masks)) {
+      _masks = FileMaskMatcher(masks);
+      _focusShown();
+      _notify();
     }
   }
 
@@ -498,8 +577,11 @@ class OperationChangesModel extends ChangeNotifier {
     _read(index);
   }
 
-  /// Reads entry [index]'s files and focuses [keep] while they list it, else the first.
+  /// Reads entry [index]'s files and focuses [keep] while they list and show it, else the first shown file.
   void _read(int index, {String? keep}) {
+    if (index != _selected) {
+      _showMasked = false;
+    }
     _selected = index;
     _files = null;
     _filesError = null;
@@ -516,8 +598,11 @@ class OperationChangesModel extends ChangeNotifier {
           return;
         }
         _files = files;
-        if (files.files.isNotEmpty) {
-          focus(files.files.any((file) => file.path == keep) ? keep! : files.files.first.path);
+        final String? first = keep != null && files.files.any((file) => file.path == keep) && _shown(keep)
+            ? keep
+            : _shownNear(keep);
+        if (first != null) {
+          focus(first);
         }
       } on ZanshinFfiException catch (error) {
         _log.warning('diff of a changed commit refused: ${error.code}');
@@ -884,14 +969,24 @@ class _CommitRow extends StatelessWidget {
   }
 }
 
-/// The selected commit's files and the focused file's diff, or the refusal in their place.
-class _Files extends StatelessWidget {
+/// The selected commit's files and the focused file's diff, or the refusal in their place. Story 10.49: only the shown
+/// files are rows (hidden ones dimmed while shown); while ticked masks hide files the hint row follows the rows, without
+/// a checkbox, its Masks… the popover's anchor.
+class _Files extends StatefulWidget {
   const _Files({required this.model});
 
   final OperationChangesModel model;
 
   @override
+  State<_Files> createState() => _FilesState();
+}
+
+class _FilesState extends State<_Files> {
+  final _masks = MenuController();
+
+  @override
   Widget build(BuildContext context) {
+    final OperationChangesModel model = widget.model;
     final Widget child;
     if (model.filesError case final ZanshinFfiException error?) {
       child = _Text(error.context ?? error.code, key: const ValueKey<String>('operation-changes-files-error'));
@@ -913,6 +1008,8 @@ class _Files extends StatelessWidget {
         ),
         null => null,
       };
+      final List<FileDiff> shown = model.shownFiles;
+      final List<String> masked = model.maskedPaths;
       child = diff.files.isEmpty
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -923,8 +1020,23 @@ class _Files extends StatelessWidget {
               spacing: 1,
               children: <Widget>[
                 ?description,
-                for (var i = 0; i < diff.files.length; i++)
-                  _FileRow(model: model, file: diff.files[i], index: i, focused: diff.files[i].path == focused),
+                for (final FileDiff file in shown)
+                  _FileRow(model: model, file: file, index: diff.files.indexOf(file), focused: file.path == focused),
+                // The anchor stays while the commit has files, so an open popover survives unticking the last
+                // hiding mask; the hint shows only while files are hidden.
+                FileMasksAnchor(
+                  settings: model.settings,
+                  paths: <String>[for (final FileDiff file in diff.files) file.path],
+                  controller: _masks,
+                  builder: (context, open) => masked.isEmpty
+                      ? const SizedBox.shrink()
+                      : FileMasksHint(
+                          count: masked.length,
+                          showing: model.showMasked,
+                          onShow: model.toggleShowMasked,
+                          onMasks: _masks.open,
+                        ),
+                ),
                 if (focused != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -977,6 +1089,7 @@ class _FileRow extends StatelessWidget {
       file: FileChange(path: file.path, kind: file.kind, fromPath: file.fromPath),
       focused: focused,
       highlighted: status.hovered,
+      masked: model.isMasked(file.path),
     ),
   );
 }

@@ -55,14 +55,15 @@
     add(" 13:16|  }", null);
     if (ignoring) add({ t: "fold", n: 1, open: foldOpen || pickedAny, fixed: pickedAny }, 1);
     if (!ignoring || foldOpen || pickedAny) add(k + "17:20|  {+  +}static const x = 1;", 1);
-    const files = [["M", "lib/onboarding/swipe_controller.dart"], ["A", "lib/onboarding/widgets/swipe_hint.dart"], ["D", "lib/legacy/onboarding_pager.dart"], ["R", "lib/onboarding/pager.dart", "lib/legacy/pager.dart"], ["M", "test/onboarding/swipe_controller_test.dart"]];
+    const files = [["M", "lib/onboarding/swipe_controller.dart"], ["A", "lib/onboarding/widgets/swipe_hint.dart"], ["D", "lib/legacy/onboarding_pager.dart"], ["R", "lib/onboarding/pager.dart", "lib/legacy/pager.dart"], ["M", "test/onboarding/swipe_controller_test.dart"], ["M", "lib/onboarding/swipe_controller.g.dart"]];
     return (
       <div className="g">
         {/* Story 10.42: calm — no status letter, no counts, a quiet word after the name; unchecked boxes show only while the pointer
             is over this pane or focus is inside it (.zs-check-reveal); picked and mixed always show. */}
         <div className="zs-check-reveal">
-          <div className="hd"><span className="zs-file-gut" style={{ marginLeft: -8 }}><Checkbox size="sm" mixed label="Select all"/></span><b>Changes</b><span>5 files</span></div>
-          <div className="list" role="list">{files.map(([s, p, from], i) => <FileRow key={p} status={s} path={p} from={from} selected={sel === i} viewed={i === 4} selectable checked={i === 1} mixed={i === 0} onClick={() => setSel(i)}/>)}</div>
+          <div className="hd"><span className="zs-file-gut" style={{ marginLeft: -8 }}><Checkbox size="sm" mixed label="Select all"/></span><b>Changes</b><span>6 files</span></div>
+          {/* Story 10.49: the last row is hidden by a ticked file mask and shown anyway (Show): masked */}
+          <div className="list" role="list">{files.map(([s, p, from], i) => <FileRow key={p} status={s} path={p} from={from} selected={sel === i} viewed={i === 4} masked={i === 5} selectable checked={i === 1} mixed={i === 0} onClick={() => setSel(i)}/>)}</div>
           {/* Story 10.39 / 10.42: the tree — a joined folder row (mixed, open glyph), a closed one, files by name under their folder */}
           <div className="list" role="tree" aria-label="Tree">
             <FileRow open name="lib/onboarding" path="lib/onboarding" selectable mixed/>

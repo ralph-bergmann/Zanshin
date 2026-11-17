@@ -1922,6 +1922,138 @@ abstract class AppLocalizations {
   /// **'Tree'**
   String get inspectorFileListTree;
 
+  /// Story 10.49: tooltip of the file list's funnel button while no file mask is ticked.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide files by name'**
+  String get fileMasksButtonTooltip;
+
+  /// Story 10.49: tooltip of the file list's funnel button while file masks are ticked.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Hiding files matching 1 mask} other{Hiding files matching {count} masks}}'**
+  String fileMasksButtonActiveTooltip(int count);
+
+  /// Story 10.49: accessible name of the file masks popover.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide files'**
+  String get fileMasksPopoverLabel;
+
+  /// Story 10.49: the file masks popover's heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide files matching'**
+  String get fileMasksTitle;
+
+  /// Story 10.49: placeholder of the file masks popover's field; ↵ adds the mask.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a mask, e.g. *.g.dart  ↵'**
+  String get fileMasksPlaceholder;
+
+  /// Story 10.49: accessible name of the file masks popover's field.
+  ///
+  /// In en, this message translates to:
+  /// **'New file mask'**
+  String get fileMasksFieldLabel;
+
+  /// Story 10.49: accessible name of a ticked file mask's checkbox.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop hiding {mask}'**
+  String fileMasksStopHiding(String mask);
+
+  /// Story 10.49: accessible name of an unticked file mask's checkbox.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide {mask}'**
+  String fileMasksHideMask(String mask);
+
+  /// Story 10.49: accessible name of a file mask's remove button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {mask}'**
+  String fileMasksRemove(String mask);
+
+  /// Story 10.49: tooltip of a file mask's remove button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from the list'**
+  String get fileMasksRemoveTooltip;
+
+  /// Story 10.49: the file masks popover's footer: the mask syntax.
+  ///
+  /// In en, this message translates to:
+  /// **'* and ? match inside a name, ** across folders. A mask with “/” matches the path. Separate several with commas.'**
+  String get fileMasksFooter;
+
+  /// Story 10.49: the hint row below the file list while ticked masks hide files.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file hidden} other{{count} files hidden}}'**
+  String fileMasksHidden(int count);
+
+  /// Story 10.49: the hint row while the hidden files are shown.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file matches your masks} other{{count} files match your masks}}'**
+  String fileMasksMatching(int count);
+
+  /// Story 10.49: appended to the hint row when every hidden file is picked.
+  ///
+  /// In en, this message translates to:
+  /// **' · all picked'**
+  String get fileMasksAllPicked;
+
+  /// Story 10.49: appended to the hint row when some hidden files are picked.
+  ///
+  /// In en, this message translates to:
+  /// **' · some picked'**
+  String get fileMasksSomePicked;
+
+  /// Story 10.49: appended to the hint row when no hidden file is picked.
+  ///
+  /// In en, this message translates to:
+  /// **' · none picked'**
+  String get fileMasksNonePicked;
+
+  /// Story 10.49: accessible name of the hint row's checkbox; it picks or unpicks every hidden file.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Pick the hidden file} other{Pick the {count} hidden files}}'**
+  String fileMasksPickHidden(int count);
+
+  /// Story 10.49: hint row button: list the hidden files again, dimmed, for this change.
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get fileMasksShow;
+
+  /// Story 10.49: hint row button while the hidden files are shown: hide them again.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get fileMasksHideShown;
+
+  /// Story 10.49: hint row button: opens the file masks popover.
+  ///
+  /// In en, this message translates to:
+  /// **'Masks…'**
+  String get fileMasksMasks;
+
+  /// Story 10.49: tooltip of a file row a ticked mask hides, while the hidden files are shown. The path is the row's usual tooltip: its path, or `old → new` for a rename or copy.
+  ///
+  /// In en, this message translates to:
+  /// **'{path} · hidden by a file mask'**
+  String fileMasksMaskedTooltip(String path);
+
+  /// Story 10.49: added to the accessible name of a file row a ticked mask hides.
+  ///
+  /// In en, this message translates to:
+  /// **'hidden by a file mask'**
+  String get fileMasksMaskedLabel;
+
   /// Story 10.39: tooltip of the diff header's path; a click copies the absolute path.
   ///
   /// In en, this message translates to:

@@ -18,7 +18,9 @@ const _darkJson =
     '  "layout": {\n    "inspectorWidth": 460.0,\n    "panelWidth": 300.0,\n'
     '    "inspectorFilesNarrow": 0.38,\n    "inspectorFilesWide": 0.34\n  },\n'
     '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified",\n    "diffWordMarks": true,\n'
-    '    "diffWhitespace": "showAll",\n    "diffFileList": "flat",\n    "editor": null\n  },\n'
+    '    "diffWhitespace": "showAll",\n    "diffFileList": "flat",\n    "editor": null,\n'
+    '    "fileMasks": [\n      {\n        "mask": "*.g.dart, *.freezed.dart",\n        "active": false\n      },\n'
+    '      {\n        "mask": "*.lock",\n        "active": false\n      }\n    ]\n  },\n'
     '  "projects": {\n    "projects": [],\n    "groups": [],\n    "openProject": null\n  },\n'
     '  "graph": {\n    "layout": "free",\n    "detailedCards": true,\n    "groupStacks": true,\n'
     '    "cardWidth": 240.0,\n    "showMinimap": true,\n    "revsetConfigs": [],\n    "revsetDefault": "log"\n  }\n}\n';
@@ -183,6 +185,16 @@ void main() {
       final SettingsStore restarted = await SettingsStore.load(file);
       expect(restarted.value.general.diffFileList, DiffFileListSetting.tree);
       expect(restarted.value.general.editor, 'idea');
+    });
+
+    test('edited file masks and their ticks come back in a new store on the same file', () async {
+      final SettingsStore store = await SettingsStore.load(file);
+      const masks = [FileMask(mask: '*.arb', active: true), FileMask(mask: '*.lock')];
+
+      await store.update((s) => s.copyWith.general(fileMasks: masks));
+
+      final SettingsStore restarted = await SettingsStore.load(file);
+      expect(restarted.value.general.fileMasks, masks);
     });
 
     test('settled completes after every queued write', () async {
