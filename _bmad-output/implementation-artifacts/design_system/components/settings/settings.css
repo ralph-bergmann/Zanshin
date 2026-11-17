@@ -89,7 +89,7 @@
 .zs-rem-help code{font:var(--fs-sm) var(--font-mono);color:var(--text)}
 .zs-rem-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
 
-/* ConfigFilePage (sync #20) — the page fills the window: the editor well (bar, notice, gutter + text, no wrapping), the error, the buttons */
+/* ConfigFilePage (sync #20, #33) — the page fills the window: the editor well (bar, notice, gutter + text, no wrapping), the error, the buttons. The editor draws in the code style (--type-code; the app: Settings › Code font and Code size), its gutter at least 44px */
 .zs-cfg-page{flex:1;min-height:0;gap:14px}
 .zs-cfg{flex:1 1 380px;min-height:180px;display:flex;flex-direction:column;overflow:hidden;border-radius:var(--radius-well);background:var(--code-bg);border:1px solid var(--fl-border)}
 .zs-cfg:focus-within{border-color:var(--accent-ring)}
@@ -101,9 +101,9 @@
 .zs-cfg-note{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;background:var(--warn-bg);font-size:var(--fs-md);color:var(--text)}
 .zs-cfg-note>.zs-icon{flex-shrink:0;color:var(--warn)}
 .zs-cfg-note>span{flex:1;min-width:0}
-.zs-cfg-ed{flex:1;min-height:0;display:flex;font:var(--fs-md)/19.5px var(--font-mono)}
-.zs-cfg-gut{flex-shrink:0;width:44px;overflow:hidden;padding:8px 0;border-right:1px solid var(--fl-border);text-align:right;color:var(--text-faint);user-select:none}
-.zs-cfg-gut span{display:block;padding-right:10px}
+.zs-cfg-ed{flex:1;min-height:0;display:flex;font:var(--type-code)}
+.zs-cfg-gut{flex-shrink:0;min-width:44px;overflow:hidden;padding:8px 0;border-right:1px solid var(--fl-border);text-align:right;color:var(--text-faint);user-select:none}
+.zs-cfg-gut span{display:block;padding:0 10px}
 .zs-cfg-gut span.is-error{color:var(--rem);font-weight:600}
 .zs-cfg-text{position:relative;flex:1;min-width:0;overflow:hidden}
 .zs-cfg-mirror,.zs-cfg-text>textarea{margin:0;padding:8px 12px;font:inherit;letter-spacing:0;tab-size:4;white-space:pre;overflow-wrap:normal}
