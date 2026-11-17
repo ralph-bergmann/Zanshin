@@ -293,6 +293,117 @@ void main() {
       expect(rows.toSet(), hasLength(5));
     });
 
+    group('Story 10.50: Code font and Code size', () {
+      const builtIn = 'JetBrains Mono · built in';
+
+      testWidgets('they sit right after Layout: the built-in font and 11 pt · default', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump(project: false);
+        final List<double> rows = <String>[
+          'settings-diff-layout',
+          'settings-code-font',
+          'settings-code-size',
+          'settings-diff-whitespace',
+        ].map((id) => top(rig, id)).toList();
+        expect(rows, List<double>.of(rows)..sort());
+        expect(rows.toSet(), hasLength(4));
+        expect(find.text(builtIn), findsOneWidget);
+        expect(find.text('11 pt · default'), findsOneWidget);
+        expect(find.text('The monospaced fonts on this Mac.'), findsOneWidget);
+        expect(find.text('Diffs and the config file. Zoom scales it like everything else.'), findsOneWidget);
+      });
+
+      testWidgets('a pick writes codeFont and codeSize; the built-in font writes null; no jj config', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump(project: false);
+
+        await pick(tester, rig, 'settings-code-font', 'Menlo');
+        expect(rig.store.value.general.codeFont, 'Menlo');
+        await pick(tester, rig, 'settings-code-size', '14 pt');
+        expect(rig.store.value.general.codeSize, 14);
+        expect(find.text('14 pt'), findsOneWidget);
+        await pick(tester, rig, 'settings-code-font', builtIn);
+        expect(rig.store.value.general.codeFont, isNull);
+        expect(rig.calls, isEmpty);
+      });
+
+      testWidgets('a saved font the Mac lacks shows as not installed and stays saved', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump(project: false);
+        await tester.runAsync(() => rig.store.update((s) => s.copyWith.general(codeFont: 'Gone Mono')));
+        await rig.settle();
+        expect(find.text('Gone Mono (not installed) — using JetBrains Mono'), findsOneWidget);
+        expect(rig.store.value.general.codeFont, 'Gone Mono');
+      });
+
+      testWidgets('while the list is unknown the saved font shows plain', (tester) async {
+        final rig = _Rig(tester)..codeFamilies = null;
+        await rig.pump(project: false);
+        await tester.runAsync(() => rig.store.update((s) => s.copyWith.general(codeFont: 'Gone Mono')));
+        await rig.settle();
+        expect(find.text('Gone Mono'), findsOneWidget);
+        expect(find.textContaining('not installed'), findsNothing);
+      });
+
+      testWidgets('a hand-edited size outside 6…72 shows as it draws, clamped', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump(project: false);
+        await tester.runAsync(() => rig.store.update((s) => s.copyWith.general(codeSize: 500)));
+        await rig.settle();
+        expect(find.text('72 pt'), findsOneWidget);
+        expect(find.text('500 pt'), findsNothing);
+        expect(rig.store.value.general.codeSize, 500, reason: 'nothing is written');
+      });
+
+      testWidgets('an installed JetBrains Mono shows once, as the built-in font', (tester) async {
+        final rig = _Rig(tester)..codeFamilies = const ['JetBrains Mono', 'Menlo'];
+        await rig.pump(project: false);
+        await rig.tap('settings-code-font');
+        await rig.settle();
+        expect(find.text('JetBrains Mono'), findsNothing);
+        expect(find.text(builtIn), findsWidgets);
+        expect(find.text('Menlo'), findsOneWidget);
+      });
+
+      testWidgets('an installed JetBrains Mono that is saved shows as itself', (tester) async {
+        final rig = _Rig(tester)..codeFamilies = const ['JetBrains Mono', 'Menlo'];
+        await rig.pump(project: false);
+        await tester.runAsync(() => rig.store.update((s) => s.copyWith.general(codeFont: 'JetBrains Mono')));
+        await rig.settle();
+        expect(find.text('JetBrains Mono'), findsOneWidget);
+      });
+
+      testWidgets('the families show when the list arrives after the window settled', (tester) async {
+        final families = Completer<List<String>?>();
+        final rig = _Rig(tester)..codeFontReader = () => families.future;
+        await rig.pump(project: false);
+        await tester.runAsync(() => rig.store.update((s) => s.copyWith.general(codeFont: 'Gone Mono')));
+        await rig.settle();
+        expect(find.text('Gone Mono'), findsOneWidget, reason: 'the list is still unknown');
+
+        families.complete(const ['Menlo']);
+        await rig.settle();
+        expect(find.text('Gone Mono (not installed) — using JetBrains Mono'), findsOneWidget);
+      });
+
+      testWidgets('a hand-edited size off the list shows, added in order', (tester) async {
+        final rig = _Rig(tester);
+        await rig.pump(project: false);
+        await tester.runAsync(() => rig.store.update((s) => s.copyWith.general(codeSize: 17)));
+        await rig.settle();
+        expect(find.text('17 pt'), findsOneWidget);
+        await rig.tap('settings-code-size');
+        await rig.settle();
+        final List<double> rows = <String>[
+          '16 pt',
+          '17 pt',
+          '18 pt',
+        ].map((label) => tester.getRect(find.text(label).last).top).toList();
+        expect(rows, List<double>.of(rows)..sort());
+        expect(rows.toSet(), hasLength(3));
+      });
+    });
+
     testWidgets('Story 10.33: Whitespace shows the app setting and writes it; no jj config', (tester) async {
       final rig = _Rig(tester);
       await rig.pump(project: false);

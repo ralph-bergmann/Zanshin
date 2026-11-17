@@ -15,6 +15,7 @@ import '../graph/immutable_reasons.dart' show builtinImmutableHeads, immutableBu
 import '../projects/project_repos.dart';
 import '../projects/project_session.dart';
 import '../projects/projects_environment.dart';
+import '../window/code_font.dart' show InstalledCodeFonts;
 import 'immutable_heads.dart';
 
 final _log = Logger('zanshin.settings');
@@ -333,6 +334,7 @@ class SettingsViewModel extends ChangeNotifier {
     required this.environment,
     required this.session,
     required this.graph,
+    required this.codeFonts,
     SettingsReadsOf? readsOf,
   }) : _readsOf = readsOf ?? RepoSettingsReads.new;
 
@@ -347,6 +349,9 @@ class SettingsViewModel extends ChangeNotifier {
 
   /// The project window's graph, which a trunk or immutable write re-requests.
   final ValueListenable<GraphMenuBinding?> graph;
+
+  /// The installed fixed-pitch families for the Code font row (Story 10.50).
+  final InstalledCodeFonts codeFonts;
 
   final SettingsReadsOf _readsOf;
 
@@ -420,7 +425,10 @@ class SettingsViewModel extends ChangeNotifier {
   void init() {
     session.addListener(_sessionChanged);
     store.addListener(_notify);
+    codeFonts.addListener(_notify);
     unawaited(_load());
+    // A font installed while the app runs shows when the Settings window opens.
+    unawaited(codeFonts.refresh());
   }
 
   @override
@@ -428,6 +436,7 @@ class SettingsViewModel extends ChangeNotifier {
     _disposed = true;
     session.removeListener(_sessionChanged);
     store.removeListener(_notify);
+    codeFonts.removeListener(_notify);
     super.dispose();
   }
 

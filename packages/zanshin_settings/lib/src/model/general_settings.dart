@@ -72,6 +72,14 @@ abstract class GeneralSettings with _$GeneralSettings {
     /// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
     /// [defaultFileMasks]; an empty saved list stays empty.
     @Default(defaultFileMasks) List<FileMask> fileMasks,
+
+    /// Settings › General › Diffs › "Code font" (Story 10.50): the font family of the code in diffs and the config
+    /// file editor; null for the built-in JetBrains Mono. A family that is not installed stays saved.
+    String? codeFont,
+
+    /// Settings › General › Diffs › "Code size" (Story 10.50): the code's size in points, before the app zoom; 11 by
+    /// default.
+    @Default(11) int codeSize,
   }) = _GeneralSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

@@ -22,6 +22,7 @@ import 'package:zanshin/src/features/settings/settings_window.dart';
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
+import 'package:zanshin/src/features/window/code_font.dart';
 import 'package:zanshin/src/features/window/window_chrome_builder.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart'
@@ -734,6 +735,7 @@ class _DemoSettingsWindowState extends State<_DemoSettingsWindow> {
         environment: DemoProjectsEnvironment(_home),
         session: session,
         graph: _graph,
+        codeFonts: InstalledCodeFonts(),
         readsOf: (_) => _DemoSettingsReads(),
       );
     });

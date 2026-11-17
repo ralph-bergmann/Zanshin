@@ -13,6 +13,7 @@ import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, 
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../window/code_font.dart' show CodeStyleScope;
 import 'hatch_swatch.dart';
 import 'inspector_check_reveal.dart';
 import 'inspector_path_label.dart';
@@ -348,23 +349,30 @@ class RenderDiffWordMarks extends RenderProxyBox {
 /// jj's marker after a last line without its newline (`jj diff --git`'s words, kept for the color-words lines).
 const noNewlineMarker = r'\ No newline at end of file'; // l10n-ignore: jj's own words
 
-/// The marker line under a line without its newline: faint mono, outside the selection like the sigils.
-Widget _noNewline(ZsColors colors, EdgeInsets padding) => Padding(
+/// The marker line under a line without its newline: faint [code], outside the selection like the sigils.
+Widget _noNewline(TextStyle code, ZsColors colors, EdgeInsets padding) => Padding(
   padding: padding,
   child: SelectionContainer.disabled(
-    child: Text(noNewlineMarker, softWrap: false, style: ZsType.code.copyWith(color: colors.textFaint)),
+    child: Text(noNewlineMarker, softWrap: false, style: code.copyWith(color: colors.textFaint)),
   ),
 );
 
-/// [line]'s shown text in [ink], both layouts' one builder: its [diffWordMarks], if any, on the stronger fill of
+/// [line]'s shown text in [code] and [ink], both layouts' one builder: its [diffWordMarks], if any, on the stronger fill of
 /// their side's hue (removed runs `--rem-word-bg`, added runs `--add-word-bg`) with [ZsColors.text] glyphs (coloured
 /// text on a stronger tint falls under 4.5:1, DS states.css). A side-by-side [cell] keeps one line, clipped.
 /// Without [wordMarks] (Settings › Changed words off, Story 5.14) only a changed line keeps its runs, with no fill and
 /// their side's hue as text colour ([ZsColors.rem] / [ZsColors.add]); every other line, side-by-side cells included, is
 /// its plain text in [ink].
-Widget _lineText(ZsColors colors, HunkLine line, Color ink, {required bool wordMarks, bool cell = false}) {
+Widget _lineText(
+  TextStyle code,
+  ZsColors colors,
+  HunkLine line,
+  Color ink, {
+  required bool wordMarks,
+  bool cell = false,
+}) {
   final String text = _text(line);
-  final TextStyle style = ZsType.code.copyWith(color: ink);
+  final TextStyle style = code.copyWith(color: ink);
   final int? maxLines = cell ? 1 : null;
   final TextOverflow? overflow = cell ? TextOverflow.clip : null;
   final List<DiffWordMark> marks = wordMarks || line.kind == HunkLineKind.changed
@@ -1680,7 +1688,7 @@ class _DiffBodyState extends State<_DiffBody> {
       builder: (context, constraints) {
         final int digits = _digits;
         final painter = TextPainter(
-          text: TextSpan(text: '0' * digits, style: ZsType.code),
+          text: TextSpan(text: '0' * digits, style: CodeStyleScope.of(context)),
           textDirection: TextDirection.ltr,
           textScaler: MediaQuery.maybeTextScalerOf(context) ?? TextScaler.noScaling,
         )..layout();
@@ -1968,8 +1976,8 @@ class InspectorDiffHunk extends StatelessWidget {
     };
   }
 
-  /// A line number right-aligned in the file's number column, outside the selection; blank for none.
-  Widget _number(int? number, Color ink) => SizedBox(
+  /// A line number in [code], right-aligned in the file's number column, outside the selection; blank for none.
+  Widget _number(TextStyle code, int? number, Color ink) => SizedBox(
     width: pin.numberWidth,
     child: SelectionContainer.disabled(
       child: Text(
@@ -1977,7 +1985,7 @@ class InspectorDiffHunk extends StatelessWidget {
         softWrap: false,
         textAlign: TextAlign.right,
         overflow: TextOverflow.clip,
-        style: ZsType.code.copyWith(color: ink),
+        style: code.copyWith(color: ink),
       ),
     ),
   );
@@ -2226,6 +2234,7 @@ class InspectorDiffHunk extends StatelessWidget {
   static bool _folded(DiffGapRow gap) => gap.part != null && !gap.open;
 
   Widget _unified(BuildContext context, ZsColors colors) {
+    final TextStyle code = CodeStyleScope.of(context);
     final List<DiffRow> lines = _rows;
     final bool gutters = _hasGutter(lines);
     final shown = <int>{};
@@ -2270,9 +2279,9 @@ class InspectorDiffHunk extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     if (gutters) SizedBox(width: _gutter, child: gutter),
-                    _number(left, leftInk ?? none),
+                    _number(code, left, leftInk ?? none),
                     const SizedBox(width: 8),
-                    _number(right, rightInk ?? none),
+                    _number(code, right, rightInk ?? none),
                   ],
                 ),
               ),
@@ -2380,7 +2389,7 @@ class InspectorDiffHunk extends StatelessWidget {
           Container(
             color: look.fill,
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: _lineText(colors, line, look.ink, wordMarks: wordMarks),
+            child: _lineText(code, colors, line, look.ink, wordMarks: wordMarks),
           ),
         );
         continue;
@@ -2390,7 +2399,7 @@ class InspectorDiffHunk extends StatelessWidget {
           line,
           row(
             fill: look.fill,
-            text: _lineText(colors, line, look.ink, wordMarks: wordMarks),
+            text: _lineText(code, colors, line, look.ink, wordMarks: wordMarks),
             edge: edge,
             left: line.left,
             right: line.right,
@@ -2402,13 +2411,14 @@ class InspectorDiffHunk extends StatelessWidget {
       );
       // Blank number columns put the marker where the line's text starts.
       if (!line.text.endsWith('\n')) {
-        rows.add(row(fill: none, text: _noNewline(colors, EdgeInsets.zero), edge: edge));
+        rows.add(row(fill: none, text: _noNewline(code, colors, EdgeInsets.zero), edge: edge));
       }
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
   }
 
   Widget _sideBySide(BuildContext context, ZsColors colors) {
+    final TextStyle code = CodeStyleScope.of(context);
     final List<DiffRow> entries = _rows;
     final bool gutters = _hasGutter(entries);
     final shown = <int>{};
@@ -2458,11 +2468,11 @@ class InspectorDiffHunk extends StatelessWidget {
                 spacing: 8,
                 children: <Widget>[
                   if (line.kind != HunkLineKind.conflictHeader)
-                    _number(left ? line.left : line.right, left ? look.left : look.right),
-                  Expanded(child: _lineText(colors, line, look.ink, wordMarks: wordMarks, cell: true)),
+                    _number(code, left ? line.left : line.right, left ? look.left : look.right),
+                  Expanded(child: _lineText(code, colors, line, look.ink, wordMarks: wordMarks, cell: true)),
                 ],
               ),
-              if (!line.text.endsWith('\n')) _noNewline(colors, EdgeInsets.zero),
+              if (!line.text.endsWith('\n')) _noNewline(code, colors, EdgeInsets.zero),
             ],
           ),
         ),

@@ -4,12 +4,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show TextStyle;
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import 'code_font.dart';
 import 'window_zoom.dart';
 
 /// Theme state for a window root: the persisted [ThemeMode] and accent choice
@@ -18,12 +20,14 @@ import 'window_zoom.dart';
 /// the native window chrome follows the theme through `WindowAppearanceSync`.
 @inject
 class ZanshinAppViewModel extends ChangeNotifier {
-  ZanshinAppViewModel(this._settings) {
+  ZanshinAppViewModel(this._settings, this._codeFonts) {
     // Changes from anywhere (another window, another widget) reach this VM.
     _settings.addListener(notifyListeners);
+    _codeFonts.addListener(notifyListeners);
   }
 
   final SettingsStore _settings;
+  final InstalledCodeFonts _codeFonts;
   ShellTheme? _shellTheme;
   StreamSubscription<ShellTheme>? _subscription;
   var _disposed = false;
@@ -45,6 +49,9 @@ class ZanshinAppViewModel extends ChangeNotifier {
 
   /// Persists the zoom [percent]; every window follows through the store.
   Future<void> setZoom(int percent) => _settings.update((s) => s.copyWith.appearance(zoom: zoomStepOf(percent)));
+
+  /// The style of code in diffs and the config file editor (Story 10.50), from the Settings code font and size.
+  TextStyle get codeStyle => codeTextStyle(_settings.value.general, _codeFonts.families);
 
   /// The mode `MaterialApp` should use.
   ///
@@ -97,6 +104,7 @@ class ZanshinAppViewModel extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _settings.removeListener(notifyListeners);
+    _codeFonts.removeListener(notifyListeners);
     unawaited(_subscription?.cancel());
     super.dispose();
   }

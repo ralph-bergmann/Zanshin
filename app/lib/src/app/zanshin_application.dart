@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 import '../features/window/app_windows.dart';
+import '../features/window/code_font.dart';
 import '../features/window/window_appearance_sync.dart';
 import '../features/window/window_zoom.dart';
 import 'app_exit_handler.dart';
@@ -20,8 +23,16 @@ import 'menu/app_menu.dart';
 @singleton
 class ZanshinApplication {
   /// The app over its [_coordinator], its [menu], the [_settings], the app's [_windows], the [_exitHandler] and the
-  /// [_appearance] sync.
-  ZanshinApplication(this._coordinator, this.menu, this._settings, this._windows, this._exitHandler, this._appearance);
+  /// [_appearance] sync and the installed [_codeFonts].
+  ZanshinApplication(
+    this._coordinator,
+    this.menu,
+    this._settings,
+    this._windows,
+    this._exitHandler,
+    this._appearance,
+    this._codeFonts,
+  );
 
   final AppWindowCoordinator _coordinator;
 
@@ -32,14 +43,16 @@ class ZanshinApplication {
   final AppWindows _windows;
   final AppExitHandler _exitHandler;
   final WindowAppearanceSync _appearance;
+  final InstalledCodeFonts _codeFonts;
 
   /// Starts the app and answers its first window: the windows follow the stored zoom (Story 11.20) from before the
   /// first window, which is created at it, for the app's life; ⌘Q asks the close guards and closes the worker; the
-  /// native chrome follows the theme; then the coordinator starts.
+  /// native chrome follows the theme; the installed code fonts are read (Story 10.50); then the coordinator starts.
   BootFirstWindow start() {
     bindWindowZoom(_settings, _windows);
     _exitHandler.start();
     _appearance.start();
+    unawaited(_codeFonts.refresh());
     return _coordinator.start();
   }
 }

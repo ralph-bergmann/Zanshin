@@ -64,6 +64,8 @@ void main() {
         'diffFileList': 'flat',
         'editor': null,
         'fileMasks': _seedsJson,
+        'codeFont': null,
+        'codeSize': 11,
       },
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
@@ -120,6 +122,8 @@ void main() {
         'diffFileList': 'flat',
         'editor': null,
         'fileMasks': _seedsJson,
+        'codeFont': null,
+        'codeSize': 11,
       },
       'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
       'graph': {
@@ -172,6 +176,8 @@ void main() {
       'diffFileList': 'flat',
       'editor': null,
       'fileMasks': _seedsJson,
+      'codeFont': null,
+      'codeSize': 11,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
@@ -197,6 +203,8 @@ void main() {
       'diffFileList': 'flat',
       'editor': null,
       'fileMasks': _seedsJson,
+      'codeFont': null,
+      'codeSize': 11,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });
@@ -213,6 +221,8 @@ void main() {
       'diffFileList': 'flat',
       'editor': null,
       'fileMasks': _seedsJson,
+      'codeFont': null,
+      'codeSize': 11,
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
     for (final style in ['words', 'jj']) {
@@ -238,6 +248,8 @@ void main() {
         'diffFileList': 'flat',
         'editor': null,
         'fileMasks': _seedsJson,
+        'codeFont': null,
+        'codeSize': 11,
       });
       expect(AppSettings.fromJson(settings.toJson()), settings);
       const amount = GeneralSettings(diffWhitespace: DiffWhitespaceSetting.ignoreChangesInAmount);
@@ -263,6 +275,20 @@ void main() {
       expect(GeneralSettings.fromJson(settings.toJson()), settings);
     }
     expect(() => GeneralSettings.fromJson({'editor': 3}), throwsA(isA<CheckedFromJsonException>()));
+  });
+
+  test('the code font defaults to built in and the code size to 11; both survive a JSON round trip', () {
+    expect(const GeneralSettings().codeFont, isNull);
+    expect(const GeneralSettings().codeSize, 11);
+    final old = GeneralSettings.fromJson({'hideControls': false});
+    expect(old.codeFont, isNull, reason: 'a file without the keys');
+    expect(old.codeSize, 11, reason: 'a file without the keys');
+    const settings = GeneralSettings(codeFont: 'Menlo', codeSize: 14);
+    expect(settings.toJson()['codeFont'], 'Menlo');
+    expect(settings.toJson()['codeSize'], 14);
+    expect(GeneralSettings.fromJson(settings.toJson()), settings);
+    expect(GeneralSettings.fromJson({'codeSize': 500}).codeSize, 500, reason: 'kept as stored; the view clamps it');
+    expect(() => GeneralSettings.fromJson({'codeSize': 'big'}), throwsA(isA<CheckedFromJsonException>()));
   });
 
   test('an out-of-range width is kept as stored; the shell clamps it where it uses it', () {

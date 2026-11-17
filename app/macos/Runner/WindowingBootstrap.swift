@@ -14,6 +14,7 @@ final class WindowingBootstrap {
     private var splashWindowHost: SplashWindowHost?
     private var windowFrameStore: WindowFrameStore?
     private var menuStateChannel: MenuStateChannel?
+    private var fontsChannel: FontsChannel?
 
     /// Hot-restart workaround for an engine bug: `closeAllWindows` disposes
     /// each window's view controller and then closes the window without
@@ -37,6 +38,7 @@ final class WindowingBootstrap {
         splashWindowHost = SplashWindowHost(messenger: engine.binaryMessenger)
         windowFrameStore = WindowFrameStore(messenger: engine.binaryMessenger)
         menuStateChannel = MenuStateChannel(messenger: engine.binaryMessenger)
+        fontsChannel = FontsChannel(messenger: engine.binaryMessenger)
         engine.run(withEntrypoint: nil)
     }
 
@@ -160,6 +162,51 @@ final class MenuStateChannel {
         }
         let arrange = #selector(NSApplication.arrangeInFront(_:))
         return submenus.first(where: { $0.items.contains { $0.action == arrange } })
+    }
+}
+
+/// Native half of the `zanshin/fonts` channel: the installed fixed-pitch font
+/// families for the code font setting. Flutter uses an installed font by name
+/// but cannot list them.
+///
+/// Reading every family takes up to a second and a half cold, so the answer is
+/// built on a background queue with CoreText (AppKit's `NSFontManager` is not
+/// documented thread-safe) and sent back on the main queue. The queue is
+/// serial, so the answers keep the order of the calls and an older list never
+/// lands after a newer one.
+final class FontsChannel {
+    private let channel: FlutterMethodChannel
+    private let queue = DispatchQueue(label: "zanshin.fonts", qos: .userInitiated)
+
+    init(messenger: FlutterBinaryMessenger) {
+        channel = FlutterMethodChannel(name: "zanshin/fonts", binaryMessenger: messenger)
+        channel.setMethodCallHandler { [queue] call, result in
+            guard call.method == "monospacedFamilies" else {
+                result(FlutterMethodNotImplemented)
+                return
+            }
+            queue.async {
+                let families = FontsChannel.monospacedFamilies(of: FontsChannel.installedFamilies())
+                DispatchQueue.main.async { result(families) }
+            }
+        }
+    }
+
+    /// The installed families, without the hidden system ones (names starting with ".").
+    static func installedFamilies() -> [String] {
+        (CTFontManagerCopyAvailableFontFamilyNames() as? [String] ?? []).filter { !$0.hasPrefix(".") }
+    }
+
+    /// The families whose default, regular face is fixed pitch, sorted case-insensitively. A family CoreText
+    /// resolves to another family counts as missing.
+    static func monospacedFamilies(of families: [String]) -> [String] {
+        families.filter { family in
+            let attributes = [kCTFontFamilyNameAttribute: family] as CFDictionary
+            let font = CTFontCreateWithFontDescriptor(CTFontDescriptorCreateWithAttributes(attributes), 12, nil)
+            return CTFontCopyFamilyName(font) as String == family
+                && CTFontGetSymbolicTraits(font).contains(.traitMonoSpace)
+        }
+        .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 }
 

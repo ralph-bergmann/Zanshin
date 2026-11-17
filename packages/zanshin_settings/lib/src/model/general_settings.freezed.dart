@@ -27,7 +27,11 @@ mixin _$GeneralSettings {
 /// `zed` for that launcher, any other value a command line that holds `{file}` (and maybe `{line}`).
  String? get editor;/// The file masks of the inspector and the operation view (Story 10.49), newest first; one list for the app. A file without the key gets
 /// [defaultFileMasks]; an empty saved list stays empty.
- List<FileMask> get fileMasks;
+ List<FileMask> get fileMasks;/// Settings › General › Diffs › "Code font" (Story 10.50): the font family of the code in diffs and the config
+/// file editor; null for the built-in JetBrains Mono. A family that is not installed stays saved.
+ String? get codeFont;/// Settings › General › Diffs › "Code size" (Story 10.50): the code's size in points, before the app zoom; 11 by
+/// default.
+ int get codeSize;
 /// Create a copy of GeneralSettings
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -41,20 +45,20 @@ $GeneralSettingsCopyWith<GeneralSettings> get copyWith => _$GeneralSettingsCopyW
 @override
 bool operator ==(Object other) {
   final _this = this as GeneralSettings;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is GeneralSettings&&(identical(other.hideControls, _this.hideControls) || other.hideControls == _this.hideControls)&&(identical(other.diffLayout, _this.diffLayout) || other.diffLayout == _this.diffLayout)&&(identical(other.diffWordMarks, _this.diffWordMarks) || other.diffWordMarks == _this.diffWordMarks)&&(identical(other.diffWhitespace, _this.diffWhitespace) || other.diffWhitespace == _this.diffWhitespace)&&(identical(other.diffFileList, _this.diffFileList) || other.diffFileList == _this.diffFileList)&&(identical(other.editor, _this.editor) || other.editor == _this.editor)&&const DeepCollectionEquality().equals(other.fileMasks, _this.fileMasks));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is GeneralSettings&&(identical(other.hideControls, _this.hideControls) || other.hideControls == _this.hideControls)&&(identical(other.diffLayout, _this.diffLayout) || other.diffLayout == _this.diffLayout)&&(identical(other.diffWordMarks, _this.diffWordMarks) || other.diffWordMarks == _this.diffWordMarks)&&(identical(other.diffWhitespace, _this.diffWhitespace) || other.diffWhitespace == _this.diffWhitespace)&&(identical(other.diffFileList, _this.diffFileList) || other.diffFileList == _this.diffFileList)&&(identical(other.editor, _this.editor) || other.editor == _this.editor)&&const DeepCollectionEquality().equals(other.fileMasks, _this.fileMasks)&&(identical(other.codeFont, _this.codeFont) || other.codeFont == _this.codeFont)&&(identical(other.codeSize, _this.codeSize) || other.codeSize == _this.codeSize));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as GeneralSettings;
-  return Object.hash(runtimeType,_this.hideControls,_this.diffLayout,_this.diffWordMarks,_this.diffWhitespace,_this.diffFileList,_this.editor,const DeepCollectionEquality().hash(_this.fileMasks));
+  return Object.hash(runtimeType,_this.hideControls,_this.diffLayout,_this.diffWordMarks,_this.diffWhitespace,_this.diffFileList,_this.editor,const DeepCollectionEquality().hash(_this.fileMasks),_this.codeFont,_this.codeSize);
 }
 
 @override
 String toString() {
   final _this = this as GeneralSettings;
-  return 'GeneralSettings(hideControls: ${_this.hideControls}, diffLayout: ${_this.diffLayout}, diffWordMarks: ${_this.diffWordMarks}, diffWhitespace: ${_this.diffWhitespace}, diffFileList: ${_this.diffFileList}, editor: ${_this.editor}, fileMasks: ${_this.fileMasks})';
+  return 'GeneralSettings(hideControls: ${_this.hideControls}, diffLayout: ${_this.diffLayout}, diffWordMarks: ${_this.diffWordMarks}, diffWhitespace: ${_this.diffWhitespace}, diffFileList: ${_this.diffFileList}, editor: ${_this.editor}, fileMasks: ${_this.fileMasks}, codeFont: ${_this.codeFont}, codeSize: ${_this.codeSize})';
 }
 
 
@@ -65,7 +69,7 @@ abstract mixin class $GeneralSettingsCopyWith<$Res>  {
   factory $GeneralSettingsCopyWith(GeneralSettings value, $Res Function(GeneralSettings) _then) = _$GeneralSettingsCopyWithImpl;
 @useResult
 $Res call({
- bool hideControls,@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting diffLayout, bool diffWordMarks,@JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll) DiffWhitespaceSetting diffWhitespace,@JsonKey(unknownEnumValue: DiffFileListSetting.flat) DiffFileListSetting diffFileList, String? editor, List<FileMask> fileMasks
+ bool hideControls,@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting diffLayout, bool diffWordMarks,@JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll) DiffWhitespaceSetting diffWhitespace,@JsonKey(unknownEnumValue: DiffFileListSetting.flat) DiffFileListSetting diffFileList, String? editor, List<FileMask> fileMasks, String? codeFont, int codeSize
 });
 
 
@@ -82,7 +86,7 @@ class _$GeneralSettingsCopyWithImpl<$Res>
 
 /// Create a copy of GeneralSettings
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? hideControls = null,Object? diffLayout = null,Object? diffWordMarks = null,Object? diffWhitespace = null,Object? diffFileList = null,Object? editor = freezed,Object? fileMasks = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? hideControls = null,Object? diffLayout = null,Object? diffWordMarks = null,Object? diffWhitespace = null,Object? diffFileList = null,Object? editor = freezed,Object? fileMasks = null,Object? codeFont = freezed,Object? codeSize = null,}) {
   return _then(GeneralSettings(
 hideControls: null == hideControls ? _self.hideControls : hideControls // ignore: cast_nullable_to_non_nullable
 as bool,diffLayout: null == diffLayout ? _self.diffLayout : diffLayout // ignore: cast_nullable_to_non_nullable
@@ -91,7 +95,9 @@ as bool,diffWhitespace: null == diffWhitespace ? _self.diffWhitespace : diffWhit
 as DiffWhitespaceSetting,diffFileList: null == diffFileList ? _self.diffFileList : diffFileList // ignore: cast_nullable_to_non_nullable
 as DiffFileListSetting,editor: freezed == editor ? _self.editor : editor // ignore: cast_nullable_to_non_nullable
 as String?,fileMasks: null == fileMasks ? _self.fileMasks : fileMasks // ignore: cast_nullable_to_non_nullable
-as List<FileMask>,
+as List<FileMask>,codeFont: freezed == codeFont ? _self.codeFont : codeFont // ignore: cast_nullable_to_non_nullable
+as String?,codeSize: null == codeSize ? _self.codeSize : codeSize // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 
@@ -176,10 +182,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks, @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll)  DiffWhitespaceSetting diffWhitespace, @JsonKey(unknownEnumValue: DiffFileListSetting.flat)  DiffFileListSetting diffFileList,  String? editor,  List<FileMask> fileMasks)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks, @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll)  DiffWhitespaceSetting diffWhitespace, @JsonKey(unknownEnumValue: DiffFileListSetting.flat)  DiffFileListSetting diffFileList,  String? editor,  List<FileMask> fileMasks,  String? codeFont,  int codeSize)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _GeneralSettings() when $default != null:
-return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.diffWhitespace,_that.diffFileList,_that.editor,_that.fileMasks);case _:
+return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.diffWhitespace,_that.diffFileList,_that.editor,_that.fileMasks,_that.codeFont,_that.codeSize);case _:
   return orElse();
 
 }
@@ -197,10 +203,10 @@ return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.di
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks, @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll)  DiffWhitespaceSetting diffWhitespace, @JsonKey(unknownEnumValue: DiffFileListSetting.flat)  DiffFileListSetting diffFileList,  String? editor,  List<FileMask> fileMasks)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks, @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll)  DiffWhitespaceSetting diffWhitespace, @JsonKey(unknownEnumValue: DiffFileListSetting.flat)  DiffFileListSetting diffFileList,  String? editor,  List<FileMask> fileMasks,  String? codeFont,  int codeSize)  $default,) {final _that = this;
 switch (_that) {
 case _GeneralSettings():
-return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.diffWhitespace,_that.diffFileList,_that.editor,_that.fileMasks);case _:
+return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.diffWhitespace,_that.diffFileList,_that.editor,_that.fileMasks,_that.codeFont,_that.codeSize);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -217,10 +223,10 @@ return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.di
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks, @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll)  DiffWhitespaceSetting diffWhitespace, @JsonKey(unknownEnumValue: DiffFileListSetting.flat)  DiffFileListSetting diffFileList,  String? editor,  List<FileMask> fileMasks)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool hideControls, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified)  DiffLayoutSetting diffLayout,  bool diffWordMarks, @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll)  DiffWhitespaceSetting diffWhitespace, @JsonKey(unknownEnumValue: DiffFileListSetting.flat)  DiffFileListSetting diffFileList,  String? editor,  List<FileMask> fileMasks,  String? codeFont,  int codeSize)?  $default,) {final _that = this;
 switch (_that) {
 case _GeneralSettings() when $default != null:
-return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.diffWhitespace,_that.diffFileList,_that.editor,_that.fileMasks);case _:
+return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.diffWhitespace,_that.diffFileList,_that.editor,_that.fileMasks,_that.codeFont,_that.codeSize);case _:
   return null;
 
 }
@@ -232,7 +238,7 @@ return $default(_that.hideControls,_that.diffLayout,_that.diffWordMarks,_that.di
 @JsonSerializable()
 
 class _GeneralSettings implements GeneralSettings {
-  const _GeneralSettings({this.hideControls = true, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified) this.diffLayout = DiffLayoutSetting.unified, this.diffWordMarks = true, @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll) this.diffWhitespace = DiffWhitespaceSetting.showAll, @JsonKey(unknownEnumValue: DiffFileListSetting.flat) this.diffFileList = DiffFileListSetting.flat, this.editor,  List<FileMask> fileMasks = defaultFileMasks}): _fileMasks = fileMasks;
+  const _GeneralSettings({this.hideControls = true, @JsonKey(unknownEnumValue: DiffLayoutSetting.unified) this.diffLayout = DiffLayoutSetting.unified, this.diffWordMarks = true, @JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll) this.diffWhitespace = DiffWhitespaceSetting.showAll, @JsonKey(unknownEnumValue: DiffFileListSetting.flat) this.diffFileList = DiffFileListSetting.flat, this.editor,  List<FileMask> fileMasks = defaultFileMasks, this.codeFont, this.codeSize = 11}): _fileMasks = fileMasks;
   factory _GeneralSettings.fromJson(Map<String, dynamic> json) => _$GeneralSettingsFromJson(json);
 
 /// "While you scroll: Hide controls" — the floating controls step aside while the graph scrolls (epics.md Story
@@ -261,6 +267,12 @@ class _GeneralSettings implements GeneralSettings {
   return EqualUnmodifiableListView(_fileMasks);
 }
 
+/// Settings › General › Diffs › "Code font" (Story 10.50): the font family of the code in diffs and the config
+/// file editor; null for the built-in JetBrains Mono. A family that is not installed stays saved.
+@override final  String? codeFont;
+/// Settings › General › Diffs › "Code size" (Story 10.50): the code's size in points, before the app zoom; 11 by
+/// default.
+@override@JsonKey() final  int codeSize;
 
 /// Create a copy of GeneralSettings
 /// with the given fields replaced by the non-null parameter values.
@@ -275,18 +287,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _GeneralSettings&&(identical(other.hideControls, hideControls) || other.hideControls == hideControls)&&(identical(other.diffLayout, diffLayout) || other.diffLayout == diffLayout)&&(identical(other.diffWordMarks, diffWordMarks) || other.diffWordMarks == diffWordMarks)&&(identical(other.diffWhitespace, diffWhitespace) || other.diffWhitespace == diffWhitespace)&&(identical(other.diffFileList, diffFileList) || other.diffFileList == diffFileList)&&(identical(other.editor, editor) || other.editor == editor)&&const DeepCollectionEquality().equals(other.fileMasks, _fileMasks));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _GeneralSettings&&(identical(other.hideControls, hideControls) || other.hideControls == hideControls)&&(identical(other.diffLayout, diffLayout) || other.diffLayout == diffLayout)&&(identical(other.diffWordMarks, diffWordMarks) || other.diffWordMarks == diffWordMarks)&&(identical(other.diffWhitespace, diffWhitespace) || other.diffWhitespace == diffWhitespace)&&(identical(other.diffFileList, diffFileList) || other.diffFileList == diffFileList)&&(identical(other.editor, editor) || other.editor == editor)&&const DeepCollectionEquality().equals(other.fileMasks, _fileMasks)&&(identical(other.codeFont, codeFont) || other.codeFont == codeFont)&&(identical(other.codeSize, codeSize) || other.codeSize == codeSize));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,hideControls,diffLayout,diffWordMarks,diffWhitespace,diffFileList,editor,const DeepCollectionEquality().hash(_fileMasks));
+    return Object.hash(runtimeType,hideControls,diffLayout,diffWordMarks,diffWhitespace,diffFileList,editor,const DeepCollectionEquality().hash(_fileMasks),codeFont,codeSize);
 }
 
 @override
 String toString() {
-    return 'GeneralSettings(hideControls: $hideControls, diffLayout: $diffLayout, diffWordMarks: $diffWordMarks, diffWhitespace: $diffWhitespace, diffFileList: $diffFileList, editor: $editor, fileMasks: $fileMasks)';
+    return 'GeneralSettings(hideControls: $hideControls, diffLayout: $diffLayout, diffWordMarks: $diffWordMarks, diffWhitespace: $diffWhitespace, diffFileList: $diffFileList, editor: $editor, fileMasks: $fileMasks, codeFont: $codeFont, codeSize: $codeSize)';
 }
 
 
@@ -297,7 +309,7 @@ abstract mixin class _$GeneralSettingsCopyWith<$Res> implements $GeneralSettings
   factory _$GeneralSettingsCopyWith(_GeneralSettings value, $Res Function(_GeneralSettings) _then) = __$GeneralSettingsCopyWithImpl;
 @override @useResult
 $Res call({
- bool hideControls,@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting diffLayout, bool diffWordMarks,@JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll) DiffWhitespaceSetting diffWhitespace,@JsonKey(unknownEnumValue: DiffFileListSetting.flat) DiffFileListSetting diffFileList, String? editor, List<FileMask> fileMasks
+ bool hideControls,@JsonKey(unknownEnumValue: DiffLayoutSetting.unified) DiffLayoutSetting diffLayout, bool diffWordMarks,@JsonKey(unknownEnumValue: DiffWhitespaceSetting.showAll) DiffWhitespaceSetting diffWhitespace,@JsonKey(unknownEnumValue: DiffFileListSetting.flat) DiffFileListSetting diffFileList, String? editor, List<FileMask> fileMasks, String? codeFont, int codeSize
 });
 
 
@@ -314,7 +326,7 @@ class __$GeneralSettingsCopyWithImpl<$Res>
 
 /// Create a copy of GeneralSettings
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? hideControls = null,Object? diffLayout = null,Object? diffWordMarks = null,Object? diffWhitespace = null,Object? diffFileList = null,Object? editor = freezed,Object? fileMasks = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? hideControls = null,Object? diffLayout = null,Object? diffWordMarks = null,Object? diffWhitespace = null,Object? diffFileList = null,Object? editor = freezed,Object? fileMasks = null,Object? codeFont = freezed,Object? codeSize = null,}) {
   return _then(_GeneralSettings(
 hideControls: null == hideControls ? _self.hideControls : hideControls // ignore: cast_nullable_to_non_nullable
 as bool,diffLayout: null == diffLayout ? _self.diffLayout : diffLayout // ignore: cast_nullable_to_non_nullable
@@ -323,7 +335,9 @@ as bool,diffWhitespace: null == diffWhitespace ? _self.diffWhitespace : diffWhit
 as DiffWhitespaceSetting,diffFileList: null == diffFileList ? _self.diffFileList : diffFileList // ignore: cast_nullable_to_non_nullable
 as DiffFileListSetting,editor: freezed == editor ? _self.editor : editor // ignore: cast_nullable_to_non_nullable
 as String?,fileMasks: null == fileMasks ? _self._fileMasks : fileMasks // ignore: cast_nullable_to_non_nullable
-as List<FileMask>,
+as List<FileMask>,codeFont: freezed == codeFont ? _self.codeFont : codeFont // ignore: cast_nullable_to_non_nullable
+as String?,codeSize: null == codeSize ? _self.codeSize : codeSize // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 

@@ -5,6 +5,7 @@ import 'dart:ui' show Brightness, Color;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
+import 'package:zanshin/src/features/window/code_font.dart';
 import 'package:zanshin/src/features/window/zanshin_app_view_model.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
@@ -37,7 +38,7 @@ void main() {
   Future<ZanshinAppViewModel> viewModelWith(ThemeMode persisted) async {
     await file.writeAsString('{"appearance": {"themeMode": "${persisted.name}"}}');
     store = await SettingsStore.load(file);
-    return ZanshinAppViewModel(store);
+    return ZanshinAppViewModel(store, _noFonts());
   }
 
   Future<void> setThemeMode(ThemeMode mode) => store.update((s) => s.copyWith.appearance(themeMode: mode));
@@ -86,7 +87,7 @@ void main() {
 
   test('an external store update notifies the view model', () async {
     final SettingsStore store = await SettingsStore.load(file);
-    final vm = ZanshinAppViewModel(store);
+    final vm = ZanshinAppViewModel(store, _noFonts());
     var notifications = 0;
     vm.addListener(() => notifications++);
 
@@ -150,7 +151,7 @@ void main() {
 
   test('the Zanshin accent source shows moon whatever the shell reports', () async {
     await file.writeAsString('{"appearance": {"themeMode": "dark", "accentSource": "zanshin"}}');
-    final vm = ZanshinAppViewModel(await SettingsStore.load(file))..init();
+    final vm = ZanshinAppViewModel(await SettingsStore.load(file), _noFonts())..init();
     shell.theme.complete(
       const ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF), appleAccentColor: 4),
     );
@@ -158,4 +159,27 @@ void main() {
     expect(vm.appearance.family, ZsAccentFamily.multicolor);
     vm.dispose();
   });
+
+  test('the code style follows the saved font and size and the installed list', () async {
+    await file.writeAsString('{"general": {"codeFont": "Menlo", "codeSize": 14}}');
+    final fonts = InstalledCodeFonts.withReader(() async => const ['Monaco']);
+    final SettingsStore store = await SettingsStore.load(file);
+    final vm = ZanshinAppViewModel(store, fonts);
+    var notifications = 0;
+    vm.addListener(() => notifications++);
+
+    expect(vm.codeStyle.fontFamily, 'Menlo', reason: 'the list is unknown: the saved family as is');
+    expect(vm.codeStyle.fontSize, 14);
+
+    await fonts.refresh();
+    expect(notifications, 1);
+    expect(vm.codeStyle.fontFamily, ZsType.monoFamily, reason: 'Menlo is not installed');
+
+    await store.update((s) => s.copyWith.general(codeFont: 'Monaco', codeSize: 12));
+    expect(vm.codeStyle.fontFamily, 'Monaco');
+    expect(vm.codeStyle.fontSize, 12);
+    vm.dispose();
+  });
 }
+
+InstalledCodeFonts _noFonts() => InstalledCodeFonts.withReader(() async => null);

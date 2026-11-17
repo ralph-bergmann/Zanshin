@@ -20,7 +20,8 @@ const _darkJson =
     '  "general": {\n    "hideControls": true,\n    "diffLayout": "unified",\n    "diffWordMarks": true,\n'
     '    "diffWhitespace": "showAll",\n    "diffFileList": "flat",\n    "editor": null,\n'
     '    "fileMasks": [\n      {\n        "mask": "*.g.dart, *.freezed.dart",\n        "active": false\n      },\n'
-    '      {\n        "mask": "*.lock",\n        "active": false\n      }\n    ]\n  },\n'
+    '      {\n        "mask": "*.lock",\n        "active": false\n      }\n    ],\n'
+    '    "codeFont": null,\n    "codeSize": 11\n  },\n'
     '  "projects": {\n    "projects": [],\n    "groups": [],\n    "openProject": null\n  },\n'
     '  "graph": {\n    "layout": "free",\n    "detailedCards": true,\n    "groupStacks": true,\n'
     '    "cardWidth": 240.0,\n    "showMinimap": true,\n    "revsetConfigs": [],\n    "revsetDefault": "log"\n  }\n}\n';

@@ -10,6 +10,7 @@ import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
+import '../window/code_font.dart' show CodeStyleScope;
 import 'settings_view_model.dart';
 import 'settings_widgets.dart' show SettingsPage;
 
@@ -116,8 +117,9 @@ class _ConfigEditingController extends ZsTextEditingController {
 ///
 /// - **The well** (`--code-bg`, `--radius-well`, 1 px `--fl-border`; `--accent-ring` while the editor has focus,
 ///   `--rem` with an error): a 30 px bar naming the file and its state (*Edited* with a gold dot · *✓ Saved* for 1.6 s
-///   after a save), the changed-on-disk notice, then a 44 px gutter of line numbers beside the editor — the file's
-///   exact text in mono 12/19.5, no wrapping, scrolling both ways. Tab moves focus; no tab characters.
+///   after a save), the changed-on-disk notice, then a gutter of line numbers (at least 44 px) beside the editor — the
+///   file's exact text in the Settings code style (Story 10.50; [CodeStyleScope]), no wrapping, scrolling both ways.
+///   Tab moves focus; no tab characters.
 /// - **Save** (gold, ⌘S) writes the draft through jj, which checks it first; a refusal writes nothing and shows
 ///   jj's message under the well — with its spot marked (gutter number in `--rem`, the span wavy-underlined), its
 ///   line and column, a sentence and **Show** when jj names the spot. It stays until the next Save or Revert.
@@ -191,11 +193,8 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
   String? _disk;
   StreamSubscription<void>? _watch;
 
-  /// The gutter's width (DS settings.css:105).
-  static const double _gutter = 44;
-
-  /// One line of the editor (DS settings.css:104: `--fs-md`/19.5px).
-  static const _lineHeight = 19.5;
+  /// The gutter's least width (DS settings.css:105); a large code size widens it to fit the numbers.
+  static const double _minGutter = 44;
 
   bool get _dirty => !_loading && _loadError == null && _text.text != _saved;
 
@@ -388,17 +387,6 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
     );
   }
 
-  TextStyle _editorStyle(ZsColors colors) =>
-      ZsType.command.copyWith(fontSize: ZsType.fsMd, height: _lineHeight / ZsType.fsMd, color: colors.text);
-
-  static const _strut = StrutStyle(
-    fontFamily: ZsType.monoFamily,
-    fontSize: ZsType.fsMd,
-    height: _lineHeight / ZsType.fsMd,
-    leadingDistribution: TextLeadingDistribution.even,
-    forceStrutHeight: true,
-  );
-
   Widget _well(BuildContext context, AppLocalizations s) {
     final ZsColors colors = ZsColors.of(context);
     final metrics = ZsMetrics.of(context);
@@ -516,7 +504,9 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
   );
 
   Widget _editor(ZsColors colors, AppLocalizations s) {
-    final TextStyle style = _editorStyle(colors);
+    final TextStyle code = CodeStyleScope.of(context);
+    final TextStyle style = code.copyWith(color: colors.text);
+    final strut = StrutStyle.fromTextStyle(code, forceStrutHeight: true);
     final String text = _text.text;
     final int lines = '\n'.allMatches(text).length + 1;
     final TextRange? marked = _markedRange;
@@ -531,11 +521,19 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
           text: TextSpan(text: text, style: style),
           textDirection: TextDirection.ltr,
           textScaler: MediaQuery.textScalerOf(context),
-          strutStyle: _strut,
+          strutStyle: strut,
         )..layout();
         final double textWidth = painter.width;
         painter.dispose();
-        final double width = math.max(box.maxWidth - _gutter, textWidth + 24 + 4);
+        final numbers = TextPainter(
+          text: TextSpan(text: '0' * '$lines'.length, style: gutter),
+          textDirection: TextDirection.ltr,
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        // The numbers' 10 px right padding beside their width.
+        final double gutterWidth = math.max(_minGutter, numbers.width.ceilToDouble() + 10);
+        numbers.dispose();
+        final double width = math.max(box.maxWidth - gutterWidth, textWidth + 24 + 4);
         return Stack(
           children: <Widget>[
             ZsScrollArea(
@@ -547,7 +545,7 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     SizedBox(
-                      width: _gutter,
+                      width: gutterWidth,
                       child: ExcludeSemantics(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(0, 8, 10, 8),
@@ -569,7 +567,7 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
                             ),
                             textAlign: TextAlign.right,
                             style: gutter,
-                            strutStyle: _strut,
+                            strutStyle: strut,
                           ),
                         ),
                       ),
@@ -594,7 +592,7 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
                                     focusNode: _focus,
                                     decoration: null,
                                     style: style,
-                                    strutStyle: _strut,
+                                    strutStyle: strut,
                                     maxLines: null,
                                     keyboardType: TextInputType.multiline,
                                     textInputAction: TextInputAction.newline,
@@ -619,7 +617,7 @@ class _SettingsConfigFilePageState extends State<SettingsConfigFilePage> {
               ),
             ),
             Positioned(
-              left: _gutter,
+              left: gutterWidth,
               top: 0,
               bottom: 0,
               width: 1,

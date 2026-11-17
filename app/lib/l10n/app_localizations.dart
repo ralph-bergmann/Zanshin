@@ -4382,6 +4382,54 @@ abstract class AppLocalizations {
   /// **'Side by side'**
   String get settingsDiffSideBySide;
 
+  /// Story 10.50: Settings › General › Diffs row and VoiceOver name of its choice: the font of the code in diffs and the config file.
+  ///
+  /// In en, this message translates to:
+  /// **'Code font'**
+  String get settingsCodeFont;
+
+  /// Story 10.50: the Code font row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'The monospaced fonts on this Mac.'**
+  String get settingsCodeFontHint;
+
+  /// Story 10.50: Code font choice: the font that ships with the app (family is its name, JetBrains Mono).
+  ///
+  /// In en, this message translates to:
+  /// **'{family} · built in'**
+  String settingsCodeFontBuiltIn(String family);
+
+  /// Story 10.50: Code font choice: the saved font is not on this Mac, so the code draws in fallback (the built-in font). The setting stays.
+  ///
+  /// In en, this message translates to:
+  /// **'{family} (not installed) — using {fallback}'**
+  String settingsCodeFontMissing(String family, String fallback);
+
+  /// Story 10.50: Settings › General › Diffs row and VoiceOver name of its choice: the size of the code in points.
+  ///
+  /// In en, this message translates to:
+  /// **'Code size'**
+  String get settingsCodeSize;
+
+  /// Story 10.50: the Code size row's hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Diffs and the config file. Zoom scales it like everything else.'**
+  String get settingsCodeSizeHint;
+
+  /// Story 10.50: Code size choice in points.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} pt'**
+  String settingsCodeSizePoints(int size);
+
+  /// Story 10.50: Code size choice: the default size in points.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} pt · default'**
+  String settingsCodeSizeDefault(int size);
+
   /// Settings › General › Diffs row and VoiceOver name of its choice: how every diff treats whitespace (the same setting as the diff options menu).
   ///
   /// In en, this message translates to:

@@ -11,6 +11,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 import '../../l10n/strings.dart';
 import '../graph/inspector_diff.dart' show diffContextChoices, diffWhitespaceLabel;
 import '../graph/project_files.dart' show detectedEditors, editorLaunchers;
+import '../window/code_font.dart' show codeFontMissing, codeSizeChoices, codeSizeMax, codeSizeMin;
 import '../window/window_zoom.dart';
 import 'settings_view_model.dart';
 import 'settings_widgets.dart';
@@ -186,6 +187,8 @@ class SettingsGeneralTab extends StatelessWidget {
                     vm.updatePreferences((settings) => settings.copyWith.general(diffLayout: layout)),
               ),
             ),
+            _codeFontRow(s, prefs.general.codeFont),
+            _codeSizeRow(s, prefs.general.codeSize),
             SettingsRow(
               label: s.settingsDiffWhitespace,
               child: ZsSelect<DiffWhitespaceSetting>(
@@ -281,6 +284,65 @@ class SettingsGeneralTab extends StatelessWidget {
         ),
         SettingsAuthorFact(vm: vm),
       ],
+    );
+  }
+
+  /// Story 10.50: the built-in font first, then the installed fixed-pitch families with the [saved] one added in order
+  /// when it is not among them (marked missing once the list is known; nothing is written).
+  Widget _codeFontRow(AppLocalizations s, String? saved) {
+    const builtIn = 'JetBrains Mono'; // l10n-ignore: the built-in font's name
+    final List<String>? installed = vm.codeFonts.families;
+    final bool missing = codeFontMissing(saved, installed);
+    // An installed JetBrains Mono would repeat the built-in entry; it shows only when it is the saved family.
+    final List<String> families = <String>{
+      for (final String family in installed ?? const <String>[])
+        if (family != builtIn) family,
+      ?saved,
+    }.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return SettingsRow(
+      label: s.settingsCodeFont,
+      hint: s.settingsCodeFontHint,
+      // A long family name or the missing note ellipsizes in the trigger; the list shows it whole.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 240),
+        child: ZsSelect<String?>(
+          label: s.settingsCodeFont,
+          identifier: 'settings-code-font',
+          options: <ZsSelectEntry<String?>>[
+            ZsSelectOption<String?>(value: null, label: s.settingsCodeFontBuiltIn(builtIn)),
+            for (final String family in families)
+              ZsSelectOption<String?>(
+                value: family,
+                label: missing && family == saved ? s.settingsCodeFontMissing(family, builtIn) : family,
+              ),
+          ],
+          value: saved,
+          onChanged: (family) => vm.updatePreferences((settings) => settings.copyWith.general(codeFont: family)),
+        ),
+      ),
+    );
+  }
+
+  /// Story 10.50: the design's sizes in points, a hand-edited [saved] size added in order as it draws (clamped).
+  Widget _codeSizeRow(AppLocalizations s, int saved) {
+    final int size = saved.clamp(codeSizeMin, codeSizeMax);
+    final List<int> sizes = <int>{...codeSizeChoices, size}.toList()..sort();
+    return SettingsRow(
+      label: s.settingsCodeSize,
+      hint: s.settingsCodeSizeHint,
+      child: ZsSelect<int>(
+        label: s.settingsCodeSize,
+        identifier: 'settings-code-size',
+        options: <ZsSelectEntry<int>>[
+          for (final int n in sizes)
+            ZsSelectOption<int>(
+              value: n,
+              label: n == const GeneralSettings().codeSize ? s.settingsCodeSizeDefault(n) : s.settingsCodeSizePoints(n),
+            ),
+        ],
+        value: size,
+        onChanged: (n) => vm.updatePreferences((settings) => settings.copyWith.general(codeSize: n)),
+      ),
     );
   }
 

@@ -8,9 +8,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/graph/inspector_check_reveal.dart';
 import 'package:zanshin/src/features/graph/inspector_diff.dart';
+import 'package:zanshin/src/features/window/code_font.dart';
 import 'package:zanshin/src/l10n/strings.dart';
 import 'package:zanshin_core/zanshin_core.dart';
-import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting;
+import 'package:zanshin_settings/zanshin_settings.dart' show DiffLayoutSetting, DiffWhitespaceSetting, GeneralSettings;
 import 'package:zanshin_ui/zanshin_ui.dart'
     show
         ZI,
@@ -25,7 +26,8 @@ import 'package:zanshin_ui/zanshin_ui.dart'
         ZsMenuNote,
         ZsMenuSeparator,
         ZsScrollArea,
-        ZsTheme;
+        ZsTheme,
+        ZsType;
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/shell_host.dart';
@@ -481,23 +483,27 @@ void main() {
     ZsAppearance appearance = const ZsAppearance(),
     bool Function(HunkKey part)? partPicked,
     bool wordMarks = true,
-  }) => shellHost(
-    SizedBox(
-      width: 420,
-      child: InspectorDiffView(
-        path: 'src/main.rs',
-        diff: diff,
-        wordMarks: wordMarks,
-        error: null,
-        onViewedChanged: (_) {},
-        layout: layout,
-        onLayoutChanged: (_) {},
-        partPicked: partPicked,
-        onPartToggled: (_) {},
+    TextStyle? codeStyle,
+  }) {
+    final Widget diffView = InspectorDiffView(
+      path: 'src/main.rs',
+      diff: diff,
+      wordMarks: wordMarks,
+      error: null,
+      onViewedChanged: (_) {},
+      layout: layout,
+      onLayoutChanged: (_) {},
+      partPicked: partPicked,
+      onPartToggled: (_) {},
+    );
+    return shellHost(
+      SizedBox(
+        width: 420,
+        child: codeStyle == null ? diffView : CodeStyleScope(style: codeStyle, child: diffView),
       ),
-    ),
-    appearance: appearance,
-  );
+      appearance: appearance,
+    );
+  }
 
   FileDiff matrix() => _file(
     hunks: <Hunk>[
@@ -865,6 +871,53 @@ void main() {
     fingerprint: 'g',
     leftLineCount: leftLineCount,
   );
+
+  group('Story 10.50: the code style', () {
+    TextStyle code({String? font, int size = 11}) =>
+        codeTextStyle(GeneralSettings(codeFont: font, codeSize: size), font == null ? null : <String>[font]);
+
+    // A line number, padded to the file's digits.
+    final Finder number24 = find.byWidgetPredicate((w) => w is Text && w.data?.trim() == '24').first;
+
+    double numberColumn(WidgetTester tester) =>
+        tester.getSize(find.ancestor(of: number24, matching: find.byType(SizedBox)).first).width;
+
+    for (final DiffLayoutSetting layout in DiffLayoutSetting.values) {
+      testWidgets('$layout: size 14 draws the lines at 14 and widens the number column; the gap rows keep theirs', (
+        tester,
+      ) async {
+        await tester.pumpWidget(view(gapped(), layout: layout, codeStyle: code()));
+        final double narrow = numberColumn(tester);
+        await tester.pumpWidget(view(gapped(), layout: layout, codeStyle: code(size: 14)));
+        expect(tester.widget<Text>(find.text('c1').first).style!.fontSize, 14);
+        expect(tester.widget<Text>(number24).style!.fontSize, 14);
+        expect(numberColumn(tester), greaterThan(narrow));
+        expect(tester.widget<Text>(find.text('7 unchanged lines')).style!.fontSize, 11.5, reason: 'a gap row');
+      });
+    }
+
+    testWidgets('Menlo reaches the line text, the numbers and the no-newline marker', (tester) async {
+      final FileDiff diff = _file(
+        hunks: <Hunk>[
+          _hunk(<HunkLine>[_line('    1    1|x'), _line('+        2|{+end+}', newline: false)]),
+        ],
+      );
+      for (final DiffLayoutSetting layout in DiffLayoutSetting.values) {
+        await tester.pumpWidget(
+          view(
+            diff,
+            layout: layout,
+            codeStyle: code(font: 'Menlo'),
+          ),
+        );
+        for (final String text in ['x', '1', noNewlineMarker]) {
+          final TextStyle style = tester.widget<Text>(find.text(text).first).style!;
+          expect(style.fontFamily, 'Menlo', reason: '$layout $text');
+          expect(style.fontFamilyFallback, [ZsType.monoFamily, ZsType.sansFamily], reason: '$layout $text');
+        }
+      }
+    });
+  });
 
   group('Story 10.43: unchanged gap rows', () {
     /// The view of [diff] with [read] as its gap read, the reads in [reads]; inside a reveal scope when [scoped].

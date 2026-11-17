@@ -52,6 +52,8 @@ _GeneralSettings _$GeneralSettingsFromJson(
               .toList() ??
           defaultFileMasks,
     ),
+    codeFont: $checkedConvert('codeFont', (v) => v as String?),
+    codeSize: $checkedConvert('codeSize', (v) => (v as num?)?.toInt() ?? 11),
   );
   return val;
 });
@@ -66,6 +68,8 @@ Map<String, dynamic> _$GeneralSettingsToJson(
   'diffFileList': _$DiffFileListSettingEnumMap[instance.diffFileList]!,
   'editor': instance.editor,
   'fileMasks': instance.fileMasks.map((e) => e.toJson()).toList(),
+  'codeFont': instance.codeFont,
+  'codeSize': instance.codeSize,
 };
 
 const _$DiffLayoutSettingEnumMap = {

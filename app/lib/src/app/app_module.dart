@@ -15,6 +15,7 @@ import '../features/settings/settings_window.dart';
 import '../features/settings/settings_window_state.dart';
 import '../features/window/app_window_actions.dart';
 import '../features/window/app_windows.dart';
+import '../features/window/code_font.dart';
 import '../features/window/zanshin_window_root.dart';
 import '../links.dart';
 import 'app_window_coordinator.dart';
@@ -78,7 +79,8 @@ class AppModule {
     ProjectsEnvironment environment,
     ProjectSession session,
     ActiveGraph graph,
-  ) => SettingsViewModel(store: store, environment: environment, session: session, graph: graph);
+    InstalledCodeFonts codeFonts,
+  ) => SettingsViewModel(store: store, environment: environment, session: session, graph: graph, codeFonts: codeFonts);
 
   /// Provides what an open repository's graph reads from.
   @provides

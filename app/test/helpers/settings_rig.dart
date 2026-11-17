@@ -16,6 +16,7 @@ import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/sync/sync_model.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
+import 'package:zanshin/src/features/window/code_font.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 
@@ -55,6 +56,15 @@ class SettingsRig {
 
   /// The project window's sync the remote verbs reload; set before [pump].
   SyncModel? sync;
+
+  /// The installed fixed-pitch families the runner answers (null: the read fails); set before [pump].
+  List<String>? codeFamilies = const ['Monaco', 'Menlo'];
+
+  /// Reads the families instead of [codeFamilies] when set; set before [pump].
+  Future<List<String>?> Function()? codeFontReader;
+
+  /// The code style a window root would provide (null: none, so `ZsType.code`); set before [pump].
+  TextStyle? codeStyle;
   late SettingsStore store;
   late ProjectSession session;
 
@@ -85,21 +95,26 @@ class SettingsRig {
     if (target != null) {
       state.show(target);
     }
-    await tester.pumpWidget(
-      shellHost(
-        SettingsWindow(
-          state: state,
-          windows: windows,
-          viewModel: SettingsViewModel(
-            store: store,
-            environment: env,
-            session: session,
-            graph: graph,
-            readsOf: (_) => reads,
-          ),
+    final Widget window = SettingsWindow(
+      state: state,
+      windows: windows,
+      viewModel: SettingsViewModel(
+        store: store,
+        environment: env,
+        session: session,
+        graph: graph,
+        codeFonts: InstalledCodeFonts.withReader(
+          codeFontReader ??
+              () async {
+                final List<String>? families = codeFamilies;
+                return families ?? (throw PlatformException(code: 'unavailable'));
+              },
         ),
+        readsOf: (_) => reads,
       ),
     );
+    final TextStyle? code = codeStyle;
+    await tester.pumpWidget(shellHost(code == null ? window : CodeStyleScope(style: code, child: window)));
     await settle();
   }
 

@@ -10,7 +10,9 @@ import 'package:zanshin/src/features/settings/config_file_page.dart';
 import 'package:zanshin/src/features/settings/immutable_heads.dart' show immutableHeadsKey;
 import 'package:zanshin/src/features/settings/settings_window_state.dart';
 import 'package:zanshin/src/features/window/app_window_actions.dart';
+import 'package:zanshin/src/features/window/code_font.dart';
 import 'package:zanshin_core/zanshin_core.dart';
+import 'package:zanshin_settings/zanshin_settings.dart' show GeneralSettings;
 
 import '../../helpers/icon_registry.dart';
 import '../../helpers/settings_rig.dart';
@@ -155,6 +157,30 @@ void main() {
       await rig.tap('settings-config-save');
       await rig.tap('settings-config-revert');
       expect(rig.env.configFileWrites, isEmpty, reason: 'both off while nothing changed');
+    });
+
+    testWidgets("Story 10.50: the editor and the gutter draw in the scope's code style; the gutter widens to fit", (
+      tester,
+    ) async {
+      double gutter() => tester.getTopLeft(find.byType(EditableText)).dx;
+      final rig = SettingsRig(tester);
+      await rig.openConfig();
+      final double narrow = gutter();
+      expect(tester.widget<EditableText>(rig.editor).style.fontSize, 11, reason: 'ZsType.code without a scope');
+
+      final big = SettingsRig(tester)
+        ..codeStyle = codeTextStyle(const GeneralSettings(codeFont: 'Menlo', codeSize: 40), const ['Menlo']);
+      // 11 lines: two digits.
+      big.env.configFileTexts[ConfigScope.user] = '\n' * 10;
+      await big.openConfig();
+      final TextStyle style = tester.widget<EditableText>(big.editor).style;
+      expect((style.fontFamily, style.fontSize), ('Menlo', 40));
+      final TextStyle numbers = tester
+          .widget<RichText>(find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().endsWith('10\n11')))
+          .text
+          .style!;
+      expect((numbers.fontFamily, numbers.fontSize), ('Menlo', 40));
+      expect(gutter(), greaterThan(narrow), reason: 'two digits at 40 are wider than 44 px');
     });
 
     testWidgets('Project › Edit… edits the repo file', (tester) async {

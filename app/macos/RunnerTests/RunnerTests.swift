@@ -72,6 +72,12 @@ class RunnerTests: XCTestCase {
     XCTAssertNotNil(MenuStateChannel.Payload(["checked": [], "enabled": [:], "titles": [:]]))
   }
 
+  // MARK: - Code fonts (Story 10.50)
+
+  func testFontsChannelKeepsFixedPitchFamiliesOnly() {
+    XCTAssertEqual(FontsChannel.monospacedFamilies(of: ["Helvetica", "Menlo"]), ["Menlo"])
+  }
+
   // MARK: - Traffic-light position (Story 11.26)
 
   /// A titled, resizable, full-size-content window, like the engine's.

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
+import 'package:zanshin/src/features/window/code_font.dart';
 import 'package:zanshin/src/features/window/window_zoom.dart';
 import 'package:zanshin/src/features/window/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/window/zanshin_window_root.dart';
@@ -274,6 +275,16 @@ void main() {
     await tester.runAsync(() => store.update((s) => s.copyWith.appearance(density: DensitySetting.compact)));
     await tester.pumpAndSettle();
     expect(ZsMetrics.of(content(tester)), ZsMetrics.standard);
+  });
+
+  testWidgets('the root provides the saved code style and follows the store (Story 10.50)', (tester) async {
+    final SettingsStore store = await pumpContentSized(tester, '{"general": {"codeSize": 14}}');
+    expect(CodeStyleScope.of(content(tester)).fontSize, 14);
+    expect(CodeStyleScope.of(content(tester)).fontFamily, ZsType.monoFamily);
+
+    await tester.runAsync(() => store.update((s) => s.copyWith.general(codeSize: 12)));
+    await tester.pumpAndSettle();
+    expect(CodeStyleScope.of(content(tester)).fontSize, 12);
   });
 
   testWidgets('the zoom scales the content and its MediaQuery, and divides the traffic-light block (Story 11.20)', (

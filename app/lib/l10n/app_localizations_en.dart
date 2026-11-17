@@ -2936,6 +2936,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDiffSideBySide => 'Side by side';
 
   @override
+  String get settingsCodeFont => 'Code font';
+
+  @override
+  String get settingsCodeFontHint => 'The monospaced fonts on this Mac.';
+
+  @override
+  String settingsCodeFontBuiltIn(String family) {
+    return '$family · built in';
+  }
+
+  @override
+  String settingsCodeFontMissing(String family, String fallback) {
+    return '$family (not installed) — using $fallback';
+  }
+
+  @override
+  String get settingsCodeSize => 'Code size';
+
+  @override
+  String get settingsCodeSizeHint => 'Diffs and the config file. Zoom scales it like everything else.';
+
+  @override
+  String settingsCodeSizePoints(int size) {
+    return '$size pt';
+  }
+
+  @override
+  String settingsCodeSizeDefault(int size) {
+    return '$size pt · default';
+  }
+
+  @override
   String get settingsDiffWhitespace => 'Whitespace';
 
   @override

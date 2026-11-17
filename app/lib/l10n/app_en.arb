@@ -2026,6 +2026,34 @@
   "@settingsDiffUnified": {"description": "Diff layout choice: one column."},
   "settingsDiffSideBySide": "Side by side",
   "@settingsDiffSideBySide": {"description": "Diff layout choice: two columns."},
+  "settingsCodeFont": "Code font",
+  "@settingsCodeFont": {"description": "Story 10.50: Settings › General › Diffs row and VoiceOver name of its choice: the font of the code in diffs and the config file."},
+  "settingsCodeFontHint": "The monospaced fonts on this Mac.",
+  "@settingsCodeFontHint": {"description": "Story 10.50: the Code font row's hint."},
+  "settingsCodeFontBuiltIn": "{family} · built in",
+  "@settingsCodeFontBuiltIn": {
+    "description": "Story 10.50: Code font choice: the font that ships with the app (family is its name, JetBrains Mono).",
+    "placeholders": {"family": {"type": "String"}}
+  },
+  "settingsCodeFontMissing": "{family} (not installed) — using {fallback}",
+  "@settingsCodeFontMissing": {
+    "description": "Story 10.50: Code font choice: the saved font is not on this Mac, so the code draws in fallback (the built-in font). The setting stays.",
+    "placeholders": {"family": {"type": "String"}, "fallback": {"type": "String"}}
+  },
+  "settingsCodeSize": "Code size",
+  "@settingsCodeSize": {"description": "Story 10.50: Settings › General › Diffs row and VoiceOver name of its choice: the size of the code in points."},
+  "settingsCodeSizeHint": "Diffs and the config file. Zoom scales it like everything else.",
+  "@settingsCodeSizeHint": {"description": "Story 10.50: the Code size row's hint."},
+  "settingsCodeSizePoints": "{size} pt",
+  "@settingsCodeSizePoints": {
+    "description": "Story 10.50: Code size choice in points.",
+    "placeholders": {"size": {"type": "int"}}
+  },
+  "settingsCodeSizeDefault": "{size} pt · default",
+  "@settingsCodeSizeDefault": {
+    "description": "Story 10.50: Code size choice: the default size in points.",
+    "placeholders": {"size": {"type": "int"}}
+  },
   "settingsDiffWhitespace": "Whitespace",
   "@settingsDiffWhitespace": {"description": "Settings › General › Diffs row and VoiceOver name of its choice: how every diff treats whitespace (the same setting as the diff options menu)."},
   "settingsDiffWordMarks": "Changed words",

@@ -7,6 +7,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../l10n/strings.dart';
 import 'active_window_tracker.dart';
+import 'code_font.dart';
 import 'window_chrome_builder.dart';
 import 'window_zoom.dart';
 import 'zanshin_app_view_model.dart';
@@ -95,7 +96,10 @@ class ZanshinWindowRoot extends StatelessWidget {
                       inactive: !_tracker.isActive(View.of(context).viewId),
                     ),
                     shellTheme: vm.shellTheme,
-                    child: _keyed(contentSized ? Overlay.wrap(alwaysSizeToContent: true, child: child) : navigator),
+                    child: CodeStyleScope(
+                      style: vm.codeStyle,
+                      child: _keyed(contentSized ? Overlay.wrap(alwaysSizeToContent: true, child: child) : navigator),
+                    ),
                   ),
                 ),
               ),
