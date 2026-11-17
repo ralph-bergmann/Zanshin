@@ -341,3 +341,13 @@ Story 10.50 gave code a font and a size of its own (Settings › General › Dif
 → Design system: done in this entry — `components/settings/settings.css` (`.zs-cfg-ed`, `.zs-cfg-gut`, `.zs-cfg-gut span`, the comment), `ConfigFilePage.prompt.md`, the readme's Sync section ("Synced through #33" and its dated line). No component code, token or `_ds_bundle.js` change. Not published (waits for a console session).
 
 - 2026-11-17 (Story 10.50) — the app is #33's source: `ConfigFilePage._editor` reads `CodeStyleScope.of(context)` for the text and the gutter and sizes the gutter `max(44, digits + 20)` (`app/lib/src/features/settings/config_file_page.dart`); no app change in this entry. The DS card (*Settings — Remotes and config file*) is not yet rendered and compared with the running app (console session).
+
+### #34 · 2026-11-17 · Settings › Diffs gains Code font and Code size; a correction to #32's hint row
+Checked in the running app on a throwaway repository (console session, Night): the split buttons, the file masks and the code font match the Inspector Extras Study. Two gaps in the design system remained.
+- **Code font and Code size rows** (Settings › General › Diffs, after Layout), from the study's section 5:
+  - *Code font*: a Select with "JetBrains Mono · built in" first, then the monospaced families of the Mac; hint "The monospaced fonts on this Mac.". A saved family that is not installed reads "‹name› · not installed" in the Select, and the hint becomes "‹name› is not installed. The code uses JetBrains Mono." — the Select is too narrow for the explanation (the app first put the whole sentence into the Select, which cut it at the window's default width; fixed the same day).
+  - *Code size*: a Select 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24 pt, "11 pt · default"; hint "Diffs and the config file. Zoom scales it like everything else.".
+- **Correction to #32's hint row**: the hidden files' checkbox is not "the only way to pick a hidden file" — the files header's pick-all box takes hidden files too. Everything else in #32 stands.
+→ Design system: done in this entry — card *Settings* (`components/settings/settings.card.html`, the two rows with their states; its viewport in `_ds_manifest.json` follows the card's own marker, 700x800, since the card no longer fits 560), the readme's Sync section ("Synced through #34" and its dated line, which carries the correction). No component code, token or `_ds_bundle.js` change.
+
+- 2026-11-17 (console session) — the app's side: `general_tab.dart` `_codeFontRow` shows the short "‹name› · not installed" label and moves the explanation into the row's hint (`settingsCodeFontMissing`, `settingsCodeFontMissingHint` in `app_en.arb`).

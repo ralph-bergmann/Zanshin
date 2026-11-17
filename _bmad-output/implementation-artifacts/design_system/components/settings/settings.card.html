@@ -23,6 +23,8 @@
     const [hide, setHide] = React.useState(true);
     const [layout, setLayout] = React.useState("unified");
     const [words, setWords] = React.useState(true);
+    const [font, setFont] = React.useState("");
+    const [size, setSize] = React.useState("11");
     const [inline, setInline] = React.useState("3");
     const [context, setContext] = React.useState("3");
     return (
@@ -40,6 +42,8 @@
           </SettingsGroup>
           <SettingsGroup title="Diffs">
             <SettingsRow label="Layout"><Segmented variant="inset" label="Diff layout" value={layout} onChange={setLayout} options={[{ value: "unified", label: "Unified" }, { value: "split", label: "Side by side" }]}/></SettingsRow>
+            <SettingsRow label="Code font" hint={font === "Nope Mono" ? "Nope Mono is not installed. The code uses JetBrains Mono." : "The monospaced fonts on this Mac."}><Select label="Code font" value={font} onChange={setFont} options={[{ value: "", label: "JetBrains Mono · built in" }, ...["Menlo", "Monaco", "SF Mono"].map((f) => ({ value: f, label: f })), { value: "Nope Mono", label: "Nope Mono · not installed" }]}/></SettingsRow>
+            <SettingsRow label="Code size" hint="Diffs and the config file. Zoom scales it like everything else."><Select label="Code size" value={size} onChange={setSize} options={["9", "10", "11", "12", "13", "14", "15", "16", "18", "20", "22", "24"].map((n) => ({ value: n, label: n === "11" ? "11 pt · default" : n + " pt" }))}/></SettingsRow>
             <SettingsRow label="Changed words" hint="Marks the words that changed inside a line, where jj diff underlines them."><Switch label="Mark changed words" checked={words} onChange={setWords}/></SettingsRow>
             <SettingsRow label="Inline changes" configKey="diff.color-words.max-inline-alternation" hint="How often a line may switch between removed and added words before it shows as an old and a new line. Experimental in jj."><Select label="Inline changes" value={inline} onChange={setInline} options={[["0", "Never"], ["1", "Up to 1"], ["2", "Up to 2"], ["3", "Up to 3"], ["5", "Up to 5"], ["-1", "Always"]].map(([value, label]) => ({ value, label }))}/></SettingsRow>
             <SettingsRow label="Context lines" configKey="diff.color-words.context" hint="Unchanged lines shown around each change."><Select label="Context lines" value={context} onChange={setContext} options={["0", "1", "2", "3", "5", "10", "20"].map((n) => ({ value: n, label: n }))}/></SettingsRow>
